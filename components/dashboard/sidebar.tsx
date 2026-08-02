@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BarChart3, Bell, Building2, ChevronDown, CreditCard, FileText, HelpCircle, LayoutDashboard, MapPin, Settings, Users } from "lucide-react";
 import { BrandMark } from "@/components/brand-mark";
+import { LogoutButton } from "@/components/auth/logout-button";
 
 const primary = [
   { label: "Overview", icon: LayoutDashboard, href: "/dashboard" },
@@ -32,6 +33,7 @@ export function Sidebar({ companyName, initials }: { companyName: string; initia
         <Link href="/dashboard/notifications" className={`sidebar-link${pathname.startsWith("/dashboard/notifications") ? " active" : ""}`}><Bell size={18} />Notifications<span className="nav-dot" /></Link>
         <Link href="/dashboard/settings" className={`sidebar-link${pathname.startsWith("/dashboard/settings") ? " active" : ""}`}><Settings size={18} />Settings</Link>
         <Link href="/help" className="sidebar-link"><HelpCircle size={18} />Help centre</Link>
+        <LogoutButton />
         <div className="company-switcher">
           <span className="avatar avatar-small">{initials}</span>
           <span><b>{companyName}</b><small>Approved supplier</small></span>

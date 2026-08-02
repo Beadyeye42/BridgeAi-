@@ -17,12 +17,26 @@ async function setIdentity(tx: Prisma.TransactionClient, userId: string) {
   await tx.$executeRaw`SELECT set_config('request.jwt.claim.role', 'authenticated', true)`;
 }
 
+async function resolveVerifiedIdentity() {
+  const scoped = identity.getStore();
+  if (scoped) return scoped;
+
+  // React server continuations can resume outside the scope that loaded the
+  // session. Re-verify with Supabase rather than trusting a caller-provided ID.
+  const { createClient } = await import("@/lib/supabase/auth-server");
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user || !data.user.email_confirmed_at) {
+    throw new Error("A verified Supabase Auth identity is required for database access");
+  }
+  return data.user.id;
+}
+
 const extended = raw.$extends({
   query: {
     $allModels: {
       async $allOperations({ model, operation, args }) {
-        const userId = identity.getStore();
-        if (!userId) throw new Error("A verified Supabase Auth identity is required for database access");
+        const userId = await resolveVerifiedIdentity();
         return raw.$transaction(async (tx) => {
           await setIdentity(tx, userId);
           const delegate = (tx as unknown as Record<string, Record<string, (value: unknown) => unknown>>)[model.charAt(0).toLowerCase() + model.slice(1)];
@@ -37,8 +51,7 @@ export const prisma = new Proxy(extended, {
   get(target, property, receiver) {
     if (property !== "$transaction") return Reflect.get(target, property, receiver);
     return async (callback: (tx: PrismaClient) => unknown, options?: object) => {
-      const userId = identity.getStore();
-      if (!userId) throw new Error("A verified Supabase Auth identity is required for database access");
+      const userId = await resolveVerifiedIdentity();
       return raw.$transaction(async (tx) => {
         await setIdentity(tx, userId);
         return callback(tx as unknown as PrismaClient);
@@ -49,10 +62,6 @@ export const prisma = new Proxy(extended, {
 
 export function runWithDatabaseIdentity<T>(userId: string, work: () => T): T {
   return identity.run(userId, work);
-}
-
-export function enterDatabaseIdentity(userId: string) {
-  identity.enterWith(userId);
 }
 
 export const trustedPrisma = raw;

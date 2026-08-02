@@ -43,6 +43,8 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .sidebar-link:hover { color: white; background: rgba(255,255,255,.055); }
 .sidebar-link.active { color: white; background: rgba(213, 235, 166, .12); box-shadow: inset 3px 0 #bbdd82; }
 .sidebar-link.active svg { color: #c9e693; }
+.sidebar-logout { width: 100%; border: 0; background: transparent; text-align: left; cursor: pointer; }
+.sidebar-logout:disabled { cursor: wait; opacity: .65; }
 .nav-badge { margin-left: auto; min-width: 22px; height: 20px; padding: 0 6px; display: grid; place-items: center; border-radius: 10px; background: #c6e68c; color: #173d33; font-size: 10px; font-weight: 800; }
 .nav-dot { width: 6px; height: 6px; margin-left: auto; border-radius: 50%; background: #edb053; box-shadow: 0 0 0 3px rgba(237,176,83,.12); }
 .sidebar-bottom { padding: 13px 14px 17px; border-top: 1px solid rgba(255,255,255,.08); }

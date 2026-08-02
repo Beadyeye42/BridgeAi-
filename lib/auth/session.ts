@@ -1,4 +1,4 @@
-import { prisma, enterDatabaseIdentity } from "@/lib/db";
+import { prisma, runWithDatabaseIdentity } from "@/lib/db";
 import { createClient } from "@/lib/supabase/auth-server";
 
 export async function getCurrentSession() {
@@ -7,18 +7,19 @@ export async function getCurrentSession() {
   const authUser = data.user;
   if (error || !authUser || !authUser.email_confirmed_at) return null;
 
-  enterDatabaseIdentity(authUser.id);
-  const profile = await prisma.user.findUnique({
-    where: { id: authUser.id },
-    include: {
-      platformAdministrator: true,
-      memberships: {
-        where: { status: "ACTIVE" },
-        include: { supplierCompany: true },
-        orderBy: [{ isPrimary: "desc" }, { joinedAt: "asc" }],
+  const profile = await runWithDatabaseIdentity(authUser.id, () =>
+    prisma.user.findUnique({
+      where: { id: authUser.id },
+      include: {
+        platformAdministrator: true,
+        memberships: {
+          where: { status: "ACTIVE" },
+          include: { supplierCompany: true },
+          orderBy: [{ isPrimary: "desc" }, { joinedAt: "asc" }],
+        },
       },
-    },
-  });
+    }),
+  );
   if (!profile || profile.status !== "ACTIVE") return null;
 
   const isAdministrator = Boolean(profile.platformAdministrator?.active);

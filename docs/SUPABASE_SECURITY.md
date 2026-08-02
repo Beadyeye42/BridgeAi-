@@ -4,14 +4,14 @@ This document records the implemented baseline. It supersedes the earlier server
 
 ## Migration authority
 
-`supabase/migrations` is the only database migration authority. The connected project and repository contain the same 13 migration versions. The six `202607...` files are migration-history reconciliation stubs: they intentionally do not recreate the obsolete insecure `public` design on a fresh project. The live legacy objects/data were preserved, stripped of privileged execution paths and quarantined behind deny-all policies. Do not replace these files with the old SQL or delete the history entries.
+`supabase/migrations` is the only database migration authority. The connected project and repository contain the same 15 migration versions. The six `202607...` files are migration-history reconciliation stubs: they intentionally do not recreate the obsolete insecure `public` design on a fresh project. The live legacy objects/data were preserved, stripped of privileged execution paths and quarantined behind deny-all policies. Do not replace these files with the old SQL or delete the history entries.
 
 The `20260802183212_security_foundation.sql` migration establishes the current schema and baseline. Subsequent migrations install the application RLS role/context, secure invitation acceptance, cross-row authorisation invariants and advisor cleanup.
 
 ## RLS and privileges
 
 - 24 of 24 Bridge AI tables have `ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY`.
-- The baseline installs 53 application policies plus four `storage.objects` policies across supplier, administrator, reference-data, notification, audit and file paths.
+- The baseline installs 54 application policies plus four `storage.objects` policies across supplier, administrator, reference-data, notification, audit and file paths.
 - `anon` has no application-table privileges. The application role is subject to policies as `authenticated` and has no `BYPASSRLS` attribute.
 - Policy helper functions live in the non-exposed `bridge_private` schema, set a fixed search path and are not generally executable.
 - Supplier access requires an active membership and the relevant company/request relationship. Suspension or removal immediately makes policies fail.
@@ -21,7 +21,7 @@ The Next.js data layer installs only an ID already verified by Supabase `getUser
 
 ## Storage
 
-The `bridge-ai-private` bucket is non-public and has size/MIME restrictions. Objects use `companies/<company-uuid>/...` paths. Storage policies validate the path company against active membership or protected administrator status for each operation. The application does not create buckets lazily and does not use a service key for ordinary supplier downloads.
+The `bridge-ai-private` bucket is non-public and has size/MIME restrictions. Objects use `companies/<company-uuid>/...` paths. Storage policies validate the path company against active membership or protected administrator status for each operation. The application does not create buckets lazily and does not use a service key for ordinary supplier downloads. Supplier logos use a deterministic object key for upsert, immutable metadata replacement, an explicit logo-only delete policy and a `CLEAN` scanner-state gate before download.
 
 ## Administrator provisioning
 
@@ -56,8 +56,8 @@ The unit/static suite additionally rejects custom password/session implementatio
 
 ## Advisor status and release limitations
 
-After the remediation, the Supabase security advisor reports one project-level warning and no missing-RLS/exposed-table warning: leaked-password protection is disabled. Enable it in Auth project settings when the project plan supports it and verify the advisor is clear. See [Supabase password security](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection).
+After the live browser and Storage exercise, the Supabase security advisor still reports exactly one project-level warning and no missing-RLS/exposed-table warning: leaked-password protection is disabled. The connected project is on the Free plan and the dashboard identifies this control as Pro-only. A paid-plan change needs explicit owner authorisation; until then the warning cannot be cleared and `security-baseline-v1` must not be created. See [Supabase password security](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection).
 
-The performance advisor reports overlapping permissive policies and unused indexes. The overlaps are deliberate readable separation of tenant and administrator paths; they can be consolidated after policy equivalence testing. Unused-index notices are expected before representative production traffic exists. Reassess both from query statistics after launch: [multiple permissive policies](https://supabase.com/docs/guides/database/database-linter?lint=0006_multiple_permissive_policies), [unused indexes](https://supabase.com/docs/guides/database/database-linter?lint=0005_unused_index).
+The performance advisor reports 40 overlapping-permissive-policy notices and 37 unused-index notices. The overlaps are deliberate readable separation of tenant and administrator paths; they can be consolidated after policy equivalence testing. Unused-index notices are expected before representative production traffic exists. Reassess both from query statistics after launch: [multiple permissive policies](https://supabase.com/docs/guides/database/database-linter?lint=0006_multiple_permissive_policies), [unused indexes](https://supabase.com/docs/guides/database/database-linter?lint=0005_unused_index).
 
 Before production release, independently verify Auth site/redirect URLs, confirmation and recovery email templates, production SMTP, CAPTCHA/rate limits, and MFA enrolment/recovery UX. The schema and authorisation model are MFA-ready because they rely on verified Supabase identities, but MFA is not currently enforced.
