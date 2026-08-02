@@ -1,0 +1,2 @@
+-- Historical legacy message-memory migration. Intentionally not replayed; Bridge AI stores encrypted messages in bridge_ai.
+-- This no-op file reconciles the connected project's immutable migration version without reintroducing the retired design.

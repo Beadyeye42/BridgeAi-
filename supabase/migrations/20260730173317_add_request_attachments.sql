@@ -1,0 +1,2 @@
+-- Historical legacy public attachment migration. Intentionally not replayed; Bridge AI uses the private migration-controlled bucket.
+-- This no-op file reconciles the connected project's immutable migration version without reintroducing the retired design.

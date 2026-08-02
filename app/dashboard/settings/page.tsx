@@ -1,0 +1,7 @@
+import Link from "next/link";
+import { Bell, Building2, KeyRound, MapPin, Users } from "lucide-react";
+import { prisma } from "@/lib/db";
+import { requireSupplierPage } from "@/lib/auth/guards";
+import { PortalPage, identity } from "@/components/dashboard/portal-page";
+export const dynamic="force-dynamic";
+export default async function SettingsPage(){const{session,companyId}=await requireSupplierPage();const company=await prisma.supplierCompany.findUniqueOrThrow({where:{id:companyId}});const links=[["Company profile","Business identity and hours","/dashboard/company",Building2],["Coverage areas","Postcode and radius rules","/dashboard/coverage",MapPin],["Team members","Workspace access and invitations","/dashboard/team",Users],["Notifications","Delivery channels and quiet hours","/dashboard/notifications",Bell],["Password","Send yourself a secure reset link","/forgot-password",KeyRound]] as const;return <PortalPage {...identity(session,company)} eyebrow="Workspace" title="Settings" description="Manage your company, access and personal communication preferences."><div className="settings-links">{links.map(([title,copy,href,Icon])=><Link href={href} className="panel settings-link-card" key={title}><span><Icon size={20}/></span><div><b>{title}</b><small>{copy}</small></div><strong>›</strong></Link>)}</div></PortalPage>}

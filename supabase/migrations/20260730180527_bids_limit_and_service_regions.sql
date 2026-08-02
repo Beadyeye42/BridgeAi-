@@ -1,0 +1,2 @@
+-- Historical legacy marketplace migration. Intentionally not replayed; Bridge AI uses company-scoped assignments.
+-- This no-op file reconciles the connected project's immutable migration version without reintroducing the retired design.

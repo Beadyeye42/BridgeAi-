@@ -1,0 +1,2 @@
+-- Historical legacy WhatsApp intake migration. Intentionally not replayed; the legacy live table is quarantined.
+-- This no-op file reconciles the connected project's immutable migration version without reintroducing the retired design.

@@ -1,0 +1,2 @@
+-- Historical legacy trigger/seed migration. Intentionally not replayed because it used Auth metadata and seeded customer PII.
+-- This no-op file reconciles the connected project's immutable migration version without reintroducing the retired design.

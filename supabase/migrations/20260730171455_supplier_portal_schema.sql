@@ -1,0 +1,2 @@
+-- Historical legacy public-schema migration. Intentionally not replayed: its populated live objects are quarantined by the Bridge AI security foundation.
+-- This no-op file reconciles the connected project's immutable migration version without reintroducing the retired design.
