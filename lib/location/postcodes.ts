@@ -39,6 +39,10 @@ export function formatPostcode(value: string) {
   return normalized.length > 3 ? `${normalized.slice(0, -3)} ${normalized.slice(-3)}` : normalized;
 }
 
+export function postcodeOutwardCode(value: string) {
+  return formatPostcode(value).split(" ")[0];
+}
+
 export async function lookupPostcode(postcode: string): Promise<PostcodeCoordinates> {
   const normalized = normalizePostcode(postcode);
   if (normalized.length < 5 || normalized.length > 7) {

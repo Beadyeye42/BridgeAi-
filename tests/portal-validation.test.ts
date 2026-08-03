@@ -4,6 +4,7 @@ import { adminAssignmentSchema, companyProfileSchema, coverageAreaSchema, notifi
 describe("supplier portal validation", () => {
   it("normalises postcode coverage prefixes", () => {
     expect(coverageAreaSchema.parse({ type: "POSTCODE", label: "Coventry", postcodePrefix: "cv" })).toEqual({ type: "POSTCODE", label: "Coventry", postcodePrefix: "CV" });
+    expect(coverageAreaSchema.parse({ type: "POSTCODE", postcodePrefix: "gl52 6td" })).toEqual({ type: "POSTCODE", postcodePrefix: "GL52 6TD" });
   });
 
   it("rejects excessive distance coverage", () => {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { formatPostcode, lookupPostcode, normalizePostcode, postcodeFromCoordinates, PostcodeLookupError } from "../lib/location/postcodes";
+import { formatPostcode, lookupPostcode, normalizePostcode, postcodeFromCoordinates, postcodeOutwardCode, PostcodeLookupError } from "../lib/location/postcodes";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -7,6 +7,7 @@ describe("UK postcode lookup", () => {
   it("normalises and formats postcode values", () => {
     expect(normalizePostcode(" sw1a 1aa ")).toBe("SW1A1AA");
     expect(formatPostcode("sw1a1aa")).toBe("SW1A 1AA");
+    expect(postcodeOutwardCode("gl52 6td")).toBe("GL52");
   });
 
   it("returns bounded coordinates from Postcodes.io", async () => {

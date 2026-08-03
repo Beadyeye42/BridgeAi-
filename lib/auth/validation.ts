@@ -69,7 +69,7 @@ export const companyProfileSchema = z.object({
 
 const optionalCoverageLabel = z.string().trim().min(2).max(100).optional();
 export const coverageAreaSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("POSTCODE"), label: optionalCoverageLabel, postcodePrefix: z.string().trim().min(1).max(4).regex(/^[A-Za-z]{1,2}(?:[0-9][A-Za-z0-9]?)?$/, "Enter a UK postcode area or outward code, such as B, CV or SW1A").transform((v) => v.toUpperCase()) }),
+  z.object({ type: z.literal("POSTCODE"), label: optionalCoverageLabel, postcodePrefix: z.string().trim().min(1).max(8).regex(/^[A-Za-z][A-Za-z0-9 ]{0,7}$/, "Enter a UK postcode or postcode area, such as GL52 6TD, B or CV").transform((v) => v.toUpperCase()) }),
   z.object({ type: z.literal("DISTANCE"), label: optionalCoverageLabel, centrePostcode: z.string().trim().min(3).max(16).transform((v) => v.toUpperCase()), radiusMiles: z.coerce.number().int().min(1).max(500) }),
   z.object({ type: z.literal("NATIONWIDE"), label: optionalCoverageLabel }),
 ]);
