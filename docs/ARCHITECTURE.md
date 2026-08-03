@@ -59,9 +59,16 @@ Database constraints and triggers enforce rules that cannot safely depend on UI 
 - assignment state and quotation state/timestamps cannot contradict one another;
 - a quote cannot be submitted without an approved company and active membership, only one quote per request can be customer-selected, and accepted status requires both a verified paid fee and matching contact grant;
 - attachment size and parent relationships are valid;
+- coverage rules have exactly one valid shape: postcode area, a bounded radius with validated coordinates, or nationwide; only one active nationwide rule is allowed per supplier;
 - audit records are append-only for normal application and authenticated roles.
 
 Material application mutations write an `audit_logs` row in the same transaction. Sensitive access such as protected attachment download and administrator entry is also audited. Audit entries contain identifiers and safe metadata, not plaintext customer secrets.
+
+## Supplier matching
+
+Assignment is a two-stage fail-closed process. The administrator page lists only suppliers that are approved, have an unexpired active membership, sell the request category, have not already been assigned and match at least one active coverage rule. The assignment API reloads and locks the request, repeats the same eligibility query and coverage calculation, then records the selected match type in the audit entry. Client-supplied supplier IDs are never treated as evidence of eligibility.
+
+Coverage can be a UK postcode area/outward code, a 1–500 mile radius around a depot, or nationwide. Multiple distance rows represent multiple depots. Server-side Postcodes.io lookup validates depot postcodes and stores their WGS84 centroid coordinates. Request postcodes are resolved without sending customer identity or enquiry content. Radius calculations use the Haversine straight-line distance between postcode centroids, not route distance or drive time. Missing or unavailable coordinates never make a distance rule match; postcode and nationwide rules remain usable.
 
 ## Private information and files
 

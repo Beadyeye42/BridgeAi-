@@ -140,6 +140,7 @@ enum QuotationStatus {
 enum CoverageType {
   POSTCODE
   DISTANCE
+  NATIONWIDE
 
   @@schema("bridge_ai")
 }

@@ -40,6 +40,13 @@ BEGIN
   IF affected_count <> 0 THEN RAISE EXCEPTION 'Supplier A updated Supplier B company'; END IF;
 
   BEGIN
+    INSERT INTO bridge_ai."CoverageArea" (id,"supplierCompanyId",type,label,active,"createdAt","updatedAt")
+    VALUES ('forbidden_coverage','security_company_b','NATIONWIDE','forbidden',true,now(),now());
+    RAISE EXCEPTION 'Supplier A inserted a Supplier B coverage rule';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+
+  BEGIN
     INSERT INTO bridge_ai.company_memberships (id,"userId","supplierCompanyId",role,status,"isPrimary","joinedAt")
     VALUES ('forbidden_membership',user_a,'security_company_b','MEMBER','ACTIVE',false,now());
     RAISE EXCEPTION 'Supplier A inserted a Supplier B membership';
@@ -198,10 +205,30 @@ BEGIN
   EXCEPTION WHEN check_violation THEN NULL;
   END;
   BEGIN
-    INSERT INTO bridge_ai."CoverageArea" (id,"supplierCompanyId",type,label,"centrePostcode","radiusMiles",active,"createdAt","updatedAt")
-    VALUES ('bad_radius','security_company_a','DISTANCE','bad','B1',-1,true,now(),now());
+    INSERT INTO bridge_ai."CoverageArea" (id,"supplierCompanyId",type,label,"centrePostcode","radiusMiles",latitude,longitude,active,"createdAt","updatedAt")
+    VALUES ('bad_radius','security_company_a','DISTANCE','bad','B1 1AA',-1,52.479699,-1.902691,true,now(),now());
     RAISE EXCEPTION 'negative coverage radius accepted';
   EXCEPTION WHEN check_violation THEN NULL;
+  END;
+  BEGIN
+    INSERT INTO bridge_ai."CoverageArea" (id,"supplierCompanyId",type,label,"centrePostcode","radiusMiles",active,"createdAt","updatedAt")
+    VALUES ('missing_coordinates','security_company_a','DISTANCE','missing','B1 1AA',40,true,now(),now());
+    RAISE EXCEPTION 'distance coverage without coordinates accepted';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+  INSERT INTO bridge_ai."CoverageArea" (id,"supplierCompanyId",type,label,active,"createdAt","updatedAt")
+  VALUES ('valid_nationwide','security_company_a','NATIONWIDE','UK',true,now(),now());
+  BEGIN
+    INSERT INTO bridge_ai."CoverageArea" (id,"supplierCompanyId",type,label,"radiusMiles",active,"createdAt","updatedAt")
+    VALUES ('bad_nationwide','security_company_b','NATIONWIDE','bad',40,true,now(),now());
+    RAISE EXCEPTION 'nationwide coverage with radius accepted';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+  BEGIN
+    INSERT INTO bridge_ai."CoverageArea" (id,"supplierCompanyId",type,label,active,"createdAt","updatedAt")
+    VALUES ('duplicate_nationwide','security_company_a','NATIONWIDE','duplicate',true,now(),now());
+    RAISE EXCEPTION 'duplicate active nationwide coverage accepted';
+  EXCEPTION WHEN unique_violation THEN NULL;
   END;
   BEGIN
     INSERT INTO bridge_ai."QuoteRequest" (

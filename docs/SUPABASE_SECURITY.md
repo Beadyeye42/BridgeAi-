@@ -4,7 +4,7 @@ This document records the implemented baseline. It supersedes the earlier server
 
 ## Migration authority
 
-`supabase/migrations` is the only database migration authority. The connected project and repository contain the same 17 migration versions. The six `202607...` files are migration-history reconciliation stubs: they intentionally do not recreate the obsolete insecure `public` design on a fresh project. The live legacy objects/data were preserved, stripped of privileged execution paths and quarantined behind deny-all policies. Do not replace these files with the old SQL or delete the history entries.
+`supabase/migrations` is the only database migration authority. The connected project and repository contain the same 21 migration versions. The six `202607...` files are migration-history reconciliation stubs: they intentionally do not recreate the obsolete insecure `public` design on a fresh project. The live legacy objects/data were preserved, stripped of privileged execution paths and quarantined behind deny-all policies. Do not replace these files with the old SQL or delete the history entries.
 
 The `20260802183212_security_foundation.sql` migration establishes the current schema and baseline. Subsequent migrations install the application RLS role/context, secure invitation acceptance, cross-row authorisation invariants and advisor cleanup.
 
@@ -55,6 +55,8 @@ New blind indexes use HMAC-SHA-256 with a dedicated server-only key. Migration `
 `tests/sql/security_integration.sql` is an adversarial transaction/rollback suite. It verifies cross-company read/write denial, Storage isolation, protected membership roles, append-only audit data, supplier denial from trusted webhook/customer/message tables, protected admin bypass, immediate suspension, case-insensitive uniqueness, primary-membership and numeric constraints, distribution limits, attachment ownership, consistent assignment/quotation state, payment-transition protection, success-fee tenant isolation, contact-grant isolation, and revoked execution on legacy privileged functions.
 
 The unit/static suite additionally rejects custom password/session implementations, client-side secret references, missing RLS/Storage/audit migration primitives and Prisma SQL migration files.
+
+Coverage migration `20260803210001_coverage_matching_invariants.sql` requires radius rules to carry bounded server-resolved coordinates, prevents mixed rule shapes, bounds mileage to 1–500 and allows only one active nationwide rule per company. Existing tenant-scoped CoverageArea policies remain in force. The SQL rollback suite additionally proves cross-company coverage insertion is denied, malformed rule shapes are rejected and duplicate nationwide rules cannot become active.
 
 Migration `20260803182630_enforce_supplier_response_rules.sql` caps each request at five suppliers, requires every assignment to use its request’s shared deadline, and provides the authoritative UK weekend-pause calculation. Internal response-clock functions are not executable by `anon` or `authenticated`; the SQL rollback suite verifies both Friday-to-Monday behaviour and adversarial constraint failures.
 

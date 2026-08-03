@@ -117,10 +117,21 @@ describe("security foundation static controls", () => {
     const migration = read("supabase/migrations/20260803182630_enforce_supplier_response_rules.sql");
     expect(validation).toContain("supplierCompanyIds: z.array");
     expect(validation).toContain(".max(5)");
-    expect(assignmentRoute).toContain("expiresAt:quote.responseDueAt");
+    expect(assignmentRoute).toMatch(/expiresAt:\s*quote\.responseDueAt/);
     expect(assignmentRoute).not.toContain("parsed.data.expiresAt");
     expect(migration).toContain('"distributionLimit" BETWEEN 1 AND 5');
     expect(migration).toContain("Friday 15:00 until Monday 08:00");
+  });
+
+  it("rechecks category, subscription and coverage before assignment", () => {
+    const assignmentRoute = read("app/api/admin/assignments/route.ts");
+    const matching = read("lib/matching/suppliers.ts");
+    const coverageRoute = read("app/api/supplier/coverage/route.ts");
+    expect(assignmentRoute).toContain("findSupplierMatches(tx");
+    expect(matching).toContain('status: "APPROVED"');
+    expect(matching).toContain('status: "ACTIVE"');
+    expect(matching).toContain("bestCoverageMatch");
+    expect(coverageRoute).toContain('action: "COVERAGE.CREATED"');
   });
 
   it("unlocks customer contact only through a verified Stripe webhook", () => {

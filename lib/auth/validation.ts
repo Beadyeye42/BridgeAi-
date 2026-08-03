@@ -68,8 +68,9 @@ export const companyProfileSchema = z.object({
 });
 
 export const coverageAreaSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("POSTCODE"), label: z.string().trim().min(2).max(100), postcodePrefix: z.string().trim().min(1).max(4).regex(/^[A-Za-z]{1,2}[0-9A-Za-z]?$/).transform((v) => v.toUpperCase()) }),
+  z.object({ type: z.literal("POSTCODE"), label: z.string().trim().min(2).max(100), postcodePrefix: z.string().trim().min(1).max(4).regex(/^[A-Za-z]{1,2}(?:[0-9][A-Za-z0-9]?)?$/, "Enter a UK postcode area or outward code, such as B, CV or SW1A").transform((v) => v.toUpperCase()) }),
   z.object({ type: z.literal("DISTANCE"), label: z.string().trim().min(2).max(100), centrePostcode: z.string().trim().min(3).max(16).transform((v) => v.toUpperCase()), radiusMiles: z.coerce.number().int().min(1).max(500) }),
+  z.object({ type: z.literal("NATIONWIDE"), label: z.string().trim().min(2).max(100) }),
 ]);
 
 export const notificationPreferenceSchema = z.object({
