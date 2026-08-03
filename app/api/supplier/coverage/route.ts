@@ -18,16 +18,16 @@ export async function POST(request: Request) {
       data = {
         supplierCompanyId: auth.companyId,
         type: parsed.data.type,
-        label: parsed.data.label,
+        label: parsed.data.label ?? `${location.postcode} base`,
         centrePostcode: location.postcode,
         radiusMiles: parsed.data.radiusMiles,
         latitude: location.latitude,
         longitude: location.longitude,
       };
     } else if (parsed.data.type === "POSTCODE") {
-      data = { supplierCompanyId: auth.companyId, ...parsed.data };
+      data = { supplierCompanyId: auth.companyId, ...parsed.data, label: parsed.data.label ?? `${parsed.data.postcodePrefix} area` };
     } else {
-      data = { supplierCompanyId: auth.companyId, type: parsed.data.type, label: parsed.data.label };
+      data = { supplierCompanyId: auth.companyId, type: parsed.data.type, label: parsed.data.label ?? "Nationwide" };
     }
   } catch (error) {
     if (error instanceof PostcodeLookupError) {

@@ -134,6 +134,13 @@ describe("security foundation static controls", () => {
     expect(coverageRoute).toContain('action: "COVERAGE.CREATED"');
   });
 
+  it("keeps browser location lookup authenticated and non-persistent", () => {
+    const source = read("app/api/supplier/location/postcode/route.ts");
+    expect(source.indexOf("requireSupplierApi()")).toBeGreaterThan(-1);
+    expect(source.indexOf("requireSupplierApi()")).toBeLessThan(source.indexOf("postcodeFromCoordinates("));
+    expect(source).not.toMatch(/prisma\.|trustedPrisma|writeAuditLog/);
+  });
+
   it("unlocks customer contact only through a verified Stripe webhook", () => {
     const webhook = read("app/api/webhooks/stripe/route.ts");
     const handler = webhook.slice(webhook.indexOf("export async function POST"));

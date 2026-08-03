@@ -11,9 +11,9 @@ describe("supplier portal validation", () => {
   });
 
   it("accepts preset, custom and nationwide coverage rules", () => {
-    expect(coverageAreaSchema.safeParse({ type: "DISTANCE", label: "Local depot", centrePostcode: "B1 1AA", radiusMiles: 40 }).success).toBe(true);
-    expect(coverageAreaSchema.safeParse({ type: "DISTANCE", label: "Regional depot", centrePostcode: "B1 1AA", radiusMiles: 100 }).success).toBe(true);
-    expect(coverageAreaSchema.parse({ type: "NATIONWIDE", label: "All of the UK" })).toEqual({ type: "NATIONWIDE", label: "All of the UK" });
+    expect(coverageAreaSchema.safeParse({ type: "DISTANCE", centrePostcode: "B1 1AA", radiusMiles: 40 }).success).toBe(true);
+    expect(coverageAreaSchema.safeParse({ type: "DISTANCE", centrePostcode: "B1 1AA", radiusMiles: 100 }).success).toBe(true);
+    expect(coverageAreaSchema.parse({ type: "NATIONWIDE" })).toEqual({ type: "NATIONWIDE" });
   });
 
   it("requires at least one supplier assignment target", () => {

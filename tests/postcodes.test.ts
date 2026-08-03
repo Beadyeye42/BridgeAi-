@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { formatPostcode, lookupPostcode, normalizePostcode, PostcodeLookupError } from "../lib/location/postcodes";
+import { formatPostcode, lookupPostcode, normalizePostcode, postcodeFromCoordinates, PostcodeLookupError } from "../lib/location/postcodes";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -33,5 +33,21 @@ describe("UK postcode lookup", () => {
   it("maps network failures to a retryable service error", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network unavailable")));
     await expect(lookupPostcode("B1 1AA")).rejects.toMatchObject({ code: "GEOCODING_UNAVAILABLE" } satisfies Partial<PostcodeLookupError>);
+  });
+
+  it("finds the nearest postcode for a supplier-selected browser location", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      status: 200,
+      result: [{ postcode: "B1 1AA" }],
+    }), { status: 200 })));
+    await expect(postcodeFromCoordinates(52.479699, -1.902691)).resolves.toEqual({ postcode: "B1 1AA", outwardCode: "B1" });
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining("limit=1"), expect.objectContaining({ cache: "no-store" }));
+  });
+
+  it("rejects invalid browser coordinates before making a lookup", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(postcodeFromCoordinates(200, -1.9)).rejects.toMatchObject({ code: "LOCATION_UNAVAILABLE" } satisfies Partial<PostcodeLookupError>);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

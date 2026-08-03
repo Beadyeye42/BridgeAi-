@@ -10,6 +10,11 @@ const lookupResponseSchema = z.object({
   error: z.string().optional(),
 });
 
+const reverseLookupResponseSchema = z.object({
+  status: z.number(),
+  result: z.array(z.object({ postcode: z.string() })).nullable(),
+});
+
 export type PostcodeCoordinates = {
   postcode: string;
   latitude: number;
@@ -72,4 +77,33 @@ export async function lookupPostcode(postcode: string): Promise<PostcodeCoordina
   }
 
   return { postcode: formatPostcode(parsed.data.result.postcode), latitude, longitude };
+}
+
+export async function postcodeFromCoordinates(latitude: number, longitude: number) {
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    throw new PostcodeLookupError("LOCATION_UNAVAILABLE", "Your current location could not be read");
+  }
+
+  const query = new URLSearchParams({ lat: String(latitude), lon: String(longitude), limit: "1", radius: "2000" });
+  let response: Response;
+  try {
+    response = await fetch(`https://api.postcodes.io/postcodes?${query}`, {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(5_000),
+    });
+  } catch {
+    throw new PostcodeLookupError("GEOCODING_UNAVAILABLE", "Location lookup is temporarily unavailable. Enter your postcode instead.");
+  }
+  if (!response.ok) {
+    throw new PostcodeLookupError("GEOCODING_UNAVAILABLE", "Location lookup is temporarily unavailable. Enter your postcode instead.");
+  }
+
+  const parsed = reverseLookupResponseSchema.safeParse(await response.json().catch(() => null));
+  const postcode = parsed.success && parsed.data.status === 200 ? parsed.data.result?.[0]?.postcode : null;
+  if (!postcode) {
+    throw new PostcodeLookupError("LOCATION_UNAVAILABLE", "No UK postcode was found near your location. Enter it manually instead.");
+  }
+  const formatted = formatPostcode(postcode);
+  return { postcode: formatted, outwardCode: formatted.split(" ")[0] };
 }

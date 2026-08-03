@@ -48,7 +48,7 @@ For WhatsApp intake, configure Meta’s callback URL as `https://<portal-host>/a
 
 For billing, create a recurring £5 GBP Stripe Price and set `STRIPE_MEMBERSHIP_PRICE_ID`, `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`. Register `https://<portal-host>/api/webhooks/stripe` for Checkout Session completion and customer subscription events. Set `CRON_SECRET`; Vercel calls the protected expiry route every 15 minutes. The £25 payment is a one-off Checkout item and contact data remains locked until the verified webhook commits the grant.
 
-Coverage postcode validation and radius coordinates use the server-side [Postcodes.io](https://postcodes.io/) lookup API. Only the postcode is sent; customer names, contact details and request content are never included. Postcode-area and nationwide matching continue to work if the coordinate service is temporarily unavailable, while distance matching fails closed with a visible administrator warning.
+Coverage postcode validation and radius coordinates use the server-side [Postcodes.io](https://postcodes.io/) lookup API. Suppliers may press “Use my current location” to grant one-time browser location access; the server converts those coordinates to the nearest postcode and Bridge AI does not persist the exact device coordinates. Customer names, contact details and request content are never included. Postcode-area and nationwide matching continue to work if the coordinate service is temporarily unavailable, while distance matching fails closed with a visible administrator warning.
 
 ## Commands
 
