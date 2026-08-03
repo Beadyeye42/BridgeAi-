@@ -128,6 +128,7 @@ enum AssignmentStatus {
 enum QuotationStatus {
   DRAFT
   SUBMITTED
+  SELECTED_PENDING_PAYMENT
   ACCEPTED
   REJECTED
   WITHDRAWN
@@ -139,6 +140,7 @@ enum QuotationStatus {
 enum CoverageType {
   POSTCODE
   DISTANCE
+  NATIONWIDE
 
   @@schema("bridge_ai")
 }
@@ -159,9 +161,22 @@ enum NotificationType {
   REQUEST_EXPIRING
   QUOTATION_ACCEPTED
   QUOTATION_REJECTED
+  SUCCESS_FEE_DUE
+  CONTACT_DETAILS_UNLOCKED
   TEAM_INVITATION
   ACCOUNT_UPDATE
   SYSTEM
+
+  @@schema("bridge_ai")
+}
+
+enum SuccessFeeStatus {
+  PENDING
+  CHECKOUT_CREATED
+  PAID
+  EXPIRED
+  REFUNDED
+  DISPUTED
 
   @@schema("bridge_ai")
 }
@@ -291,6 +306,8 @@ model SupplierCompany {
   notificationPrefs NotificationPreference[]
   auditLogs         AuditLog[]
   attachments       Attachment[]
+  successFees       SupplierSuccessFee[]
+  contactAccess     ContactAccessGrant[]
 
   @@index([status])
   @@index([postcode])
@@ -336,18 +353,19 @@ model SupplierInvite {
 }
 
 model CustomerContact {
-  id                 String         @id @default(cuid())
-  displayName        String?
-  phoneEncrypted     Bytes
-  phoneHash          String         @unique
-  emailEncrypted     Bytes?
-  emailHash          String?
-  consentRecordedAt  DateTime?
-  marketingConsentAt DateTime?
-  createdAt          DateTime       @default(now())
-  updatedAt          DateTime       @updatedAt
-  conversations      Conversation[]
-  quoteRequests      QuoteRequest[]
+  id                   String               @id @default(cuid())
+  displayNameEncrypted Bytes?
+  phoneEncrypted       Bytes
+  phoneHash            String               @unique
+  emailEncrypted       Bytes?
+  emailHash            String?
+  consentRecordedAt    DateTime?
+  marketingConsentAt   DateTime?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  conversations        Conversation[]
+  quoteRequests        QuoteRequest[]
+  contactAccess        ContactAccessGrant[]
 
   @@index([emailHash])
   @@schema("bridge_ai")
@@ -481,6 +499,7 @@ model QuoteRequest {
   attachments       Attachment[]
   assignments       SupplierAssignment[]
   quotations        SupplierQuotation[]
+  successFees       SupplierSuccessFee[]
 
   @@index([status, responseDueAt])
   @@index([categoryId, deliveryPostcode])
@@ -528,27 +547,81 @@ model SupplierAssignment {
 }
 
 model SupplierQuotation {
-  id                String             @id @default(cuid())
+  id                String              @id @default(cuid())
   quoteRequestId    String
   supplierCompanyId String
-  assignmentId      String             @unique
-  status            QuotationStatus    @default(DRAFT)
-  price             Decimal            @db.Decimal(12, 2)
-  currency          String             @default("GBP") @db.VarChar(3)
+  assignmentId      String              @unique
+  status            QuotationStatus     @default(DRAFT)
+  price             Decimal             @db.Decimal(12, 2)
+  currency          String              @default("GBP") @db.VarChar(3)
   leadTimeDays      Int
   validUntil        DateTime?
   notes             String?
   submittedAt       DateTime?
   decidedAt         DateTime?
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  quoteRequest      QuoteRequest       @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
-  supplierCompany   SupplierCompany    @relation(fields: [supplierCompanyId], references: [id], onDelete: Cascade)
-  assignment        SupplierAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  quoteRequest      QuoteRequest        @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
+  supplierCompany   SupplierCompany     @relation(fields: [supplierCompanyId], references: [id], onDelete: Cascade)
+  assignment        SupplierAssignment  @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
   attachments       Attachment[]
+  successFee        SupplierSuccessFee?
+  contactAccess     ContactAccessGrant?
 
   @@unique([quoteRequestId, supplierCompanyId])
   @@index([supplierCompanyId, status, submittedAt])
+  @@schema("bridge_ai")
+}
+
+model SupplierSuccessFee {
+  id                        String              @id @default(cuid())
+  quotationId               String              @unique
+  quoteRequestId            String
+  supplierCompanyId         String
+  amountPence               Int                 @default(2500)
+  currency                  String              @default("GBP") @db.VarChar(3)
+  status                    SuccessFeeStatus    @default(PENDING)
+  provider                  String              @default("stripe")
+  providerCheckoutSessionId String?             @unique
+  providerPaymentIntentId   String?             @unique
+  checkoutAttempt           Int                 @default(0)
+  selectedAt                DateTime            @default(now())
+  paymentDueAt              DateTime
+  paidAt                    DateTime?
+  unlockedAt                DateTime?
+  expiredAt                 DateTime?
+  createdAt                 DateTime            @default(now())
+  updatedAt                 DateTime            @updatedAt
+  quotation                 SupplierQuotation   @relation(fields: [quotationId], references: [id], onDelete: Restrict)
+  quoteRequest              QuoteRequest        @relation(fields: [quoteRequestId], references: [id], onDelete: Restrict)
+  supplierCompany           SupplierCompany     @relation(fields: [supplierCompanyId], references: [id], onDelete: Restrict)
+  contactAccess             ContactAccessGrant?
+
+  @@index([supplierCompanyId, status, paymentDueAt])
+  @@index([quoteRequestId, status])
+  @@schema("bridge_ai")
+}
+
+model ContactAccessGrant {
+  id                      String             @id @default(cuid())
+  successFeeId            String             @unique
+  quotationId             String             @unique
+  customerContactId       String
+  supplierCompanyId       String
+  reason                  String             @default("SUCCESS_FEE_PAID")
+  grantedAt               DateTime           @default(now())
+  revokedAt               DateTime?
+  customerNotifiedAt      DateTime?
+  notificationAttemptedAt DateTime?
+  notificationFailureCode String?
+  createdAt               DateTime           @default(now())
+  successFee              SupplierSuccessFee @relation(fields: [successFeeId], references: [id], onDelete: Restrict)
+  quotation               SupplierQuotation  @relation(fields: [quotationId], references: [id], onDelete: Restrict)
+  customerContact         CustomerContact    @relation(fields: [customerContactId], references: [id], onDelete: Restrict)
+  supplierCompany         SupplierCompany    @relation(fields: [supplierCompanyId], references: [id], onDelete: Restrict)
+
+  @@index([supplierCompanyId, grantedAt])
+  @@index([customerContactId])
   @@schema("bridge_ai")
 }
 

@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import {
   getCurrentSession,
   getPrimarySupplierCompanyId,
@@ -20,7 +21,7 @@ export async function requireSupplierPage() {
   return { session, companyId };
 }
 
-export async function requireAdminPage() {
+export const requireAdminPage = cache(async function requireAdminPage() {
   if (!process.env.POSTGRES_PRISMA_URL) redirect("/");
   const session = await getCurrentSession();
   if (!session) redirect("/login");
@@ -33,4 +34,4 @@ export async function requireAdminPage() {
     summary: "Administrator portal access verified",
   });
   return session;
-}
+});

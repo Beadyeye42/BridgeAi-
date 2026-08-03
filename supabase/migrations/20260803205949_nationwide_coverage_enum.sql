@@ -1,0 +1,1 @@
+ALTER TYPE bridge_ai."CoverageType" ADD VALUE IF NOT EXISTS 'NATIONWIDE';

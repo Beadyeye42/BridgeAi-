@@ -67,9 +67,11 @@ export const companyProfileSchema = z.object({
   businessHours: z.record(z.string(), z.tuple([z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/), z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/)]).nullable()),
 });
 
+const optionalCoverageLabel = z.string().trim().min(2).max(100).optional();
 export const coverageAreaSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("POSTCODE"), label: z.string().trim().min(2).max(100), postcodePrefix: z.string().trim().min(1).max(4).regex(/^[A-Za-z]{1,2}[0-9A-Za-z]?$/).transform((v) => v.toUpperCase()) }),
-  z.object({ type: z.literal("DISTANCE"), label: z.string().trim().min(2).max(100), centrePostcode: z.string().trim().min(3).max(16).transform((v) => v.toUpperCase()), radiusMiles: z.coerce.number().int().min(1).max(500) }),
+  z.object({ type: z.literal("POSTCODE"), label: optionalCoverageLabel, postcodePrefix: z.string().trim().min(1).max(8).regex(/^[A-Za-z][A-Za-z0-9 ]{0,7}$/, "Enter a UK postcode or postcode area, such as GL52 6TD, B or CV").transform((v) => v.toUpperCase()) }),
+  z.object({ type: z.literal("DISTANCE"), label: optionalCoverageLabel, centrePostcode: z.string().trim().min(3).max(16).transform((v) => v.toUpperCase()), radiusMiles: z.coerce.number().int().min(1).max(500) }),
+  z.object({ type: z.literal("NATIONWIDE"), label: optionalCoverageLabel }),
 ]);
 
 export const notificationPreferenceSchema = z.object({
@@ -86,7 +88,10 @@ export const adminSupplierEditSchema = z.object({
   contactPhone: z.string().trim().min(7).max(32), companyNumber: optionalText(32), vatNumber: optionalText(32),
   postcode: optionalText(16), summary: optionalText(1500),
 });
-export const adminAssignmentSchema = z.object({ quoteRequestId: z.string().min(1).max(64), supplierCompanyIds: z.array(z.string().min(1).max(64)).min(1).max(25), expiresAt: z.coerce.date() });
+export const adminAssignmentSchema = z.object({
+  quoteRequestId: z.string().min(1).max(64),
+  supplierCompanyIds: z.array(z.string().min(1).max(64)).min(1).max(5),
+});
 export const productCategorySchema = z.object({ name: z.string().trim().min(2).max(100), slug: z.string().trim().min(2).max(100).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/), description: optionalText(500), active: z.boolean().default(true), parentId: z.string().nullable().optional() });
 
 export function validationError(error: z.ZodError) {

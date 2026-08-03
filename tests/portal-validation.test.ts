@@ -4,14 +4,26 @@ import { adminAssignmentSchema, companyProfileSchema, coverageAreaSchema, notifi
 describe("supplier portal validation", () => {
   it("normalises postcode coverage prefixes", () => {
     expect(coverageAreaSchema.parse({ type: "POSTCODE", label: "Coventry", postcodePrefix: "cv" })).toEqual({ type: "POSTCODE", label: "Coventry", postcodePrefix: "CV" });
+    expect(coverageAreaSchema.parse({ type: "POSTCODE", postcodePrefix: "gl52 6td" })).toEqual({ type: "POSTCODE", postcodePrefix: "GL52 6TD" });
   });
 
   it("rejects excessive distance coverage", () => {
     expect(coverageAreaSchema.safeParse({ type: "DISTANCE", label: "Everywhere", centrePostcode: "B1 1AA", radiusMiles: 501 }).success).toBe(false);
   });
 
+  it("accepts preset, custom and nationwide coverage rules", () => {
+    expect(coverageAreaSchema.safeParse({ type: "DISTANCE", centrePostcode: "B1 1AA", radiusMiles: 40 }).success).toBe(true);
+    expect(coverageAreaSchema.safeParse({ type: "DISTANCE", centrePostcode: "B1 1AA", radiusMiles: 100 }).success).toBe(true);
+    expect(coverageAreaSchema.parse({ type: "NATIONWIDE" })).toEqual({ type: "NATIONWIDE" });
+  });
+
   it("requires at least one supplier assignment target", () => {
-    expect(adminAssignmentSchema.safeParse({ quoteRequestId: "request_1", supplierCompanyIds: [], expiresAt: new Date() }).success).toBe(false);
+    expect(adminAssignmentSchema.safeParse({ quoteRequestId: "request_1", supplierCompanyIds: [] }).success).toBe(false);
+  });
+
+  it("never accepts more than five supplier assignment targets", () => {
+    expect(adminAssignmentSchema.safeParse({ quoteRequestId: "request_1", supplierCompanyIds: ["1", "2", "3", "4", "5"] }).success).toBe(true);
+    expect(adminAssignmentSchema.safeParse({ quoteRequestId: "request_1", supplierCompanyIds: ["1", "2", "3", "4", "5", "6"] }).success).toBe(false);
   });
 
   it("accepts complete notification preferences", () => {

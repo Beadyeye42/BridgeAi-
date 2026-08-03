@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHmac, randomBytes } from "node:crypto";
 
 const MAGIC = Buffer.from("BA");
 const CURRENT_KEY_VERSION = 1;
@@ -33,5 +33,5 @@ export function decryptPrivateValue(payload: Uint8Array) {
 export function blindIndex(value: string) {
   const secret = process.env.PII_BLIND_INDEX_KEY;
   if (!secret) throw new Error("PII_BLIND_INDEX_KEY is required");
-  return createHash("sha256").update(`${secret}:${value.trim().toLowerCase()}`).digest("hex");
+  return createHmac("sha256", secret).update(value.trim().toLowerCase()).digest("hex");
 }

@@ -4,6 +4,7 @@ import { trustedPrisma } from "@/lib/db";
 import { registerSchema, validationError } from "@/lib/auth/validation";
 import { createClient } from "@/lib/supabase/auth-server";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
+import { applicationOrigin } from "@/lib/config";
 
 export const runtime = "nodejs";
 const TERMS_VERSION = "supplier-terms-2026-08-02";
@@ -11,7 +12,12 @@ const TERMS_VERSION = "supplier-terms-2026-08-02";
 export async function POST(request: Request) {
   const parsed = registerSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: validationError(parsed.error) }, { status: 400 });
-  const origin = process.env.APP_URL ?? new URL(request.url).origin;
+  let origin: string;
+  try {
+    origin = applicationOrigin(request.url);
+  } catch {
+    return NextResponse.json({ error: "Account registration is not configured." }, { status: 503 });
+  }
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signUp({
     email: parsed.data.email,

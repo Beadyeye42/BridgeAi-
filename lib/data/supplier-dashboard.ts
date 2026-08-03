@@ -47,7 +47,7 @@ export async function getSupplierRequest(
       quoteRequest: {
         include: { category: true, items: true, attachments: true },
       },
-      quotation: { include: { attachments: true } },
+      quotation: { include: { attachments: true, successFee: true, contactAccess: true } },
     },
   });
 }

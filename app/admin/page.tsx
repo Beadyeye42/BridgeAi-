@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { Activity, Building2, FileText, ShieldAlert } from "lucide-react";
 import { prisma } from "@/lib/db";
+import { requireAdminPage } from "@/lib/auth/guards";
 import { AdminHeading } from "@/components/admin/admin-shell";
 export default async function AdminOverview() {
+  await requireAdminPage();
   const pendingSuppliers = await prisma.supplierCompany.count({
     where: { status: "PENDING" },
   });

@@ -4,13 +4,13 @@ This document records the implemented baseline. It supersedes the earlier server
 
 ## Migration authority
 
-`supabase/migrations` is the only database migration authority. The connected project and repository contain the same 15 migration versions. The six `202607...` files are migration-history reconciliation stubs: they intentionally do not recreate the obsolete insecure `public` design on a fresh project. The live legacy objects/data were preserved, stripped of privileged execution paths and quarantined behind deny-all policies. Do not replace these files with the old SQL or delete the history entries.
+`supabase/migrations` is the only database migration authority. The connected project and repository contain the same 21 migration versions. The six `202607...` files are migration-history reconciliation stubs: they intentionally do not recreate the obsolete insecure `public` design on a fresh project. The live legacy objects/data were preserved, stripped of privileged execution paths and quarantined behind deny-all policies. Do not replace these files with the old SQL or delete the history entries.
 
 The `20260802183212_security_foundation.sql` migration establishes the current schema and baseline. Subsequent migrations install the application RLS role/context, secure invitation acceptance, cross-row authorisation invariants and advisor cleanup.
 
 ## RLS and privileges
 
-- 24 of 24 Bridge AI tables have `ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY`.
+- 26 of 26 Bridge AI tables have `ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY`.
 - The baseline installs 54 application policies plus four `storage.objects` policies across supplier, administrator, reference-data, notification, audit and file paths.
 - `anon` has no application-table privileges. The application role is subject to policies as `authenticated` and has no `BYPASSRLS` attribute.
 - Policy helper functions live in the non-exposed `bridge_private` schema, set a fixed search path and are not generally executable.
@@ -48,11 +48,17 @@ Safe rotation procedure:
 
 Blind-index key rotation requires dual indexes and a controlled rebuild because it is not decryptable. Never reuse an encryption key as a blind-index secret.
 
+New blind indexes use HMAC-SHA-256 with a dedicated server-only key. Migration `20260803181038_encrypt_customer_display_names.sql` was applied only after confirming the secure customer/message tables were empty. It removes the remaining plaintext display-name column and replaces it with encrypted bytes; its guard aborts on any environment that contains customer rows so an explicit decrypt/re-index migration must be designed instead of silently losing data.
+
 ## Verification
 
-`tests/sql/security_integration.sql` is an adversarial transaction/rollback suite. It verifies cross-company read/write denial, Storage isolation, protected membership roles, append-only audit data, protected admin bypass, immediate suspension, case-insensitive uniqueness, primary-membership and numeric constraints, distribution limits, attachment ownership, consistent assignment/quotation state, and revoked execution on legacy privileged functions.
+`tests/sql/security_integration.sql` is an adversarial transaction/rollback suite. It verifies cross-company read/write denial, Storage isolation, protected membership roles, append-only audit data, supplier denial from trusted webhook/customer/message tables, protected admin bypass, immediate suspension, case-insensitive uniqueness, primary-membership and numeric constraints, distribution limits, attachment ownership, consistent assignment/quotation state, payment-transition protection, success-fee tenant isolation, contact-grant isolation, and revoked execution on legacy privileged functions.
 
 The unit/static suite additionally rejects custom password/session implementations, client-side secret references, missing RLS/Storage/audit migration primitives and Prisma SQL migration files.
+
+Coverage migration `20260803210001_coverage_matching_invariants.sql` requires radius rules to carry bounded server-resolved coordinates, prevents mixed rule shapes, bounds mileage to 1–500 and allows only one active nationwide rule per company. Existing tenant-scoped CoverageArea policies remain in force. The SQL rollback suite additionally proves cross-company coverage insertion is denied, malformed rule shapes are rejected and duplicate nationwide rules cannot become active.
+
+Migration `20260803182630_enforce_supplier_response_rules.sql` caps each request at five suppliers, requires every assignment to use its request’s shared deadline, and provides the authoritative UK weekend-pause calculation. Internal response-clock functions are not executable by `anon` or `authenticated`; the SQL rollback suite verifies both Friday-to-Monday behaviour and adversarial constraint failures.
 
 ## Advisor status and release limitations
 
