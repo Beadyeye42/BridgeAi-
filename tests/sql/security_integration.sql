@@ -28,9 +28,41 @@ BEGIN
     ('security_membership_b',user_b,'security_company_b','OWNER','ACTIVE',true,now());
   INSERT INTO bridge_ai."Subscription" (id,"supplierCompanyId",provider,"planCode",status,"currentPeriodStart","currentPeriodEnd","createdAt","updatedAt")
   VALUES ('security_subscription_a','security_company_a','stripe','bridge-ai-monthly','ACTIVE',now(),now()+interval '1 month',now(),now());
+  INSERT INTO bridge_ai."Attachment" (id,kind,"fileName","mimeType","byteSize","storageKey",sha256,"scanStatus","supplierCompanyId","uploadedById","createdAt") VALUES
+    ('security_accreditation_file_a','ACCREDITATION_DOCUMENT','a.pdf','application/pdf',1,'companies/security_company_a/accreditations/a.pdf','a','CLEAN','security_company_a',user_a,now()),
+    ('security_accreditation_file_b','ACCREDITATION_DOCUMENT','b.pdf','application/pdf',1,'companies/security_company_b/accreditations/b.pdf','b','CLEAN','security_company_b',user_b,now());
 
   EXECUTE 'SET LOCAL ROLE authenticated';
   PERFORM set_config('request.jwt.claim.sub', user_a::text, true);
+
+  INSERT INTO bridge_ai.supplier_accreditations (
+    id,"supplierCompanyId","attachmentId",type,"displayName",status,"createdById","createdAt","updatedAt"
+  ) VALUES (
+    'security_accreditation_a','security_company_a','security_accreditation_file_a','CERTIFICATION','Company A certificate','PENDING',user_a,now(),now()
+  );
+  BEGIN
+    INSERT INTO bridge_ai.supplier_accreditations (
+      id,"supplierCompanyId","attachmentId",type,"displayName",status,"createdById","createdAt","updatedAt"
+    ) VALUES (
+      'forbidden_accreditation_b','security_company_b','security_accreditation_file_b','CERTIFICATION','Company B certificate','PENDING',user_a,now(),now()
+    );
+    RAISE EXCEPTION 'Supplier A inserted Supplier B accreditation';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  UPDATE bridge_ai.supplier_accreditations
+  SET status='APPROVED',"reviewedAt"=now(),"reviewedById"=user_a
+  WHERE id='security_accreditation_a';
+  GET DIAGNOSTICS affected_count = ROW_COUNT;
+  IF affected_count <> 0 THEN RAISE EXCEPTION 'Supplier changed protected accreditation review state'; END IF;
+  DELETE FROM bridge_ai."Attachment" WHERE id='security_accreditation_file_b';
+  GET DIAGNOSTICS affected_count = ROW_COUNT;
+  IF affected_count <> 0 THEN RAISE EXCEPTION 'Supplier A deleted Supplier B accreditation file'; END IF;
+  DELETE FROM bridge_ai."Attachment" WHERE id='security_accreditation_file_a';
+  GET DIAGNOSTICS affected_count = ROW_COUNT;
+  IF affected_count <> 1 THEN RAISE EXCEPTION 'Supplier A could not delete own pending accreditation file'; END IF;
+  IF EXISTS (SELECT 1 FROM bridge_ai.supplier_accreditations WHERE id='security_accreditation_a') THEN
+    RAISE EXCEPTION 'accreditation metadata did not cascade after file deletion';
+  END IF;
 
   SELECT count(*) INTO visible_count FROM bridge_ai.supplier_companies WHERE id = 'security_company_b';
   IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier A selected Supplier B company'; END IF;

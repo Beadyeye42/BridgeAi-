@@ -83,6 +83,22 @@ describe("security foundation static controls", () => {
     ).toContain("status NOT IN ('SUSPENDED', 'REJECTED')");
   });
 
+  it("isolates supplier accreditation evidence and protects administrator review state", () => {
+    const migration = read("supabase/migrations/20260803220810_supplier_accreditation_documents.sql");
+    expect(migration).toContain("supplier_accreditations ENABLE ROW LEVEL SECURITY");
+    expect(migration).toContain("supplier_accreditations FORCE ROW LEVEL SECURITY");
+    expect(migration).toContain("accreditation_company_read");
+    expect(migration).toContain("accreditation_company_insert");
+    expect(migration).not.toContain("accreditation_company_update");
+    expect(read("supabase/migrations/20260803222248_allow_accreditation_attachment_delete.sql")).toContain("attachment_company_accreditation_delete");
+    const upload = read("app/api/uploads/accreditation/route.ts");
+    expect(upload).toContain('scanStatus: "PENDING"');
+    expect(upload).toContain('action: "ACCREDITATION.UPLOADED"');
+    expect(upload).not.toMatch(/SUPABASE_SECRET_KEY|service_role/);
+    const review = read("app/api/admin/accreditations/[id]/review/route.ts");
+    expect(review.indexOf('scanStatus !== "CLEAN"')).toBeLessThan(review.indexOf("supplierAccreditation.update"));
+  });
+
   it("does not retain a parallel Prisma migration history", () => {
     expect(globSync("prisma/migrations/**/*.sql")).toHaveLength(0);
     expect(globSync("supabase/migrations/*.sql").length).toBeGreaterThanOrEqual(
@@ -132,6 +148,22 @@ describe("security foundation static controls", () => {
     expect(matching).toContain('status: "ACTIVE"');
     expect(matching).toContain("bestCoverageMatch");
     expect(coverageRoute).toContain('action: "COVERAGE.CREATED"');
+  });
+
+  it("closes supplier lifecycle and response-window edge cases", () => {
+    const decision = read("app/api/assignments/[id]/decision/route.ts");
+    expect(decision).toContain("assignment.expiresAt <= new Date()");
+    const viewed = read("app/api/assignments/[id]/view/route.ts");
+    expect(viewed).toContain('action: "ASSIGNMENT.VIEWED"');
+    expect(viewed).toContain('supplierCompanyId: auth.companyId');
+    const requests = read("app/dashboard/requests/page.tsx");
+    expect(requests).toContain("expiresAt: { gt: now }");
+    expect(requests).toContain("expiresAt: { lte: now }");
+    const status = read("app/api/admin/suppliers/[id]/status/route.ts");
+    expect(status).toContain('existing.status==="SUSPENDED"');
+    expect(status).toContain('data:{status:"ACTIVE"}');
+    const team = read("app/dashboard/team/page.tsx");
+    expect(team).toContain('memberships:{where:{status:"ACTIVE"}');
   });
 
   it("keeps browser location lookup authenticated and non-persistent", () => {

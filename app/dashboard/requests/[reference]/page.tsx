@@ -6,6 +6,7 @@ import { getSupplierRequest } from "@/lib/data/supplier-dashboard";
 import { getUnlockedCustomerContact } from "@/lib/contacts/access";
 import { PortalPage, identity } from "@/components/dashboard/portal-page";
 import { ConnectedResponse } from "@/components/requests/connected-response";
+import { AssignmentViewTracker } from "@/components/requests/assignment-view-tracker";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,7 @@ export default async function ConnectedRequestPage({ params }: { params: Promise
     : null;
   const company = session.user.memberships.find((membership) => membership.supplierCompanyId === companyId)!.supplierCompany;
   return <PortalPage {...identity(session, company)} eyebrow={request.reference} title={request.title} description={request.category.name}>
+    <AssignmentViewTracker assignmentId={assignment.id} status={assignment.status} />
     <Link href="/dashboard/requests" className="back-link request-back"><ArrowLeft size={14}/>Back to requests</Link>
     <div className="request-title-row"><div><div className="request-ref"><span className="status-dot urgent"/>{request.reference}<span className={`tag ${assignment.status.toLowerCase()}`}>{assignment.status}</span></div></div><div className="deadline-box"><Clock3 size={18}/><span>Response deadline<b>{assignment.expiresAt.toLocaleString("en-GB")}</b></span></div></div>
     <div className="request-layout"><div className="request-content">

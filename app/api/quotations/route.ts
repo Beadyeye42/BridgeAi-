@@ -13,6 +13,7 @@ export async function POST(request: Request) {
   if (!companyId) return NextResponse.json({ error: "No supplier company membership" }, { status: 403 });
   const parsed = quotationSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: validationError(parsed.error) }, { status: 400 });
+  if (parsed.data.validUntil && parsed.data.validUntil <= new Date()) return NextResponse.json({ error: "Quotation validity must end in the future" }, { status: 400 });
 
   const assignment = await prisma.supplierAssignment.findFirst({ where: { id: parsed.data.assignmentId, supplierCompanyId: companyId, status: "ACCEPTED", expiresAt: { gt: new Date() } } });
   if (!assignment) return NextResponse.json({ error: "Accepted request not found or response window has closed" }, { status: 404 });

@@ -86,6 +86,7 @@ enum AttachmentKind {
   PHOTO
   SUPPLIER_LOGO
   QUOTATION_PDF
+  ACCREDITATION_DOCUMENT
   OTHER
 
   @@schema("bridge_ai")
@@ -207,6 +208,26 @@ enum SystemEventStatus {
   @@schema("bridge_ai")
 }
 
+enum AccreditationType {
+  PUBLIC_LIABILITY_INSURANCE
+  EMPLOYERS_LIABILITY_INSURANCE
+  PROFESSIONAL_INDEMNITY_INSURANCE
+  TRADE_BODY_MEMBERSHIP
+  CERTIFICATION
+  OTHER
+
+  @@schema("bridge_ai")
+}
+
+enum AccreditationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+
+  @@schema("bridge_ai")
+}
+
 model User {
   id                       String                    @id @db.Uuid
   email                    String                    @unique @db.Citext
@@ -230,6 +251,8 @@ model User {
   approvedSuppliers        SupplierCompany[]         @relation("SupplierApprover")
   assignmentsCreated       SupplierAssignment[]      @relation("AssignmentCreator")
   systemEventsResolved     SystemEvent[]             @relation("SystemEventResolver")
+  accreditationsCreated    SupplierAccreditation[]   @relation("AccreditationCreator")
+  accreditationsReviewed   SupplierAccreditation[]   @relation("AccreditationReviewer")
 
   @@index([status])
   @@map("portal_profiles")
@@ -308,6 +331,7 @@ model SupplierCompany {
   attachments       Attachment[]
   successFees       SupplierSuccessFee[]
   contactAccess     ContactAccessGrant[]
+  accreditations    SupplierAccreditation[]
 
   @@index([status])
   @@index([postcode])
@@ -411,25 +435,26 @@ model WhatsAppMessage {
 }
 
 model Attachment {
-  id                String             @id @default(cuid())
+  id                String                 @id @default(cuid())
   kind              AttachmentKind
   fileName          String
   mimeType          String
   byteSize          Int
-  storageKey        String             @unique
+  storageKey        String                 @unique
   sha256            String
-  scanStatus        ScanStatus         @default(PENDING)
+  scanStatus        ScanStatus             @default(PENDING)
   whatsappMessageId String?
   quoteRequestId    String?
   quotationId       String?
   supplierCompanyId String?
-  uploadedById      String?            @db.Uuid
-  createdAt         DateTime           @default(now())
-  whatsappMessage   WhatsAppMessage?   @relation(fields: [whatsappMessageId], references: [id], onDelete: SetNull)
-  quoteRequest      QuoteRequest?      @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
-  quotation         SupplierQuotation? @relation(fields: [quotationId], references: [id], onDelete: Cascade)
-  supplierCompany   SupplierCompany?   @relation(fields: [supplierCompanyId], references: [id], onDelete: Cascade)
-  uploadedBy        User?              @relation("AttachmentUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  uploadedById      String?                @db.Uuid
+  createdAt         DateTime               @default(now())
+  whatsappMessage   WhatsAppMessage?       @relation(fields: [whatsappMessageId], references: [id], onDelete: SetNull)
+  quoteRequest      QuoteRequest?          @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
+  quotation         SupplierQuotation?     @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  supplierCompany   SupplierCompany?       @relation(fields: [supplierCompanyId], references: [id], onDelete: Cascade)
+  uploadedBy        User?                  @relation("AttachmentUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  accreditation     SupplierAccreditation?
 
   @@index([quoteRequestId])
   @@index([quotationId])
@@ -437,6 +462,35 @@ model Attachment {
   @@index([uploadedById])
   @@index([supplierCompanyId])
   @@index([whatsappMessageId])
+  @@schema("bridge_ai")
+}
+
+model SupplierAccreditation {
+  id                String              @id @default(cuid())
+  supplierCompanyId String
+  attachmentId      String              @unique
+  type              AccreditationType
+  displayName       String
+  referenceNumber   String?
+  issuingBody       String?
+  issuedAt          DateTime?
+  expiresAt         DateTime?
+  status            AccreditationStatus @default(PENDING)
+  reviewNote        String?
+  reviewedAt        DateTime?
+  reviewedById      String?             @db.Uuid
+  createdById       String              @db.Uuid
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  supplierCompany   SupplierCompany     @relation(fields: [supplierCompanyId], references: [id], onDelete: Cascade)
+  attachment        Attachment          @relation(fields: [attachmentId], references: [id], onDelete: Cascade)
+  reviewedBy        User?               @relation("AccreditationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  createdBy         User                @relation("AccreditationCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([supplierCompanyId, status, expiresAt])
+  @@index([reviewedById])
+  @@index([createdById])
+  @@map("supplier_accreditations")
   @@schema("bridge_ai")
 }
 

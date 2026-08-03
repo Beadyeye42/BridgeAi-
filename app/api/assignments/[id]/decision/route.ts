@@ -18,6 +18,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const assignment = await prisma.supplierAssignment.findFirst({ where: { id, supplierCompanyId: companyId } });
   if (!assignment) return NextResponse.json({ error: "Request not found" }, { status: 404 });
   if (!["PENDING", "VIEWED"].includes(assignment.status)) return NextResponse.json({ error: "This request has already been actioned" }, { status: 409 });
+  if (assignment.expiresAt <= new Date()) return NextResponse.json({ error: "The response window has closed" }, { status: 410 });
 
   const nextStatus = parsed.data.decision === "accept" ? "ACCEPTED" : "DECLINED";
   await prisma.$transaction(async (tx) => {

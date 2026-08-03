@@ -39,11 +39,19 @@ export const assignmentDecisionSchema = z.object({
   reason: z.string().trim().max(500).optional(),
 });
 
+const quotationValidUntil = z.union([
+  z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid quotation date"),
+  z.date(),
+]).optional().transform((value) => {
+  if (!value) return undefined;
+  return value instanceof Date ? value : new Date(`${value}T23:59:59.999Z`);
+});
+
 export const quotationSchema = z.object({
   assignmentId: z.string().cuid(),
   price: z.coerce.number().positive().max(10_000_000),
   leadTimeDays: z.coerce.number().int().min(1).max(730),
-  validUntil: z.coerce.date().optional(),
+  validUntil: quotationValidUntil,
   notes: z.string().trim().max(5000).optional(),
 });
 
@@ -63,7 +71,7 @@ export const companyProfileSchema = z.object({
   city: optionalText(100),
   county: optionalText(100),
   postcode: optionalText(16),
-  categoryIds: z.array(z.string().cuid().or(z.string().max(64))).max(100),
+  categoryIds: z.array(z.string().cuid().or(z.string().max(64))).max(100).refine((ids) => new Set(ids).size === ids.length, "Select each category only once"),
   businessHours: z.record(z.string(), z.tuple([z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/), z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/)]).nullable()),
 });
 
@@ -79,6 +87,10 @@ export const notificationPreferenceSchema = z.object({
   smsUrgentRequests: z.boolean(), inAppEnabled: z.boolean(),
   quietHoursStart: z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/).nullable(),
   quietHoursEnd: z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/).nullable(),
+}).superRefine((value, context) => {
+  if (Boolean(value.quietHoursStart) !== Boolean(value.quietHoursEnd)) {
+    context.addIssue({ code: "custom", path: ["quietHoursEnd"], message: "Set both quiet-hour times or leave both empty" });
+  }
 });
 
 export const teamInviteSchema = z.object({ email, role: z.enum(["MANAGER", "MEMBER"]) });
@@ -93,6 +105,37 @@ export const adminAssignmentSchema = z.object({
   supplierCompanyIds: z.array(z.string().min(1).max(64)).min(1).max(5),
 });
 export const productCategorySchema = z.object({ name: z.string().trim().min(2).max(100), slug: z.string().trim().min(2).max(100).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/), description: optionalText(500), active: z.boolean().default(true), parentId: z.string().nullable().optional() });
+
+const optionalDate = z.union([z.literal(""), z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid date")]).transform((value) => value || null);
+
+export const accreditationUploadSchema = z.object({
+  type: z.enum([
+    "PUBLIC_LIABILITY_INSURANCE",
+    "EMPLOYERS_LIABILITY_INSURANCE",
+    "PROFESSIONAL_INDEMNITY_INSURANCE",
+    "TRADE_BODY_MEMBERSHIP",
+    "CERTIFICATION",
+    "OTHER",
+  ]),
+  displayName: z.string().trim().min(2).max(160),
+  referenceNumber: optionalText(120),
+  issuingBody: optionalText(160),
+  issuedAt: optionalDate,
+  expiresAt: optionalDate,
+}).superRefine((value, context) => {
+  if (value.issuedAt && value.expiresAt && value.expiresAt < value.issuedAt) {
+    context.addIssue({ code: "custom", path: ["expiresAt"], message: "Expiry date must be after the issue date" });
+  }
+});
+
+export const accreditationReviewSchema = z.object({
+  status: z.enum(["APPROVED", "REJECTED"]),
+  note: z.string().trim().max(1000).optional(),
+}).superRefine((value, context) => {
+  if (value.status === "REJECTED" && !value.note) {
+    context.addIssue({ code: "custom", path: ["note"], message: "Provide a reason for rejection" });
+  }
+});
 
 export function validationError(error: z.ZodError) {
   return error.issues[0]?.message ?? "Check the information and try again";

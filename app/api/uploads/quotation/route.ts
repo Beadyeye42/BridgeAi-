@@ -12,7 +12,7 @@ export async function POST(request: Request) {
   const auth = await requireSupplierApi(); if ("error" in auth) return auth.error;
   const form = await request.formData(); const quotationId = String(form.get("quotationId") ?? ""); const file = form.get("file");
   if (!(file instanceof File) || file.type !== "application/pdf" || file.size < 1 || file.size > MAX_BYTES) return NextResponse.json({ error: "Attach a PDF no larger than 10 MB" }, { status: 400 });
-  const quotation = await prisma.supplierQuotation.findFirst({ where: { id: quotationId, supplierCompanyId: auth.companyId } });
+  const quotation = await prisma.supplierQuotation.findFirst({ where: { id: quotationId, supplierCompanyId: auth.companyId, status: "SUBMITTED" } });
   if (!quotation) return NextResponse.json({ error: "Quotation not found" }, { status: 404 });
   const bytes = Buffer.from(await file.arrayBuffer()); const sha256 = createHash("sha256").update(bytes).digest("hex"); const storageKey = `companies/${auth.companyId}/quotations/${quotation.id}/${randomUUID()}.pdf`;
   try {

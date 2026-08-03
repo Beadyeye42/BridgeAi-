@@ -9,7 +9,7 @@ This repository is the security foundation for the first supplier-portal release
 - Customers never have portal identities. Their contact values and message content are encrypted at rest and exposed to suppliers only when required to quote.
 - Supabase Auth is the sole password, session, email-verification and password-recovery authority. There are no application password hashes, session-token tables or reset-token tables.
 - A portal identity is an `auth.users` row plus a `bridge_ai.portal_profiles` row. Supplier access requires an active `bridge_ai.company_memberships` row. Administrator access requires an active `bridge_ai.platform_administrators` row; user metadata is not an authority.
-- All 26 application tables have RLS enabled and forced. Server-side Prisma transactions install the verified Auth user ID as a transaction-local Postgres claim, so application SQL is subject to the same policies.
+- All 27 application tables have RLS enabled and forced. Server-side Prisma transactions install the verified Auth user ID as a transaction-local Postgres claim, so application SQL is subject to the same policies.
 - Supplier records are isolated by company. Suspension/removal immediately removes membership-based access. Administrator policies require a protected database record.
 - Important writes create append-only audit records. Database triggers enforce cross-row invariants such as the request distribution limit, quotation/assignment consistency and the requirement for an active company owner.
 - Each job can be distributed to 1–5 suppliers (default 3), and all assigned suppliers share one response deadline. The UK response clock pauses at 3:00 pm Friday and resumes at 8:00 am Monday, so weekend time is never consumed.
@@ -17,6 +17,7 @@ This repository is the security foundation for the first supplier-portal release
 - Meta WhatsApp webhooks use the standard challenge handshake and require a valid `X-Hub-Signature-256` HMAC over the exact request bytes. Accepted events are bounded, idempotent and audited; raw webhook payloads are never persisted.
 - Supplier billing uses Stripe Checkout: £5/month membership and a £25 success fee only after the customer selects a quote. Browser redirects never grant access; only a signature-verified, idempotent Stripe webhook can create the tenant-scoped contact-access grant. Unpaid grants expire after two active UK business hours.
 - Storage is private. Object keys are company-prefixed (`companies/<company-id>/...`) and Storage RLS checks active membership or protected administrator status.
+- Supplier owners and managers can upload private insurance, certification and trade-membership evidence. Documents remain locked while malware scanning is pending; suppliers cannot change review state, and every administrator decision is audited.
 - Secrets, database credentials and Meta/AI/payment keys are server-only. Only the Supabase URL and publishable key may use `NEXT_PUBLIC_` names.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/SUPABASE_SECURITY.md](docs/SUPABASE_SECURITY.md), and [SECURITY_REMEDIATION_REPORT.md](SECURITY_REMEDIATION_REPORT.md) for the design and verification evidence.
