@@ -13,6 +13,9 @@ flowchart LR
   DAL --> DB[("Supabase PostgreSQL · bridge_ai")]
   Intake --> DB
   Portal --> Storage["Private Supabase Storage"]
+  Portal --> Stripe["Stripe Checkout and Billing Portal"]
+  Stripe --> BillingHook["Signature-verified billing webhook"]
+  BillingHook --> DB
   Auth --> Policies["JWT identity"]
   Policies --> DAL
   Policies --> Storage
@@ -36,7 +39,7 @@ Supplier registration and invitation acceptance use narrow `bridge_private` data
 
 Supabase SQL migrations under `supabase/migrations` are the sole DDL history. Prisma describes and queries the resulting schema but does not own a second migration stream.
 
-All 24 `bridge_ai` tables have RLS enabled and forced. The application database role inherits the Supabase `authenticated` role but does not bypass RLS. For each Prisma operation, the data layer starts a transaction and installs the UUID returned by `getUser()` into transaction-local `request.jwt.claim.sub` and the `authenticated` role claim. Policies then evaluate the same protected identity helpers used by direct Supabase requests. Bootstrap access uses a separate, narrowly scoped function rather than a general RLS bypass.
+All 26 `bridge_ai` tables have RLS enabled and forced. The application database role inherits the Supabase `authenticated` role but does not bypass RLS. For each Prisma operation, the data layer starts a transaction and installs the UUID returned by `getUser()` into transaction-local `request.jwt.claim.sub` and the `authenticated` role claim. Policies then evaluate the same protected identity helpers used by direct Supabase requests. Bootstrap access uses a separate, narrowly scoped function rather than a general RLS bypass.
 
 The tenant chain is:
 
@@ -52,7 +55,9 @@ Database constraints and triggers enforce rules that cannot safely depend on UI 
 - one primary membership per user/company and at least one active owner per company;
 - positive quantities, non-negative price/budget/radius and valid coverage shapes;
 - a request cannot exceed its configurable supplier distribution limit;
+- supplier distribution is hard-capped at five, all assignments use the request’s shared deadline, and the `Europe/London` response clock pauses from Friday 15:00 until Monday 08:00;
 - assignment state and quotation state/timestamps cannot contradict one another;
+- a quote cannot be submitted without an approved company and active membership, only one quote per request can be customer-selected, and accepted status requires both a verified paid fee and matching contact grant;
 - attachment size and parent relationships are valid;
 - audit records are append-only for normal application and authenticated roles.
 
@@ -62,10 +67,20 @@ Material application mutations write an `audit_logs` row in the same transaction
 
 Customer phone, email and message values use AES-256-GCM with a ciphertext version prefix. Blind indexes allow exact lookup without searchable plaintext. Supplier DTOs disclose only the request data needed to quote.
 
+The Meta webhook boundary validates the verification token for subscription setup and checks `X-Hub-Signature-256` against the exact request bytes before JSON parsing. Requests are size/operation bounded. A SHA-256 body digest and Meta message IDs provide replay protection. Contact profile names, phone values and supported message content are encrypted inside the same transaction that creates append-only audit records. `WebhookEvent.payload` contains only a PII-free operational summary; raw webhook bodies are not retained. Failed processing is recorded with a coarse internal code so Meta can retry without sensitive error text entering logs or tables.
+
 The `bridge-ai-private` Storage bucket is private and migration-provisioned. Policies require object keys beneath `companies/<company-id>/...` and verify active membership or protected administrator status. Database attachment metadata holds ownership, MIME/size/checksum and malware scan state. Downloads require authorisation and a `CLEAN` scan state, then receive a short-lived signed URL. A production scanner worker must be implemented before untrusted uploads are generally enabled.
+
+## Billing and contact release
+
+The recurring supplier membership is £5/month. A quote selected by the customer enters `SELECTED_PENDING_PAYMENT`; it is not called won and no customer contact data is released. The supplier receives two active business hours to pay the fixed £25 success fee. The same Europe/London weekend clock applies, and a protected Vercel cron expires missed windows.
+
+Stripe card data never enters Bridge AI. Checkout redirects are presentation only. The raw-body Stripe webhook verifies its signature before parsing or writing, stores only a sanitized idempotency record, and is the sole payment authority. An on-time payment atomically marks the fee paid, creates a company-scoped `ContactAccessGrant`, accepts the quotation, rejects remaining submitted quotes, closes the request as won, notifies the supplier and writes audit entries. Suppliers still cannot read `CustomerContact` through the Supabase Data API: a reviewed server helper verifies the RLS-visible grant, decrypts only the minimum fields and audits every view. Late captured payments keep contact locked and create a critical refund-review event.
 
 ## Runtime and deployment boundaries
 
 Prisma runtime traffic uses the Supavisor transaction pooler. Migrations use the direct/session connection through the Supabase CLI. The Supabase URL and publishable key are browser-safe by design; the secret key, database URIs, encryption keys, WhatsApp keys, AI keys and payment keys must never reach client bundles.
 
 Auth site URLs, redirect allow-lists, production SMTP, email templates, abuse protection and leaked-password screening are Supabase project settings and must be verified separately for every environment.
+
+All HTML responses receive a restrictive baseline content-security policy, clickjacking protection, MIME sniffing protection, a limited referrer policy and a permissions policy. Production additionally requires an HTTPS `APP_URL` and sends HSTS. Auth email redirects fail closed when the production origin is missing or invalid.

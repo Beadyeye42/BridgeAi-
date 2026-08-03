@@ -6,6 +6,7 @@ import {
   getPrimarySupplierCompanyId,
 } from "@/lib/auth/session";
 import { getSupplierDashboard } from "@/lib/data/supplier-dashboard";
+import { supplierResponseMillisecondsBetween } from "@/lib/quotes/response-clock";
 
 export const dynamic = "force-dynamic";
 
@@ -68,8 +69,7 @@ export default async function DashboardPage() {
       ),
       due: formatDue(assignment.expiresAt, dashboard.generatedAt.getTime()),
       urgency:
-        assignment.expiresAt.getTime() - dashboard.generatedAt.getTime() <
-        8 * 3_600_000
+        supplierResponseMillisecondsBetween(dashboard.generatedAt, assignment.expiresAt) < 8 * 3_600_000
           ? "urgent"
           : "normal",
       itemCount: assignment.quoteRequest.items.length,
@@ -87,7 +87,7 @@ export default async function DashboardPage() {
 }
 
 function formatDue(value: Date, now: number) {
-  const hours = Math.max(0, Math.round((value.getTime() - now) / 3_600_000));
+  const hours = Math.max(0, Math.round(supplierResponseMillisecondsBetween(new Date(now), value) / 3_600_000));
   return hours < 24 ? `${hours}h` : `${Math.round(hours / 24)}d`;
 }
 

@@ -9,9 +9,12 @@ This repository is the security foundation for the first supplier-portal release
 - Customers never have portal identities. Their contact values and message content are encrypted at rest and exposed to suppliers only when required to quote.
 - Supabase Auth is the sole password, session, email-verification and password-recovery authority. There are no application password hashes, session-token tables or reset-token tables.
 - A portal identity is an `auth.users` row plus a `bridge_ai.portal_profiles` row. Supplier access requires an active `bridge_ai.company_memberships` row. Administrator access requires an active `bridge_ai.platform_administrators` row; user metadata is not an authority.
-- All 24 application tables have RLS enabled and forced. Server-side Prisma transactions install the verified Auth user ID as a transaction-local Postgres claim, so application SQL is subject to the same policies.
+- All 26 application tables have RLS enabled and forced. Server-side Prisma transactions install the verified Auth user ID as a transaction-local Postgres claim, so application SQL is subject to the same policies.
 - Supplier records are isolated by company. Suspension/removal immediately removes membership-based access. Administrator policies require a protected database record.
 - Important writes create append-only audit records. Database triggers enforce cross-row invariants such as the request distribution limit, quotation/assignment consistency and the requirement for an active company owner.
+- Each job can be distributed to 1–5 suppliers (default 3), and all assigned suppliers share one response deadline. The UK response clock pauses at 3:00 pm Friday and resumes at 8:00 am Monday, so weekend time is never consumed.
+- Meta WhatsApp webhooks use the standard challenge handshake and require a valid `X-Hub-Signature-256` HMAC over the exact request bytes. Accepted events are bounded, idempotent and audited; raw webhook payloads are never persisted.
+- Supplier billing uses Stripe Checkout: £5/month membership and a £25 success fee only after the customer selects a quote. Browser redirects never grant access; only a signature-verified, idempotent Stripe webhook can create the tenant-scoped contact-access grant. Unpaid grants expire after two active UK business hours.
 - Storage is private. Object keys are company-prefixed (`companies/<company-id>/...`) and Storage RLS checks active membership or protected administrator status.
 - Secrets, database credentials and Meta/AI/payment keys are server-only. Only the Supabase URL and publishable key may use `NEXT_PUBLIC_` names.
 
@@ -40,6 +43,10 @@ Development seeding is intentionally opt-in. Set `ALLOW_DEVELOPMENT_SEED=true`, 
 
 Configure the Supabase Auth site URL and redirect allow-list for `/auth/callback`, and configure production SMTP and email templates before release. Password recovery uses Supabase email delivery; the old Resend application mailer is not an authentication authority.
 
+For WhatsApp intake, configure Meta’s callback URL as `https://<portal-host>/api/webhooks/meta-whatsapp`, subscribe it to WhatsApp message events, and set independent server-only values for `META_WHATSAPP_VERIFY_TOKEN` and `META_WHATSAPP_APP_SECRET`. The route verifies the signature before parsing JSON. Text/captions/location/reply content, phone numbers and profile names are encrypted before storage. Event metadata contains only opaque IDs and counts. Media references are recorded only in memory at intake; downloading/scanning media is deliberately unavailable until a malware-scanning worker is selected and implemented.
+
+For billing, create a recurring £5 GBP Stripe Price and set `STRIPE_MEMBERSHIP_PRICE_ID`, `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`. Register `https://<portal-host>/api/webhooks/stripe` for Checkout Session completion and customer subscription events. Set `CRON_SECRET`; Vercel calls the protected expiry route every 15 minutes. The £25 payment is a one-off Checkout item and contact data remains locked until the verified webhook commits the grant.
+
 ## Commands
 
 - `npm run dev` — start local development
@@ -63,4 +70,4 @@ The live adversarial SQL suite is [tests/sql/security_integration.sql](tests/sql
 3. Apply reviewed Supabase migrations from a controlled release job before promoting the application deployment.
 4. Use the default `npm run build` build command.
 
-External malware scanning, production WhatsApp ingestion/AI orchestration and Stripe billing remain integration work. The application does not present those boundaries as completed functionality.
+External malware scanning, WhatsApp media retrieval/outbound sending and AI orchestration remain integration work. Stripe code is complete but checkout remains intentionally unavailable until the real Stripe product, keys and webhook endpoint are configured.

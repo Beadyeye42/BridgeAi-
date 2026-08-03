@@ -8,6 +8,7 @@ DECLARE
   user_b uuid;
   visible_count integer;
   affected_count integer;
+  request_deadline timestamptz;
 BEGIN
   SELECT id INTO user_a FROM auth.users ORDER BY created_at LIMIT 1;
   SELECT id INTO user_b FROM auth.users ORDER BY created_at OFFSET 1 LIMIT 1;
@@ -25,6 +26,8 @@ BEGIN
   INSERT INTO bridge_ai.company_memberships (id,"userId","supplierCompanyId",role,status,"isPrimary","joinedAt") VALUES
     ('security_membership_a',user_a,'security_company_a','OWNER','ACTIVE',true,now()),
     ('security_membership_b',user_b,'security_company_b','OWNER','ACTIVE',true,now());
+  INSERT INTO bridge_ai."Subscription" (id,"supplierCompanyId",provider,"planCode",status,"currentPeriodStart","currentPeriodEnd","createdAt","updatedAt")
+  VALUES ('security_subscription_a','security_company_a','stripe','bridge-ai-monthly','ACTIVE',now(),now()+interval '1 month',now(),now());
 
   EXECUTE 'SET LOCAL ROLE authenticated';
   PERFORM set_config('request.jwt.claim.sub', user_a::text, true);
@@ -40,6 +43,13 @@ BEGIN
     INSERT INTO bridge_ai.company_memberships (id,"userId","supplierCompanyId",role,status,"isPrimary","joinedAt")
     VALUES ('forbidden_membership',user_a,'security_company_b','MEMBER','ACTIVE',false,now());
     RAISE EXCEPTION 'Supplier A inserted a Supplier B membership';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+
+  BEGIN
+    INSERT INTO bridge_ai."WebhookEvent" (id,provider,"externalEventId","eventType",payload,"receivedAt","retryCount")
+    VALUES ('forbidden_webhook','META_WHATSAPP','forbidden','messages','{}'::jsonb,now(),0);
+    RAISE EXCEPTION 'Supplier inserted a trusted webhook event';
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   END;
 
@@ -133,6 +143,15 @@ BEGIN
   EXCEPTION WHEN unique_violation THEN NULL;
   END;
 
+  IF bridge_private.next_supplier_response_start('2026-08-07 15:01 Europe/London'::timestamptz)
+       <> '2026-08-10 08:00 Europe/London'::timestamptz THEN
+    RAISE EXCEPTION 'Friday response cutoff did not resume Monday at 08:00';
+  END IF;
+  IF bridge_private.add_supplier_response_hours('2026-08-07 14:00 Europe/London'::timestamptz, 2)
+       <> '2026-08-10 09:00 Europe/London'::timestamptz THEN
+    RAISE EXCEPTION 'supplier response hours consumed weekend pause time';
+  END IF;
+
   BEGIN
     INSERT INTO bridge_ai.company_memberships (id,"userId","supplierCompanyId",role,status,"isPrimary","joinedAt")
     VALUES ('second_primary',user_a,'security_company_c','MEMBER','ACTIVE',true,now());
@@ -140,20 +159,37 @@ BEGIN
   EXCEPTION WHEN unique_violation THEN NULL;
   END;
 
-  INSERT INTO bridge_ai."CustomerContact" (id,"displayName","phoneEncrypted","phoneHash","createdAt","updatedAt")
-  VALUES ('security_customer','Test',decode('00','hex'),'security-phone-hash',now(),now());
+  INSERT INTO bridge_ai."CustomerContact" (id,"displayNameEncrypted","phoneEncrypted","phoneHash","createdAt","updatedAt")
+  VALUES ('security_customer',decode('00','hex'),decode('00','hex'),'security-phone-hash',now(),now());
+  INSERT INTO bridge_ai."Conversation" (id,"customerContactId",channel,"externalConversationId","createdAt","updatedAt")
+  VALUES ('security_conversation','security_customer','WHATSAPP','wa:security-phone-hash',now(),now());
+  INSERT INTO bridge_ai."WhatsAppMessage" (
+    id,"conversationId","externalMessageId",direction,"messageType","bodyEncrypted",status,"occurredAt","createdAt"
+  ) VALUES (
+    'security_message','security_conversation','security-message','INBOUND','TEXT',decode('00','hex'),'RECEIVED',now(),now()
+  );
   INSERT INTO bridge_ai."ProductCategory" (id,name,slug,active,"displayOrder","createdAt","updatedAt")
   VALUES ('security_category','Security category','security-category',true,0,now(),now());
+  request_deadline := bridge_private.add_supplier_response_hours(now(), 24);
   INSERT INTO bridge_ai."QuoteRequest" (
     id,reference,"customerContactId","categoryId",title,summary,"deliveryPostcode",currency,status,
     "distributionLimit","responseDueAt","createdAt","updatedAt"
   ) VALUES (
     'security_request','SECURITY-1','security_customer','security_category','Test','Test','B1','GBP','OPEN',
-    1,now()+interval '1 day',now(),now()
+    1,request_deadline,now(),now()
   );
   INSERT INTO bridge_ai."SupplierAssignment" (
     id,"quoteRequestId","supplierCompanyId",status,"assignedAt","expiresAt"
-  ) VALUES ('security_assignment','security_request','security_company_a','PENDING',now(),now()+interval '1 day');
+  ) VALUES ('security_assignment','security_request','security_company_a','PENDING',now(),request_deadline);
+
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  PERFORM set_config('request.jwt.claim.sub', user_a::text, true);
+  SELECT count(*) INTO visible_count FROM bridge_ai."CustomerContact" WHERE id='security_customer';
+  IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier selected encrypted customer identity'; END IF;
+  SELECT count(*) INTO visible_count FROM bridge_ai."WhatsAppMessage" WHERE id='security_message';
+  IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier selected private WhatsApp message'; END IF;
+  EXECUTE 'RESET ROLE';
+  PERFORM set_config('request.jwt.claim.sub', '', true);
 
   BEGIN
     INSERT INTO bridge_ai."QuoteRequestItem" (id,"quoteRequestId",description,quantity,unit,"displayOrder","createdAt")
@@ -171,8 +207,35 @@ BEGIN
     INSERT INTO bridge_ai."QuoteRequest" (
       id,reference,"customerContactId","categoryId",title,summary,"deliveryPostcode",currency,status,
       "distributionLimit","responseDueAt","createdAt","updatedAt"
-    ) VALUES ('bad_limit','SECURITY-2','security_customer','security_category','bad','bad','B1','GBP','OPEN',0,now()+interval '1 day',now(),now());
+    ) VALUES ('bad_limit','SECURITY-2','security_customer','security_category','bad','bad','B1','GBP','OPEN',0,request_deadline,now(),now());
     RAISE EXCEPTION 'zero distribution limit accepted';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+  BEGIN
+    INSERT INTO bridge_ai."QuoteRequest" (
+      id,reference,"customerContactId","categoryId",title,summary,"deliveryPostcode",currency,status,
+      "distributionLimit","responseDueAt","createdAt","updatedAt"
+    ) VALUES ('bad_high_limit','SECURITY-3','security_customer','security_category','bad','bad','B1','GBP','OPEN',6,request_deadline,now(),now());
+    RAISE EXCEPTION 'distribution limit above five accepted';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+  BEGIN
+    INSERT INTO bridge_ai."QuoteRequest" (
+      id,reference,"customerContactId","categoryId",title,summary,"deliveryPostcode",currency,status,
+      "distributionLimit","responseDueAt","createdAt","updatedAt"
+    ) VALUES (
+      'bad_weekend_deadline','SECURITY-4','security_customer','security_category','bad','bad','B1','GBP','OPEN',1,
+      (date_trunc('week', now() AT TIME ZONE 'Europe/London') + interval '12 days 12 hours') AT TIME ZONE 'Europe/London',now(),now()
+    );
+    RAISE EXCEPTION 'weekend response deadline accepted';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+  BEGIN
+    INSERT INTO bridge_ai."SupplierAssignment" (
+      id,"quoteRequestId","supplierCompanyId",status,"assignedAt","expiresAt"
+    ) VALUES ('bad_assignment_deadline','security_request','security_company_b','PENDING',now(),request_deadline + interval '1 hour');
+    SET CONSTRAINTS assignment_response_deadline_matches_request IMMEDIATE;
+    RAISE EXCEPTION 'assignment-specific response deadline accepted';
   EXCEPTION WHEN check_violation THEN NULL;
   END;
   BEGIN
@@ -197,9 +260,68 @@ BEGIN
   EXCEPTION WHEN check_violation THEN NULL;
   END;
 
+  UPDATE bridge_ai."SupplierAssignment" SET status='ACCEPTED',"respondedAt"=now() WHERE id='security_assignment';
+  INSERT INTO bridge_ai."SupplierQuotation" (
+    id,"quoteRequestId","supplierCompanyId","assignmentId",status,price,currency,"leadTimeDays","submittedAt","createdAt","updatedAt"
+  ) VALUES ('security_quote','security_request','security_company_a','security_assignment','SUBMITTED',125,'GBP',7,now(),now(),now());
+  UPDATE bridge_ai."SupplierAssignment" SET status='QUOTED' WHERE id='security_assignment';
+  INSERT INTO bridge_ai."SupplierSuccessFee" (
+    id,"quotationId","quoteRequestId","supplierCompanyId","amountPence",currency,status,provider,"selectedAt","paymentDueAt","createdAt","updatedAt"
+  ) VALUES (
+    'security_fee','security_quote','security_request','security_company_a',2500,'GBP','PENDING','stripe',now(),
+    bridge_private.add_supplier_response_hours(now(),2),now(),now()
+  );
+  PERFORM set_config('bridge_ai.payment_transition','on',true);
+  UPDATE bridge_ai."SupplierQuotation" SET status='SELECTED_PENDING_PAYMENT',"decidedAt"=now() WHERE id='security_quote';
+  PERFORM set_config('bridge_ai.payment_transition','',true);
+
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  PERFORM set_config('request.jwt.claim.sub', user_a::text, true);
+  SELECT count(*) INTO visible_count FROM bridge_ai."SupplierSuccessFee" WHERE id='security_fee';
+  IF visible_count <> 1 THEN RAISE EXCEPTION 'Supplier could not read own success fee'; END IF;
+  BEGIN
+    UPDATE bridge_ai."SupplierQuotation" SET status='ACCEPTED' WHERE id='security_quote';
+    RAISE EXCEPTION 'Supplier marked its own quote as accepted';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  BEGIN
+    INSERT INTO bridge_ai."ContactAccessGrant" (
+      id,"successFeeId","quotationId","customerContactId","supplierCompanyId","createdAt"
+    ) VALUES ('forbidden_grant','security_fee','security_quote','security_customer','security_company_a',now());
+    RAISE EXCEPTION 'Supplier inserted its own contact access grant';
+  EXCEPTION WHEN insufficient_privilege OR check_violation THEN NULL;
+  END;
+  PERFORM set_config('request.jwt.claim.sub', user_b::text, true);
+  SELECT count(*) INTO visible_count FROM bridge_ai."SupplierSuccessFee" WHERE id='security_fee';
+  IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier B read Supplier A success fee'; END IF;
+  EXECUTE 'RESET ROLE';
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+
+  UPDATE bridge_ai."SupplierSuccessFee" SET status='PAID',"providerPaymentIntentId"='pi_security',"paidAt"=now(),"unlockedAt"=now(),"updatedAt"=now()
+  WHERE id='security_fee';
+  INSERT INTO bridge_ai."ContactAccessGrant" (
+    id,"successFeeId","quotationId","customerContactId","supplierCompanyId","createdAt"
+  ) VALUES ('security_grant','security_fee','security_quote','security_customer','security_company_a',now());
+  PERFORM set_config('bridge_ai.payment_transition','on',true);
+  UPDATE bridge_ai."SupplierQuotation" SET status='ACCEPTED' WHERE id='security_quote';
+  PERFORM set_config('bridge_ai.payment_transition','',true);
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  PERFORM set_config('request.jwt.claim.sub', user_a::text, true);
+  SELECT count(*) INTO visible_count FROM bridge_ai."ContactAccessGrant" WHERE id='security_grant';
+  IF visible_count <> 1 THEN RAISE EXCEPTION 'Paid supplier could not read its contact grant'; END IF;
+  SELECT count(*) INTO visible_count FROM bridge_ai."CustomerContact" WHERE id='security_customer';
+  IF visible_count <> 0 THEN RAISE EXCEPTION 'Contact grant exposed encrypted customer row through the Data API'; END IF;
+  PERFORM set_config('request.jwt.claim.sub', user_b::text, true);
+  SELECT count(*) INTO visible_count FROM bridge_ai."ContactAccessGrant" WHERE id='security_grant';
+  IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier B read Supplier A contact grant'; END IF;
+  EXECUTE 'RESET ROLE';
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+
   IF has_function_privilege('anon','public.handle_new_user()','EXECUTE')
      OR has_function_privilege('authenticated','public.handle_new_user()','EXECUTE')
-     OR has_function_privilege('anon','public.sync_request_quote_count()','EXECUTE') THEN
+     OR has_function_privilege('anon','public.sync_request_quote_count()','EXECUTE')
+     OR has_function_privilege('authenticated','bridge_private.next_supplier_response_start(timestamptz)','EXECUTE')
+     OR has_function_privilege('authenticated','bridge_private.add_supplier_response_hours(timestamptz,integer)','EXECUTE') THEN
     RAISE EXCEPTION 'legacy privileged functions remain executable';
   END IF;
 END

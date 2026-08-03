@@ -25,5 +25,8 @@ describe("private customer data", () => {
   it("creates deterministic blind indexes without returning plaintext", () => {
     expect(blindIndex("CUSTOMER@EXAMPLE.COM")).toBe(blindIndex("customer@example.com"));
     expect(blindIndex("customer@example.com")).not.toContain("customer");
+    const first = blindIndex("customer@example.com");
+    process.env.PII_BLIND_INDEX_KEY = "a-different-test-only-secret";
+    expect(blindIndex("customer@example.com")).not.toBe(first);
   });
 });

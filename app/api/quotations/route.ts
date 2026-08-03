@@ -16,6 +16,8 @@ export async function POST(request: Request) {
 
   const assignment = await prisma.supplierAssignment.findFirst({ where: { id: parsed.data.assignmentId, supplierCompanyId: companyId, status: "ACCEPTED", expiresAt: { gt: new Date() } } });
   if (!assignment) return NextResponse.json({ error: "Accepted request not found or response window has closed" }, { status: 404 });
+  const subscription = await prisma.subscription.findUnique({ where: { supplierCompanyId: companyId } });
+  if (!subscription || subscription.status !== "ACTIVE" || (subscription.currentPeriodEnd && subscription.currentPeriodEnd <= new Date())) return NextResponse.json({ error: "An active £5 monthly membership is required before submitting a quotation" }, { status: 402 });
 
   const quotation = await prisma.$transaction(async (tx) => {
     const saved = await tx.supplierQuotation.upsert({

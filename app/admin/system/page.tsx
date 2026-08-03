@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/db";
+import { requireAdminPage } from "@/lib/auth/guards";
 import { AdminHeading } from "@/components/admin/admin-shell";
 import { ResolveEventButton } from "@/components/admin/admin-actions";
 export default async function SystemPage() {
+  await requireAdminPage();
   const events = await prisma.systemEvent.findMany({
     orderBy: { occurredAt: "desc" },
     take: 100,

@@ -86,7 +86,10 @@ export const adminSupplierEditSchema = z.object({
   contactPhone: z.string().trim().min(7).max(32), companyNumber: optionalText(32), vatNumber: optionalText(32),
   postcode: optionalText(16), summary: optionalText(1500),
 });
-export const adminAssignmentSchema = z.object({ quoteRequestId: z.string().min(1).max(64), supplierCompanyIds: z.array(z.string().min(1).max(64)).min(1).max(25), expiresAt: z.coerce.date() });
+export const adminAssignmentSchema = z.object({
+  quoteRequestId: z.string().min(1).max(64),
+  supplierCompanyIds: z.array(z.string().min(1).max(64)).min(1).max(5),
+});
 export const productCategorySchema = z.object({ name: z.string().trim().min(2).max(100), slug: z.string().trim().min(2).max(100).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/), description: optionalText(500), active: z.boolean().default(true), parentId: z.string().nullable().optional() });
 
 export function validationError(error: z.ZodError) {
