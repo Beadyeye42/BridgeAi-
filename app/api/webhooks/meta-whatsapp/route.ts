@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { metaWebhookCredentials } from "@/lib/config";
-import { trustedPrisma } from "@/lib/db";
+import { runAsDatabaseWorker } from "@/lib/db";
 import { blindIndex, encryptPrivateValue } from "@/lib/security/encryption";
 import {
   MAX_META_WEBHOOK_BYTES,
@@ -52,7 +52,7 @@ function statusMutation(status: ReturnType<typeof parseMetaWebhook>["statuses"][
 }
 
 async function recordProcessingFailure(externalEventId: string, summary: Prisma.InputJsonValue) {
-  await trustedPrisma.$transaction(async (tx) => {
+  await runAsDatabaseWorker("whatsapp_webhook", async (tx) => {
     const event = await tx.webhookEvent.upsert({
       where: { provider_externalEventId: { provider: PROVIDER, externalEventId } },
       create: {
@@ -111,7 +111,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await trustedPrisma.$transaction(async (tx) => {
+    const result = await runAsDatabaseWorker("whatsapp_webhook", async (tx) => {
       const existing = await tx.webhookEvent.findUnique({
         where: { provider_externalEventId: { provider: PROVIDER, externalEventId } },
         select: { processedAt: true },
@@ -230,10 +230,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ received: true, duplicate: result.duplicate });
   } catch (cause) {
     if (cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === "P2002") {
-      const existing = await trustedPrisma.webhookEvent.findUnique({
-        where: { provider_externalEventId: { provider: PROVIDER, externalEventId } },
-        select: { processedAt: true },
-      });
+      const existing = await runAsDatabaseWorker("whatsapp_webhook", (tx) =>
+        tx.webhookEvent.findUnique({
+          where: { provider_externalEventId: { provider: PROVIDER, externalEventId } },
+          select: { processedAt: true },
+        }),
+      );
       if (existing?.processedAt) return NextResponse.json({ received: true, duplicate: true });
     }
     console.error("Verified WhatsApp webhook processing failed", cause);

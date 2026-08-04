@@ -65,3 +65,15 @@ export function runWithDatabaseIdentity<T>(userId: string, work: () => T): T {
 }
 
 export const trustedPrisma = raw;
+
+export type DatabaseWorker = "whatsapp_webhook";
+
+export async function runAsDatabaseWorker<T>(
+  worker: DatabaseWorker,
+  work: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T> {
+  return raw.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('bridge_ai.worker_context', ${worker}, true)`;
+    return work(tx);
+  });
+}

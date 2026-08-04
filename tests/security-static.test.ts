@@ -111,13 +111,19 @@ describe("security foundation static controls", () => {
     const handler = source.slice(source.indexOf("export async function POST"));
     const signature = handler.indexOf("verifyMetaSignature(");
     const parse = handler.indexOf("parseMetaWebhook(");
-    const transaction = handler.indexOf("trustedPrisma.$transaction(");
+    const transaction = handler.indexOf("runAsDatabaseWorker(");
     expect(signature).toBeGreaterThan(-1);
     expect(parse).toBeGreaterThan(signature);
     expect(transaction).toBeGreaterThan(parse);
     expect(source).toContain("encryptPrivateValue(message.from)");
     expect(source).toContain("encryptPrivateValue(message.body)");
+    expect(source).not.toContain("trustedPrisma");
     expect(source).not.toContain("payload: JSON.parse");
+
+    const workerPolicy = read("supabase/migrations/20260804181500_whatsapp_webhook_worker_context.sql");
+    expect(workerPolicy).toContain("session_user = 'bridge_ai_app'");
+    expect(workerPolicy).toContain("bridge_ai.worker_context");
+    expect(workerPolicy).toContain("whatsapp_worker_message_insert");
   });
 
   it("keeps customer display names encrypted in the application schema", () => {
