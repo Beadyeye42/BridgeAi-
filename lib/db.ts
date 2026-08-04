@@ -66,7 +66,7 @@ export function runWithDatabaseIdentity<T>(userId: string, work: () => T): T {
 
 export const trustedPrisma = raw;
 
-export type DatabaseWorker = "whatsapp_webhook";
+export type DatabaseWorker = "whatsapp_webhook" | "whatsapp_ai";
 
 export async function runAsDatabaseWorker<T>(
   worker: DatabaseWorker,

@@ -10,9 +10,9 @@ const messageSchema = z.object({
   timestamp: z.string().regex(/^\d{1,16}$/),
   type: z.string().min(1).max(64),
   text: z.object({ body: z.string().max(20_000) }).optional(),
-  image: z.object({ id: z.string().max(512), caption: z.string().max(20_000).optional() }).passthrough().optional(),
-  document: z.object({ id: z.string().max(512), caption: z.string().max(20_000).optional() }).passthrough().optional(),
-  audio: z.object({ id: z.string().max(512) }).passthrough().optional(),
+  image: z.object({ id: z.string().max(512), caption: z.string().max(20_000).optional(), mime_type: z.string().max(255).optional() }).passthrough().optional(),
+  document: z.object({ id: z.string().max(512), caption: z.string().max(20_000).optional(), mime_type: z.string().max(255).optional(), filename: z.string().max(255).optional() }).passthrough().optional(),
+  audio: z.object({ id: z.string().max(512), mime_type: z.string().max(255).optional() }).passthrough().optional(),
   location: z.object({
     latitude: z.number().finite(),
     longitude: z.number().finite(),
@@ -62,6 +62,8 @@ export type InboundMessage = {
   messageType: "TEXT" | "IMAGE" | "DOCUMENT" | "AUDIO" | "LOCATION" | "INTERACTIVE" | "SYSTEM";
   body?: string;
   mediaId?: string;
+  mediaMimeType?: string;
+  mediaFileName?: string;
 };
 
 export type MessageStatusUpdate = {
@@ -115,9 +117,9 @@ function occurredAt(timestamp: string) {
 
 function messageContent(message: z.infer<typeof messageSchema>) {
   if (message.type === "text" && message.text) return { messageType: "TEXT" as const, body: message.text.body };
-  if (message.type === "image" && message.image) return { messageType: "IMAGE" as const, body: message.image.caption, mediaId: message.image.id };
-  if (message.type === "document" && message.document) return { messageType: "DOCUMENT" as const, body: message.document.caption, mediaId: message.document.id };
-  if (message.type === "audio" && message.audio) return { messageType: "AUDIO" as const, mediaId: message.audio.id };
+  if (message.type === "image" && message.image) return { messageType: "IMAGE" as const, body: message.image.caption, mediaId: message.image.id, mediaMimeType: message.image.mime_type };
+  if (message.type === "document" && message.document) return { messageType: "DOCUMENT" as const, body: message.document.caption, mediaId: message.document.id, mediaMimeType: message.document.mime_type, mediaFileName: message.document.filename };
+  if (message.type === "audio" && message.audio) return { messageType: "AUDIO" as const, mediaId: message.audio.id, mediaMimeType: message.audio.mime_type };
   if (message.type === "location" && message.location) return { messageType: "LOCATION" as const, body: JSON.stringify(message.location) };
   if (message.type === "interactive" && message.interactive) {
     const reply = message.interactive.button_reply ?? message.interactive.list_reply;

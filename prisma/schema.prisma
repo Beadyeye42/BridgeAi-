@@ -80,6 +80,36 @@ enum MessageStatus {
   @@schema("bridge_ai")
 }
 
+enum AiConversationStage {
+  CONSENT_REQUIRED
+  COLLECTING
+  AWAITING_CONFIRMATION
+  QUOTE_CREATED
+  AWAITING_SELECTION
+  SELECTION_RECORDED
+  HUMAN_REVIEW
+  CLOSED
+
+  @@schema("bridge_ai")
+}
+
+enum WhatsAppJobType {
+  PROCESS_INBOUND
+  SEND_QUOTE_SUMMARY
+  SEND_CONTACT_UNLOCK
+
+  @@schema("bridge_ai")
+}
+
+enum WhatsAppJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+
+  @@schema("bridge_ai")
+}
+
 enum AttachmentKind {
   CUSTOMER_FILE
   DRAWING
@@ -401,33 +431,41 @@ model Conversation {
   channel                ConversationChannel @default(WHATSAPP)
   externalConversationId String?             @unique
   lastMessageAt          DateTime?
+  aiStage                AiConversationStage @default(CONSENT_REQUIRED)
+  aiConsentAt            DateTime?
+  aiDraftEncrypted       Bytes?
   closedAt               DateTime?
   createdAt              DateTime            @default(now())
   updatedAt              DateTime            @updatedAt
   customerContact        CustomerContact     @relation(fields: [customerContactId], references: [id], onDelete: Restrict)
   messages               WhatsAppMessage[]
   quoteRequests          QuoteRequest[]
+  whatsappJobs           WhatsAppJob[]
 
   @@index([customerContactId, lastMessageAt])
   @@schema("bridge_ai")
 }
 
 model WhatsAppMessage {
-  id                String           @id @default(cuid())
-  conversationId    String
-  externalMessageId String           @unique
-  direction         MessageDirection
-  messageType       MessageType
-  bodyEncrypted     Bytes?
-  status            MessageStatus
-  occurredAt        DateTime
-  deliveredAt       DateTime?
-  readAt            DateTime?
-  failureCode       String?
-  failureMessage    String?
-  createdAt         DateTime         @default(now())
-  conversation      Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  attachments       Attachment[]
+  id                     String           @id @default(cuid())
+  conversationId         String
+  externalMessageId      String           @unique
+  direction              MessageDirection
+  messageType            MessageType
+  bodyEncrypted          Bytes?
+  mediaIdEncrypted       Bytes?
+  mediaMimeType          String?
+  mediaFileNameEncrypted Bytes?
+  status                 MessageStatus
+  occurredAt             DateTime
+  deliveredAt            DateTime?
+  readAt                 DateTime?
+  failureCode            String?
+  failureMessage         String?
+  createdAt              DateTime         @default(now())
+  conversation           Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  attachments            Attachment[]
+  whatsappJobs           WhatsAppJob[]
 
   @@index([conversationId, occurredAt])
   @@index([status])
@@ -554,6 +592,7 @@ model QuoteRequest {
   assignments       SupplierAssignment[]
   quotations        SupplierQuotation[]
   successFees       SupplierSuccessFee[]
+  whatsappJobs      WhatsAppJob[]
 
   @@index([status, responseDueAt])
   @@index([categoryId, deliveryPostcode])
@@ -621,9 +660,44 @@ model SupplierQuotation {
   attachments       Attachment[]
   successFee        SupplierSuccessFee?
   contactAccess     ContactAccessGrant?
+  whatsappJobs      WhatsAppJob[]
 
   @@unique([quoteRequestId, supplierCompanyId])
   @@index([supplierCompanyId, status, submittedAt])
+  @@schema("bridge_ai")
+}
+
+model WhatsAppJob {
+  id                     String             @id @default(cuid())
+  type                   WhatsAppJobType
+  status                 WhatsAppJobStatus  @default(PENDING)
+  idempotencyKey         String             @unique
+  conversationId         String?
+  whatsappMessageId      String?
+  quoteRequestId         String?
+  quotationId            String?
+  attempts               Int                @default(0)
+  availableAt            DateTime           @default(now())
+  lockedAt               DateTime?
+  completedAt            DateTime?
+  failedAt               DateTime?
+  errorCode              String?
+  model                  String?
+  providerResponseIdHash String?
+  inputTokens            Int?
+  outputTokens           Int?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+  conversation           Conversation?      @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  whatsappMessage        WhatsAppMessage?   @relation(fields: [whatsappMessageId], references: [id], onDelete: Cascade)
+  quoteRequest           QuoteRequest?      @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
+  quotation              SupplierQuotation? @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+
+  @@index([status, availableAt, createdAt])
+  @@index([conversationId, createdAt])
+  @@index([whatsappMessageId])
+  @@index([quoteRequestId, createdAt])
+  @@index([quotationId])
   @@schema("bridge_ai")
 }
 

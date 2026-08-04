@@ -69,4 +69,24 @@ describe("Meta WhatsApp webhook boundary", () => {
     expect(metaEventDigest(bytes)).toBe(metaEventDigest(bytes));
     expect(metaEventDigest(bytes)).not.toBe(metaEventDigest(Buffer.from("different")));
   });
+
+  it("extracts private media references without placing them in persisted event summaries", () => {
+    const media = structuredClone(fixture);
+    media.entry[0].changes[0].value.messages[0] = {
+      from: "447700900142",
+      id: "wamid.media-1",
+      timestamp: "1785751200",
+      type: "document",
+      document: { id: "media-private-1", mime_type: "application/pdf", filename: "drawing.pdf", caption: "Fabrication drawing" },
+    } as never;
+    const parsed = parseMetaWebhook(media);
+    expect(parsed.messages[0]).toMatchObject({
+      mediaId: "media-private-1",
+      mediaMimeType: "application/pdf",
+      mediaFileName: "drawing.pdf",
+      messageType: "DOCUMENT",
+    });
+    expect(JSON.stringify(parsed.summary)).not.toContain("drawing.pdf");
+    expect(JSON.stringify(parsed.summary)).not.toContain("Fabrication drawing");
+  });
 });

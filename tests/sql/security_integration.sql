@@ -207,6 +207,11 @@ BEGIN
   ) VALUES (
     'security_message','security_conversation','security-message','INBOUND','TEXT',decode('00','hex'),'RECEIVED',now(),now()
   );
+  INSERT INTO bridge_ai."WhatsAppJob" (
+    id,type,status,"idempotencyKey","conversationId","whatsappMessageId",attempts,"availableAt","createdAt","updatedAt"
+  ) VALUES (
+    'security_whatsapp_job','PROCESS_INBOUND','PENDING','security-job','security_conversation','security_message',0,now(),now(),now()
+  );
   INSERT INTO bridge_ai."ProductCategory" (id,name,slug,active,"displayOrder","createdAt","updatedAt")
   VALUES ('security_category','Security category','security-category',true,0,now(),now());
   request_deadline := bridge_private.add_supplier_response_hours(now(), 24);
@@ -227,6 +232,15 @@ BEGIN
   IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier selected encrypted customer identity'; END IF;
   SELECT count(*) INTO visible_count FROM bridge_ai."WhatsAppMessage" WHERE id='security_message';
   IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier selected private WhatsApp message'; END IF;
+  SELECT count(*) INTO visible_count FROM bridge_ai."WhatsAppJob" WHERE id='security_whatsapp_job';
+  IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier selected private WhatsApp processing state'; END IF;
+  BEGIN
+    INSERT INTO bridge_ai."WhatsAppJob" (
+      id,type,status,"idempotencyKey","conversationId","whatsappMessageId",attempts,"availableAt","createdAt","updatedAt"
+    ) VALUES ('forbidden_whatsapp_job','PROCESS_INBOUND','PENDING','forbidden-job','security_conversation','security_message',0,now(),now(),now());
+    RAISE EXCEPTION 'Supplier inserted a WhatsApp AI job';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
   EXECUTE 'RESET ROLE';
   PERFORM set_config('request.jwt.claim.sub', '', true);
 

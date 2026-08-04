@@ -5,7 +5,7 @@ import { addSupplierResponseHours } from "@/lib/quotes/response-clock";
 
 export async function selectQuotationForCustomer(input: {
   quotationId: string;
-  actorUserId: string;
+  actorUserId?: string;
   evidence: string;
 }) {
   const selectedAt = new Date();
@@ -18,6 +18,7 @@ export async function selectQuotationForCustomer(input: {
     });
     if (!quotation) throw new Error("QUOTATION_NOT_FOUND");
     if (quotation.status !== "SUBMITTED") throw new Error("QUOTATION_NOT_SELECTABLE");
+    if (quotation.validUntil && quotation.validUntil <= selectedAt) throw new Error("QUOTATION_EXPIRED");
     if (!["OPEN", "MATCHING", "QUOTED"].includes(quotation.quoteRequest.status)) throw new Error("REQUEST_NOT_SELECTABLE");
     await tx.$executeRaw`SELECT set_config('bridge_ai.payment_transition', 'on', true)`;
     const fee = await tx.supplierSuccessFee.create({

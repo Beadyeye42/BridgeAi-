@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { metaWebhookCredentials } from "@/lib/config";
 import { runAsDatabaseWorker } from "@/lib/db";
 import { blindIndex, encryptPrivateValue } from "@/lib/security/encryption";
@@ -10,6 +10,7 @@ import {
   verifyMetaSignature,
   verifyMetaToken,
 } from "@/lib/whatsapp/webhook";
+import { processWhatsAppJobs } from "@/lib/whatsapp/processor";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -135,7 +136,7 @@ export async function POST(request: Request) {
         where: { provider_externalEventId: { provider: PROVIDER, externalEventId } },
         select: { processedAt: true },
       });
-      if (existing?.processedAt) return { duplicate: true };
+      if (existing?.processedAt) return { duplicate: true, queued: 0 };
 
       const event = existing
         ? await tx.webhookEvent.update({
@@ -192,8 +193,19 @@ export async function POST(request: Request) {
             direction: "INBOUND",
             messageType: message.messageType,
             bodyEncrypted: message.body === undefined ? undefined : encryptPrivateValue(message.body),
+            mediaIdEncrypted: message.mediaId === undefined ? undefined : encryptPrivateValue(message.mediaId),
+            mediaMimeType: message.mediaMimeType,
+            mediaFileNameEncrypted: message.mediaFileName === undefined ? undefined : encryptPrivateValue(message.mediaFileName),
             status: "RECEIVED",
             occurredAt: message.occurredAt,
+          },
+        });
+        await tx.whatsAppJob.create({
+          data: {
+            type: "PROCESS_INBOUND",
+            idempotencyKey: `inbound:${message.externalMessageId}`,
+            conversationId: conversation.id,
+            whatsappMessageId: stored.id,
           },
         });
         await writeWhatsAppAudit(tx, {
@@ -238,8 +250,15 @@ export async function POST(request: Request) {
         summary: "Verified WhatsApp webhook processed",
         metadata: { messageCount: parsed.messages.length, statusCount: parsed.statuses.length },
       });
-      return { duplicate: false };
+      return { duplicate: false, queued: parsed.messages.length };
     });
+    if (result.queued > 0) {
+      after(async () => {
+        await processWhatsAppJobs({ limit: 5 }).catch(() => {
+          console.error("WhatsApp background processing failed");
+        });
+      });
+    }
     return NextResponse.json({ received: true, duplicate: result.duplicate });
   } catch (cause) {
     if (cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === "P2002") {
