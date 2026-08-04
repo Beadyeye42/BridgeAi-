@@ -120,12 +120,12 @@ describe("security foundation static controls", () => {
     expect(source).not.toContain("trustedPrisma");
     expect(source).not.toContain("payload: JSON.parse");
 
-    const workerPolicy = read("supabase/migrations/20260804181500_whatsapp_webhook_worker_context.sql");
+    const workerPolicy = read("supabase/migrations/20260804170036_whatsapp_webhook_worker_context.sql");
     expect(workerPolicy).toContain("session_user = 'bridge_ai_app'");
     expect(workerPolicy).toContain("bridge_ai.worker_context");
     expect(workerPolicy).toContain("whatsapp_worker_message_insert");
 
-    const auditWriter = read("supabase/migrations/20260804182500_whatsapp_audit_writer.sql");
+    const auditWriter = read("supabase/migrations/20260804171036_whatsapp_audit_writer.sql");
     expect(auditWriter).toContain("session_user <> 'bridge_ai_app'");
     expect(auditWriter).toContain("SET row_security = 'off'");
     expect(auditWriter).toContain("audit_action NOT LIKE 'WHATSAPP.%'");
