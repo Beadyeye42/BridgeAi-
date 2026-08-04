@@ -52,4 +52,37 @@ describe("Meta outbound client", () => {
     await expect(sendMetaText("+44 private", "Hello")).rejects.toThrow("META_RECIPIENT_INVALID");
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("retains only safe numeric Meta error identifiers", async () => {
+    configureMeta();
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      error: {
+        message: "Sensitive provider detail that must never be persisted",
+        type: "OAuthException",
+        code: 100,
+        error_subcode: 2494010,
+        fbtrace_id: "trace-id",
+      },
+    }), { status: 400 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    let error: unknown;
+    try {
+      await sendMetaText("447700900142", "Your quote is ready");
+    } catch (cause) {
+      error = cause;
+    }
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe("META_HTTP_400_CODE_100_SUBCODE_2494010");
+    expect((error as Error).message).not.toContain("Sensitive provider detail");
+    expect((error as Error).message).not.toContain("trace-id");
+  });
+
+  it("falls back to an HTTP-only Meta error for non-JSON responses", async () => {
+    configureMeta();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("upstream error", { status: 503 })));
+
+    await expect(sendMetaText("447700900142", "Your quote is ready")).rejects.toThrow("META_HTTP_503");
+  });
 });

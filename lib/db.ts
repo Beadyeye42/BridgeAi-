@@ -75,5 +75,5 @@ export async function runAsDatabaseWorker<T>(
   return raw.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT set_config('bridge_ai.worker_context', ${worker}, true)`;
     return work(tx);
-  });
+  }, { maxWait: 10_000, timeout: 20_000 });
 }
