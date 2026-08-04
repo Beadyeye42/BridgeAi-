@@ -164,6 +164,11 @@ describe("security foundation static controls", () => {
     const policyIndex = read("supabase/migrations/20260804195834_whatsapp_job_policy_and_index.sql");
     expect(policyIndex).toContain("whatsapp_job_message_idx");
     expect(policyIndex).toContain("whatsapp_job_insert");
+    const returningPolicy = read("supabase/migrations/20260804204515_whatsapp_job_webhook_returning_policy.sql");
+    expect(returningPolicy).toContain("DROP POLICY whatsapp_ai_job_select");
+    expect(returningPolicy).toContain("CREATE POLICY whatsapp_job_select");
+    expect(returningPolicy).toContain("is_trusted_worker('whatsapp_webhook')");
+    expect(returningPolicy).toContain("type = 'PROCESS_INBOUND'");
     const unlockWorker = read("supabase/migrations/20260804200717_whatsapp_contact_unlock_worker.sql");
     expect(unlockWorker).toContain("whatsapp_ai_contact_grant_update");
     expect(unlockWorker).toContain("SEND_CONTACT_UNLOCK");
