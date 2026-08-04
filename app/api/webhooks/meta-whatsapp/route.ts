@@ -16,6 +16,27 @@ export const dynamic = "force-dynamic";
 
 const PROVIDER = "META_WHATSAPP";
 
+async function writeWhatsAppAudit(
+  tx: Prisma.TransactionClient,
+  data: {
+    action: string;
+    entityType: string;
+    entityId: string;
+    summary: string;
+    metadata: Prisma.InputJsonValue;
+  },
+) {
+  await tx.$queryRaw`
+    SELECT bridge_private.write_whatsapp_audit(
+      ${data.action},
+      ${data.entityType},
+      ${data.entityId},
+      ${data.summary},
+      ${JSON.stringify(data.metadata)}::jsonb
+    )
+  `;
+}
+
 function unavailable() {
   return NextResponse.json({ error: "Webhook unavailable" }, { status: 503 });
 }
@@ -69,14 +90,12 @@ async function recordProcessingFailure(externalEventId: string, summary: Prisma.
         retryCount: { increment: 1 },
       },
     });
-    await tx.auditLog.create({
-      data: {
-        action: "WHATSAPP.WEBHOOK_FAILED",
-        entityType: "WebhookEvent",
-        entityId: event.id,
-        summary: "Verified WhatsApp webhook processing failed",
-        metadata: { externalEventId },
-      },
+    await writeWhatsAppAudit(tx, {
+      action: "WHATSAPP.WEBHOOK_FAILED",
+      entityType: "WebhookEvent",
+      entityId: event.id,
+      summary: "Verified WhatsApp webhook processing failed",
+      metadata: { externalEventId },
     });
   });
 }
@@ -177,14 +196,12 @@ export async function POST(request: Request) {
             occurredAt: message.occurredAt,
           },
         });
-        await tx.auditLog.create({
-          data: {
-            action: "WHATSAPP.MESSAGE_RECEIVED",
-            entityType: "WhatsAppMessage",
-            entityId: stored.id,
-            summary: "Verified inbound WhatsApp message stored",
-            metadata: { messageType: message.messageType, hasMediaReference: Boolean(message.mediaId) },
-          },
+        await writeWhatsAppAudit(tx, {
+          action: "WHATSAPP.MESSAGE_RECEIVED",
+          entityType: "WhatsAppMessage",
+          entityId: stored.id,
+          summary: "Verified inbound WhatsApp message stored",
+          metadata: { messageType: message.messageType, hasMediaReference: Boolean(message.mediaId) },
         });
       }
 
@@ -201,14 +218,12 @@ export async function POST(request: Request) {
         if (currentRank !== undefined && nextRank !== undefined && currentRank >= nextRank) continue;
 
         await tx.whatsAppMessage.update({ where: { id: stored.id }, data: statusMutation(status) });
-        await tx.auditLog.create({
-          data: {
-            action: "WHATSAPP.MESSAGE_STATUS_UPDATED",
-            entityType: "WhatsAppMessage",
-            entityId: stored.id,
-            summary: "WhatsApp delivery status updated",
-            metadata: { status: status.status, failureCode: status.failureCode },
-          },
+        await writeWhatsAppAudit(tx, {
+          action: "WHATSAPP.MESSAGE_STATUS_UPDATED",
+          entityType: "WhatsAppMessage",
+          entityId: stored.id,
+          summary: "WhatsApp delivery status updated",
+          metadata: { status: status.status, failureCode: status.failureCode },
         });
       }
 
@@ -216,14 +231,12 @@ export async function POST(request: Request) {
         where: { id: event.id },
         data: { processedAt: new Date(), failedAt: null, failureReason: null },
       });
-      await tx.auditLog.create({
-        data: {
-          action: "WHATSAPP.WEBHOOK_PROCESSED",
-          entityType: "WebhookEvent",
-          entityId: event.id,
-          summary: "Verified WhatsApp webhook processed",
-          metadata: { messageCount: parsed.messages.length, statusCount: parsed.statuses.length },
-        },
+      await writeWhatsAppAudit(tx, {
+        action: "WHATSAPP.WEBHOOK_PROCESSED",
+        entityType: "WebhookEvent",
+        entityId: event.id,
+        summary: "Verified WhatsApp webhook processed",
+        metadata: { messageCount: parsed.messages.length, statusCount: parsed.statuses.length },
       });
       return { duplicate: false };
     });
