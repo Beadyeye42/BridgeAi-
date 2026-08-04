@@ -39,7 +39,7 @@ Supplier registration and invitation acceptance use narrow `bridge_private` data
 
 Supabase SQL migrations under `supabase/migrations` are the sole DDL history. Prisma describes and queries the resulting schema but does not own a second migration stream.
 
-All 26 `bridge_ai` tables have RLS enabled and forced. The application database role inherits the Supabase `authenticated` role but does not bypass RLS. For each Prisma operation, the data layer starts a transaction and installs the UUID returned by `getUser()` into transaction-local `request.jwt.claim.sub` and the `authenticated` role claim. Policies then evaluate the same protected identity helpers used by direct Supabase requests. Bootstrap access uses a separate, narrowly scoped function rather than a general RLS bypass.
+All 27 `bridge_ai` tables have RLS enabled and forced. The application database role inherits the Supabase `authenticated` role but does not bypass RLS. For each Prisma operation, the data layer starts a transaction and installs the UUID returned by `getUser()` into transaction-local `request.jwt.claim.sub` and the `authenticated` role claim. Policies then evaluate the same protected identity helpers used by direct Supabase requests. Bootstrap access uses a separate, narrowly scoped function rather than a general RLS bypass.
 
 The tenant chain is:
 
@@ -77,6 +77,8 @@ Customer phone, email and message values use AES-256-GCM with a ciphertext versi
 The Meta webhook boundary validates the verification token for subscription setup and checks `X-Hub-Signature-256` against the exact request bytes before JSON parsing. Requests are size/operation bounded. A SHA-256 body digest and Meta message IDs provide replay protection. Contact profile names, phone values and supported message content are encrypted inside the same transaction that creates append-only audit records. `WebhookEvent.payload` contains only a PII-free operational summary; raw webhook bodies are not retained. Failed processing is recorded with a coarse internal code so Meta can retry without sensitive error text entering logs or tables.
 
 The `bridge-ai-private` Storage bucket is private and migration-provisioned. Policies require object keys beneath `companies/<company-id>/...` and verify active membership or protected administrator status. Database attachment metadata holds ownership, MIME/size/checksum and malware scan state. Downloads require authorisation and a `CLEAN` scan state, then receive a short-lived signed URL. A production scanner worker must be implemented before untrusted uploads are generally enabled.
+
+Supplier accreditation records reference company-owned private attachments. Only company owners and managers can add pending evidence or remove pending/rejected evidence. Suppliers have no update policy for review fields. A protected administrator can approve a document only after its attachment is marked `CLEAN`, or reject it with a supplier-visible reason; both paths append an audit record in the same transaction.
 
 ## Billing and contact release
 

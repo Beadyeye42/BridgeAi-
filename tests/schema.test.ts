@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const schema = readFileSync(new URL("../prisma/schema.prisma", import.meta.url), "utf8");
-const requiredModels = ["User", "SupplierCompany", "SupplierTeamMembership", "CustomerContact", "Conversation", "WhatsAppMessage", "Attachment", "QuoteRequest", "QuoteRequestItem", "SupplierAssignment", "SupplierQuotation", "CoverageArea", "ProductCategory", "Subscription", "Notification", "AuditLog"];
+const requiredModels = ["User", "SupplierCompany", "SupplierTeamMembership", "SupplierAccreditation", "CustomerContact", "Conversation", "WhatsAppMessage", "Attachment", "QuoteRequest", "QuoteRequestItem", "SupplierAssignment", "SupplierQuotation", "CoverageArea", "ProductCategory", "Subscription", "Notification", "AuditLog"];
 
 describe("Prisma domain contract", () => {
   it.each(requiredModels)("defines %s", (model) => expect(schema).toMatch(new RegExp(`model ${model} \\{`)));

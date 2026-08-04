@@ -1,10 +1,56 @@
 import Link from "next/link";
 import { Clock3, FileText, MapPin, Paperclip } from "lucide-react";
-import type { AssignmentStatus, QuotationStatus, QuoteRequestStatus } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireSupplierPage } from "@/lib/auth/guards";
 import { PortalPage, identity } from "@/components/dashboard/portal-page";
 
-export const dynamic="force-dynamic";
-const views = ["new","submitted","won","lost","expired","all"] as const;
-export default async function RequestsPage({searchParams}:{searchParams:Promise<{view?:string}>}){const{session,companyId}=await requireSupplierPage();const company=await prisma.supplierCompany.findUniqueOrThrow({where:{id:companyId}});const raw=(await searchParams).view;const view=views.includes(raw as typeof views[number])?raw as typeof views[number]:"new";const assignmentStatus:Record<string,AssignmentStatus[]|undefined>={new:["PENDING","VIEWED","ACCEPTED"],expired:["EXPIRED"],all:undefined};const quotationStatus:Record<string,QuotationStatus[]|undefined>={submitted:["SUBMITTED"],won:["ACCEPTED"],lost:["REJECTED"]};const requestStatus:Record<string,QuoteRequestStatus[]|undefined>={expired:["EXPIRED"],lost:["LOST"],won:["WON"]};const assignments=await prisma.supplierAssignment.findMany({where:{supplierCompanyId:companyId,...(assignmentStatus[view]?{status:{in:assignmentStatus[view]}}:{}),...(quotationStatus[view]?{quotation:{status:{in:quotationStatus[view]}}}:{}),...(requestStatus[view]?{quoteRequest:{status:{in:requestStatus[view]}}}:{})},include:{quoteRequest:{include:{category:true,attachments:{select:{id:true}}}},quotation:true},orderBy:{assignedAt:"desc"},take:100});return <PortalPage {...identity(session,company)} eyebrow="Company-isolated opportunity pipeline" title="Quote requests" description="Review active enquiries and the recorded outcome of every quotation."><nav className="filter-tabs">{views.map(v=><Link className={v===view?"active":""} href={`/dashboard/requests?view=${v}`} key={v}>{v}</Link>)}</nav><section className="panel request-browser">{assignments.length?assignments.map(a=><Link href={`/dashboard/requests/${a.quoteRequest.reference}`} className="request-browser-row" key={a.id}><span className="status-dot"/><div className="request-browser-main"><span className="request-ref">{a.quoteRequest.reference}</span><b>{a.quoteRequest.title}</b><small>{a.quoteRequest.category.name}</small></div><div className="request-browser-meta"><span><MapPin size={14}/>{a.quoteRequest.deliveryPostcode}</span><span><Paperclip size={14}/>{a.quoteRequest.attachments.length}</span><span><Clock3 size={14}/>{a.expiresAt.toLocaleDateString("en-GB")}</span></div><span className={`status-pill ${a.quotation?.status.toLowerCase()??a.status.toLowerCase()}`}>{a.quotation?.status??a.status}</span></Link>):<div className="empty-state large"><FileText size={28}/><b>No requests in this view</b><p>Requests appear here only when they match the selected recorded state.</p></div>}</section></PortalPage>}
+export const dynamic = "force-dynamic";
+const views = ["new", "submitted", "won", "lost", "expired", "all"] as const;
+type View = typeof views[number];
+
+function viewFilter(view: View, now: Date): Prisma.SupplierAssignmentWhereInput {
+  switch (view) {
+    case "new":
+      return { status: { in: ["PENDING", "VIEWED", "ACCEPTED"] }, expiresAt: { gt: now } };
+    case "submitted":
+      return { quotation: { status: { in: ["SUBMITTED", "SELECTED_PENDING_PAYMENT"] } } };
+    case "won":
+      return { quotation: { status: "ACCEPTED" } };
+    case "lost":
+      return { quotation: { status: "REJECTED" } };
+    case "expired":
+      return { OR: [{ status: "EXPIRED" }, { expiresAt: { lte: now } }, { quotation: { status: "EXPIRED" } }, { quoteRequest: { status: "EXPIRED" } }] };
+    default:
+      return {};
+  }
+}
+
+export default async function RequestsPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
+  const { session, companyId } = await requireSupplierPage();
+  const company = await prisma.supplierCompany.findUniqueOrThrow({ where: { id: companyId } });
+  const raw = (await searchParams).view;
+  const view: View = views.includes(raw as View) ? raw as View : "new";
+  const now = new Date();
+  const assignments = await prisma.supplierAssignment.findMany({
+    where: { supplierCompanyId: companyId, ...viewFilter(view, now) },
+    include: { quoteRequest: { include: { category: true, attachments: { select: { id: true } } } }, quotation: true },
+    orderBy: { assignedAt: "desc" },
+    take: 100,
+  });
+
+  return <PortalPage {...identity(session, company)} eyebrow="Company-isolated opportunity pipeline" title="Quote requests" description="Review active enquiries and the recorded outcome of every quotation.">
+    <nav className="filter-tabs">{views.map((item) => <Link className={item === view ? "active" : ""} href={`/dashboard/requests?view=${item}`} key={item}>{item}</Link>)}</nav>
+    <section className="panel request-browser">
+      {assignments.length ? assignments.map((assignment) => {
+        const displayStatus = assignment.quotation?.status ?? (assignment.expiresAt <= now ? "EXPIRED" : assignment.status);
+        return <Link href={`/dashboard/requests/${assignment.quoteRequest.reference}`} className="request-browser-row" key={assignment.id}>
+          <span className="status-dot" />
+          <div className="request-browser-main"><span className="request-ref">{assignment.quoteRequest.reference}</span><b>{assignment.quoteRequest.title}</b><small>{assignment.quoteRequest.category.name}</small></div>
+          <div className="request-browser-meta"><span><MapPin size={14} />{assignment.quoteRequest.deliveryPostcode}</span><span><Paperclip size={14} />{assignment.quoteRequest.attachments.length}</span><span><Clock3 size={14} />{assignment.expiresAt.toLocaleDateString("en-GB")}</span></div>
+          <span className={`status-pill ${displayStatus.toLowerCase()}`}>{displayStatus}</span>
+        </Link>;
+      }) : <div className="empty-state large"><FileText size={28} /><b>No requests in this view</b><p>Requests appear here only when they match the selected recorded state.</p></div>}
+    </section>
+  </PortalPage>;
+}

@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { metaWebhookCredentials } from "@/lib/config";
-import { trustedPrisma } from "@/lib/db";
+import { runAsDatabaseWorker } from "@/lib/db";
 import { blindIndex, encryptPrivateValue } from "@/lib/security/encryption";
 import {
   MAX_META_WEBHOOK_BYTES,
@@ -15,6 +15,27 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const PROVIDER = "META_WHATSAPP";
+
+async function writeWhatsAppAudit(
+  tx: Prisma.TransactionClient,
+  data: {
+    action: string;
+    entityType: string;
+    entityId: string;
+    summary: string;
+    metadata: Prisma.InputJsonValue;
+  },
+) {
+  await tx.$queryRaw`
+    SELECT bridge_private.write_whatsapp_audit(
+      ${data.action},
+      ${data.entityType},
+      ${data.entityId},
+      ${data.summary},
+      ${JSON.stringify(data.metadata)}::jsonb
+    )
+  `;
+}
 
 function unavailable() {
   return NextResponse.json({ error: "Webhook unavailable" }, { status: 503 });
@@ -52,7 +73,7 @@ function statusMutation(status: ReturnType<typeof parseMetaWebhook>["statuses"][
 }
 
 async function recordProcessingFailure(externalEventId: string, summary: Prisma.InputJsonValue) {
-  await trustedPrisma.$transaction(async (tx) => {
+  await runAsDatabaseWorker("whatsapp_webhook", async (tx) => {
     const event = await tx.webhookEvent.upsert({
       where: { provider_externalEventId: { provider: PROVIDER, externalEventId } },
       create: {
@@ -69,14 +90,12 @@ async function recordProcessingFailure(externalEventId: string, summary: Prisma.
         retryCount: { increment: 1 },
       },
     });
-    await tx.auditLog.create({
-      data: {
-        action: "WHATSAPP.WEBHOOK_FAILED",
-        entityType: "WebhookEvent",
-        entityId: event.id,
-        summary: "Verified WhatsApp webhook processing failed",
-        metadata: { externalEventId },
-      },
+    await writeWhatsAppAudit(tx, {
+      action: "WHATSAPP.WEBHOOK_FAILED",
+      entityType: "WebhookEvent",
+      entityId: event.id,
+      summary: "Verified WhatsApp webhook processing failed",
+      metadata: { externalEventId },
     });
   });
 }
@@ -111,7 +130,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await trustedPrisma.$transaction(async (tx) => {
+    const result = await runAsDatabaseWorker("whatsapp_webhook", async (tx) => {
       const existing = await tx.webhookEvent.findUnique({
         where: { provider_externalEventId: { provider: PROVIDER, externalEventId } },
         select: { processedAt: true },
@@ -177,14 +196,12 @@ export async function POST(request: Request) {
             occurredAt: message.occurredAt,
           },
         });
-        await tx.auditLog.create({
-          data: {
-            action: "WHATSAPP.MESSAGE_RECEIVED",
-            entityType: "WhatsAppMessage",
-            entityId: stored.id,
-            summary: "Verified inbound WhatsApp message stored",
-            metadata: { messageType: message.messageType, hasMediaReference: Boolean(message.mediaId) },
-          },
+        await writeWhatsAppAudit(tx, {
+          action: "WHATSAPP.MESSAGE_RECEIVED",
+          entityType: "WhatsAppMessage",
+          entityId: stored.id,
+          summary: "Verified inbound WhatsApp message stored",
+          metadata: { messageType: message.messageType, hasMediaReference: Boolean(message.mediaId) },
         });
       }
 
@@ -201,14 +218,12 @@ export async function POST(request: Request) {
         if (currentRank !== undefined && nextRank !== undefined && currentRank >= nextRank) continue;
 
         await tx.whatsAppMessage.update({ where: { id: stored.id }, data: statusMutation(status) });
-        await tx.auditLog.create({
-          data: {
-            action: "WHATSAPP.MESSAGE_STATUS_UPDATED",
-            entityType: "WhatsAppMessage",
-            entityId: stored.id,
-            summary: "WhatsApp delivery status updated",
-            metadata: { status: status.status, failureCode: status.failureCode },
-          },
+        await writeWhatsAppAudit(tx, {
+          action: "WHATSAPP.MESSAGE_STATUS_UPDATED",
+          entityType: "WhatsAppMessage",
+          entityId: stored.id,
+          summary: "WhatsApp delivery status updated",
+          metadata: { status: status.status, failureCode: status.failureCode },
         });
       }
 
@@ -216,24 +231,24 @@ export async function POST(request: Request) {
         where: { id: event.id },
         data: { processedAt: new Date(), failedAt: null, failureReason: null },
       });
-      await tx.auditLog.create({
-        data: {
-          action: "WHATSAPP.WEBHOOK_PROCESSED",
-          entityType: "WebhookEvent",
-          entityId: event.id,
-          summary: "Verified WhatsApp webhook processed",
-          metadata: { messageCount: parsed.messages.length, statusCount: parsed.statuses.length },
-        },
+      await writeWhatsAppAudit(tx, {
+        action: "WHATSAPP.WEBHOOK_PROCESSED",
+        entityType: "WebhookEvent",
+        entityId: event.id,
+        summary: "Verified WhatsApp webhook processed",
+        metadata: { messageCount: parsed.messages.length, statusCount: parsed.statuses.length },
       });
       return { duplicate: false };
     });
     return NextResponse.json({ received: true, duplicate: result.duplicate });
   } catch (cause) {
     if (cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === "P2002") {
-      const existing = await trustedPrisma.webhookEvent.findUnique({
-        where: { provider_externalEventId: { provider: PROVIDER, externalEventId } },
-        select: { processedAt: true },
-      });
+      const existing = await runAsDatabaseWorker("whatsapp_webhook", (tx) =>
+        tx.webhookEvent.findUnique({
+          where: { provider_externalEventId: { provider: PROVIDER, externalEventId } },
+          select: { processedAt: true },
+        }),
+      );
       if (existing?.processedAt) return NextResponse.json({ received: true, duplicate: true });
     }
     console.error("Verified WhatsApp webhook processing failed", cause);

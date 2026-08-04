@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { adminAssignmentSchema, companyProfileSchema, coverageAreaSchema, notificationPreferenceSchema } from "../lib/auth/validation";
+import { accreditationReviewSchema, accreditationUploadSchema, adminAssignmentSchema, companyProfileSchema, coverageAreaSchema, notificationPreferenceSchema, quotationSchema } from "../lib/auth/validation";
 
 describe("supplier portal validation", () => {
   it("normalises postcode coverage prefixes", () => {
@@ -30,8 +30,21 @@ describe("supplier portal validation", () => {
     expect(notificationPreferenceSchema.safeParse({ emailNewRequests: true, emailRequestReminders: true, emailQuotationUpdates: true, smsUrgentRequests: false, inAppEnabled: true, quietHoursStart: "19:00", quietHoursEnd: "07:00" }).success).toBe(true);
   });
 
+  it("requires complete quiet hours and preserves quotation validity through the selected day", () => {
+    expect(notificationPreferenceSchema.safeParse({ emailNewRequests: true, emailRequestReminders: true, emailQuotationUpdates: true, smsUrgentRequests: false, inAppEnabled: true, quietHoursStart: "19:00", quietHoursEnd: null }).success).toBe(false);
+    const quotation = quotationSchema.parse({ assignmentId: "cm00000000000000000000000", price: "1250.50", leadTimeDays: "14", validUntil: "2099-12-31" });
+    expect(quotation.validUntil?.toISOString()).toBe("2099-12-31T23:59:59.999Z");
+  });
+
   it("rejects malformed business hours", () => {
     const result = companyProfileSchema.safeParse({ legalName: "Northstar Steel Ltd", tradingName: "", companyNumber: "", vatNumber: "", websiteUrl: "", summary: "", contactEmail: "quotes@example.com", contactPhone: "+441215550184", addressLine1: "", addressLine2: "", city: "", county: "", postcode: "", categoryIds: [], businessHours: { monday: ["8am", "5pm"] } });
     expect(result.success).toBe(false);
+  });
+
+  it("validates accreditation dates and review reasons", () => {
+    expect(accreditationUploadSchema.safeParse({ type: "PUBLIC_LIABILITY_INSURANCE", displayName: "Public liability 2026", referenceNumber: "PL-2048", issuingBody: "Example Insurer", issuedAt: "2026-01-01", expiresAt: "2027-01-01" }).success).toBe(true);
+    expect(accreditationUploadSchema.safeParse({ type: "CERTIFICATION", displayName: "Expired order", referenceNumber: "", issuingBody: "", issuedAt: "2027-01-01", expiresAt: "2026-01-01" }).success).toBe(false);
+    expect(accreditationReviewSchema.safeParse({ status: "REJECTED", note: "" }).success).toBe(false);
+    expect(accreditationReviewSchema.safeParse({ status: "APPROVED" }).success).toBe(true);
   });
 });

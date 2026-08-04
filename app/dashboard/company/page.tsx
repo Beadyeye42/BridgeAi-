@@ -5,18 +5,26 @@ import {
   CompanyProfileForm,
   LogoUpload,
 } from "@/components/dashboard/management-forms";
+import { AccreditationManager } from "@/components/dashboard/accreditation-manager";
 
 export const dynamic = "force-dynamic";
 export default async function CompanyPage() {
   const { session, companyId } = await requireSupplierPage();
   const company = await prisma.supplierCompany.findUniqueOrThrow({
     where: { id: companyId },
-    include: { categories: true },
+    include: {
+      categories: true,
+      accreditations: {
+        include: { attachment: true },
+        orderBy: { createdAt: "desc" },
+      },
+    },
   });
   const categories = await prisma.productCategory.findMany({
     where: { active: true },
     orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
   });
+  const membership = session.user.memberships.find((item) => item.supplierCompanyId === companyId);
   const safeCompany = {
     legalName: company.legalName,
     tradingName: company.tradingName,
@@ -53,6 +61,25 @@ export default async function CompanyPage() {
           selectedCategoryIds={company.categories.map(
             (item) => item.productCategoryId,
           )}
+        />
+        <AccreditationManager
+          canManage={Boolean(membership && ["OWNER", "MANAGER"].includes(membership.role))}
+          accreditations={company.accreditations.map((item) => ({
+            id: item.id,
+            type: item.type,
+            displayName: item.displayName,
+            referenceNumber: item.referenceNumber,
+            issuingBody: item.issuingBody,
+            issuedAt: item.issuedAt?.toISOString() ?? null,
+            expiresAt: item.expiresAt?.toISOString() ?? null,
+            status: item.status,
+            reviewNote: item.reviewNote,
+            attachment: {
+              id: item.attachment.id,
+              fileName: item.attachment.fileName,
+              scanStatus: item.attachment.scanStatus,
+            },
+          }))}
         />
       </div>
     </PortalPage>
