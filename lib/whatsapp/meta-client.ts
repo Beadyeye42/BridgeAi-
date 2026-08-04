@@ -6,6 +6,13 @@ const sendResultSchema = z.object({
   messages: z.array(z.object({ id: z.string().min(1).max(512) })).min(1).max(5),
 });
 
+const metaApiErrorSchema = z.object({
+  error: z.object({
+    code: z.number().int().nonnegative().optional(),
+    error_subcode: z.number().int().nonnegative().optional(),
+  }).passthrough(),
+}).passthrough();
+
 const mediaMetadataSchema = z.object({
   url: z.string().url(),
   mime_type: z.string().min(1).max(255),
@@ -36,7 +43,26 @@ async function metaFetch(url: string, init?: RequestInit) {
     signal: AbortSignal.timeout(20_000),
     cache: "no-store",
   });
-  if (!response.ok) throw new Error(`META_HTTP_${response.status}`);
+  if (!response.ok) {
+    let providerCode: number | undefined;
+    let providerSubcode: number | undefined;
+    try {
+      const parsed = metaApiErrorSchema.safeParse(await response.json());
+      if (parsed.success) {
+        providerCode = parsed.data.error.code;
+        providerSubcode = parsed.data.error.error_subcode;
+      }
+    } catch {
+      // Meta occasionally returns an empty or non-JSON error response. Keep the
+      // stable HTTP-only code in that case and never persist the response body.
+    }
+    const code = [
+      `META_HTTP_${response.status}`,
+      providerCode === undefined ? null : `CODE_${providerCode}`,
+      providerSubcode === undefined ? null : `SUBCODE_${providerSubcode}`,
+    ].filter(Boolean).join("_");
+    throw new Error(code);
+  }
   return response;
 }
 
