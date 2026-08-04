@@ -2,6 +2,10 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const schema = readFileSync(new URL("../prisma/schema.prisma", import.meta.url), "utf8");
+const categorySeed = readFileSync(
+  new URL("../supabase/migrations/20260804205358_seed_initial_product_categories.sql", import.meta.url),
+  "utf8",
+);
 const requiredModels = ["User", "SupplierCompany", "SupplierTeamMembership", "SupplierAccreditation", "CustomerContact", "Conversation", "WhatsAppMessage", "WhatsAppJob", "Attachment", "QuoteRequest", "QuoteRequestItem", "SupplierAssignment", "SupplierQuotation", "CoverageArea", "ProductCategory", "Subscription", "Notification", "AuditLog"];
 
 describe("Prisma domain contract", () => {
@@ -16,5 +20,10 @@ describe("Prisma domain contract", () => {
     expect(schema).not.toContain("model AuthSession");
     expect(schema).not.toContain("model PasswordResetToken");
     expect(schema).not.toContain("passwordHash");
+  });
+  it("ships an idempotent audited starter category catalogue", () => {
+    expect(categorySeed).toContain("ON CONFLICT (slug) DO UPDATE");
+    expect(categorySeed).toContain("SYSTEM.PRODUCT_CATEGORIES_SEEDED");
+    expect(categorySeed).toContain("other-building-products");
   });
 });
