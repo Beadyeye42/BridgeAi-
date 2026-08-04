@@ -1,9 +1,10 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { Prisma, type SubscriptionStatus } from "@prisma/client";
 import type Stripe from "stripe";
 import { trustedPrisma } from "@/lib/db";
 import { getStripe, stripeWebhookSecret } from "@/lib/stripe/server";
 import { unlockPaidQuotation } from "@/lib/quotes/selection";
+import { enqueueContactUnlock, processWhatsAppJobs } from "@/lib/whatsapp/processor";
 
 export const runtime = "nodejs";
 const PROVIDER = "STRIPE";
@@ -72,6 +73,14 @@ async function processEvent(event: Stripe.Event) {
     const paidAt = new Date(event.created * 1000);
     try {
       await unlockPaidQuotation({ successFeeId, paymentIntentId, paidAt });
+      after(async () => {
+        try {
+          const job = await enqueueContactUnlock(successFeeId);
+          if (job) await processWhatsAppJobs({ limit: 5 });
+        } catch {
+          console.error("Customer contact-unlock scheduling failed", { successFeeId });
+        }
+      });
     } catch (error) {
       if (!(error instanceof Error) || error.message !== "SUCCESS_FEE_PAID_AFTER_DEADLINE") throw error;
       const fee = await trustedPrisma.supplierSuccessFee.update({

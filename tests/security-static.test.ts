@@ -140,6 +140,35 @@ describe("security foundation static controls", () => {
     expect(customer).not.toMatch(/\n\s+displayName\s+String/);
   });
 
+  it("keeps WhatsApp AI processing durable, consent-gated and inaccessible to suppliers", () => {
+    const migration = read("supabase/migrations/20260804195726_whatsapp_ai_concierge.sql");
+    expect(migration).toContain('ALTER TABLE bridge_ai."WhatsAppJob" FORCE ROW LEVEL SECURITY');
+    expect(migration).toContain("whatsapp_webhook_job_insert");
+    expect(migration).toContain("whatsapp_ai_job_select");
+    expect(migration).not.toMatch(/CREATE POLICY .*supplier.*WhatsAppJob/i);
+    const processor = read("lib/whatsapp/processor.ts");
+    expect(processor).toContain("if (!conversation.aiConsentAt)");
+    expect(processor).toContain('stage === "AWAITING_CONFIRMATION" && isConfirmation(text)');
+    expect(processor).toContain('scanStatus: "PENDING"');
+    expect(processor).toContain("take: 5");
+    expect(processor).toContain("24 * 60 * 60_000");
+    expect(processor).toContain("META_QUOTE_TEMPLATE_REQUIRED");
+    expect(processor).toContain("META_CONTACT_TEMPLATE_REQUIRED");
+    expect(processor).toContain("CONTACT_UNLOCK_NOT_AUTHORISED");
+    expect(read("lib/whatsapp/meta-client.ts")).toContain('type: "template"');
+    expect(processor).not.toContain("supplierCompany.tradingName");
+    const ai = read("lib/ai/quote-intake.ts");
+    expect(ai).toContain("store: false");
+    expect(ai).toContain('type: "json_schema"');
+    expect(ai).toContain("safety_identifier");
+    const policyIndex = read("supabase/migrations/20260804195834_whatsapp_job_policy_and_index.sql");
+    expect(policyIndex).toContain("whatsapp_job_message_idx");
+    expect(policyIndex).toContain("whatsapp_job_insert");
+    const unlockWorker = read("supabase/migrations/20260804200717_whatsapp_contact_unlock_worker.sql");
+    expect(unlockWorker).toContain("whatsapp_ai_contact_grant_update");
+    expect(unlockWorker).toContain("SEND_CONTACT_UNLOCK");
+  });
+
   it("uses the shared request deadline and never accepts more than five suppliers", () => {
     const validation = read("lib/auth/validation.ts");
     const assignmentRoute = read("app/api/admin/assignments/route.ts");

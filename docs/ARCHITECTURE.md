@@ -6,6 +6,10 @@
 flowchart LR
   Customer["Customer · WhatsApp only"] --> Meta["Meta WhatsApp Cloud API"]
   Meta --> Intake["Verified webhook and intake"]
+  Intake --> Queue["RLS-protected WhatsApp jobs"]
+  Queue --> AI["OpenAI structured quote intake"]
+  Queue --> Meta
+  Queue --> Storage["Private Supabase Storage"]
   Supplier["Supplier browser"] --> Portal["Next.js portal on Vercel"]
   Admin["Administrator browser"] --> Portal
   Portal --> Auth["Supabase Auth"]
@@ -39,7 +43,7 @@ Supplier registration and invitation acceptance use narrow `bridge_private` data
 
 Supabase SQL migrations under `supabase/migrations` are the sole DDL history. Prisma describes and queries the resulting schema but does not own a second migration stream.
 
-All 27 `bridge_ai` tables have RLS enabled and forced. The application database role inherits the Supabase `authenticated` role but does not bypass RLS. For each Prisma operation, the data layer starts a transaction and installs the UUID returned by `getUser()` into transaction-local `request.jwt.claim.sub` and the `authenticated` role claim. Policies then evaluate the same protected identity helpers used by direct Supabase requests. Bootstrap access uses a separate, narrowly scoped function rather than a general RLS bypass.
+All 28 `bridge_ai` tables have RLS enabled and forced. The application database role inherits the Supabase `authenticated` role but does not bypass RLS. For each Prisma operation, the data layer starts a transaction and installs the UUID returned by `getUser()` into transaction-local `request.jwt.claim.sub` and the `authenticated` role claim. Policies then evaluate the same protected identity helpers used by direct Supabase requests. Bootstrap access uses a separate, narrowly scoped function rather than a general RLS bypass. WhatsApp webhook and AI workers set distinct transaction-local worker names; policies grant each only the rows and operations required by that worker.
 
 The tenant chain is:
 
@@ -76,7 +80,15 @@ Customer phone, email and message values use AES-256-GCM with a ciphertext versi
 
 The Meta webhook boundary validates the verification token for subscription setup and checks `X-Hub-Signature-256` against the exact request bytes before JSON parsing. Requests are size/operation bounded. A SHA-256 body digest and Meta message IDs provide replay protection. Contact profile names, phone values and supported message content are encrypted inside the same transaction that creates append-only audit records. `WebhookEvent.payload` contains only a PII-free operational summary; raw webhook bodies are not retained. Failed processing is recorded with a coarse internal code so Meta can retry without sensitive error text entering logs or tables.
 
-The `bridge-ai-private` Storage bucket is private and migration-provisioned. Policies require object keys beneath `companies/<company-id>/...` and verify active membership or protected administrator status. Database attachment metadata holds ownership, MIME/size/checksum and malware scan state. Downloads require authorisation and a `CLEAN` scan state, then receive a short-lived signed URL. A production scanner worker must be implemented before untrusted uploads are generally enabled.
+The `bridge-ai-private` Storage bucket is private and migration-provisioned. Supplier-owned objects use keys beneath `companies/<company-id>/...` and policies verify active membership or protected administrator status. The server-only WhatsApp worker writes customer media beneath `customers/<conversation-id>/...`; customers have no Storage credential and supplier policies cannot traverse that prefix. Database attachment metadata holds ownership, MIME/size/checksum and malware scan state. Downloads require authorisation and a `CLEAN` scan state, then receive a short-lived signed URL. A production scanner worker must be implemented before customer uploads can be displayed or downloaded.
+
+## WhatsApp AI workflow
+
+The signed Meta webhook performs no AI or media network calls. In one short transaction it encrypts the customer identity/content, records a PII-free webhook summary, creates a `WhatsAppJob`, writes its audit event and returns to Meta. Next.js `after()` processes the queue immediately; a bearer-protected recovery endpoint can pick up delayed/stale jobs. Claims use `FOR UPDATE SKIP LOCKED`, bounded attempts and an administrator-visible system event on terminal failure.
+
+Before AI processing, Bridge AI identifies itself as automated, links the privacy notice and requires the customer to reply `CONTINUE`. Only message text required for the quote is sent to OpenAI; phone numbers and profile names are omitted. Responses API Structured Outputs produce a schema-validated draft with `store: false` and a blind identifier for abuse controls. Drafts remain encrypted in PostgreSQL. The model can ask questions, but only deterministic server code accepts the exact `CONFIRM` command, validates the UK postcode/category/items and creates the request.
+
+Meta media downloads are restricted to HTTPS Meta-owned hosts and an allow-list of JPG, PNG and PDF types with streaming size limits and checksum verification. Stored objects remain `PENDING` and are represented to the AI only as unavailable attachments. Submitted quotes create idempotent summary jobs. The customer sees at most five anonymous price/lead-time rows and must reply `ACCEPT <number>`; the server re-queries selectable quotations before recording the choice. After Stripe verifies the success fee, a separate idempotent job sends the selected supplier’s business contact details and records the customer notification on the contact grant. Free-form sends are used only within 24 hours of the latest inbound message. Outside that customer-service window quote and contact updates use separate configured, approved utility templates; a missing template fails visibly and creates a system event.
 
 Supplier accreditation records reference company-owned private attachments. Only company owners and managers can add pending evidence or remove pending/rejected evidence. Suppliers have no update policy for review fields. A protected administrator can approve a document only after its attachment is marked `CLEAN`, or reject it with a supplier-visible reason; both paths append an audit record in the same transaction.
 

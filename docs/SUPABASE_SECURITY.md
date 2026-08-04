@@ -10,8 +10,8 @@ The `20260802183212_security_foundation.sql` migration establishes the current s
 
 ## RLS and privileges
 
-- 27 of 27 Bridge AI tables have `ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY`.
-- The current schema installs 63 application policies plus four `storage.objects` policies across supplier, administrator, reference-data, notification, audit and file paths.
+- 28 of 28 Bridge AI tables have `ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY`.
+- The current schema adds a private `WhatsAppJob` queue and separate policies for verified webhook ingestion and AI processing, in addition to supplier, administrator, reference-data, notification, audit and file paths.
 - `anon` has no application-table privileges. The application role is subject to policies as `authenticated` and has no `BYPASSRLS` attribute.
 - Policy helper functions live in the non-exposed `bridge_private` schema, set a fixed search path and are not generally executable.
 - Supplier access requires an active membership and the relevant company/request relationship. Suspension or removal immediately makes policies fail.
@@ -21,7 +21,7 @@ The Next.js data layer installs only an ID already verified by Supabase `getUser
 
 ## Storage
 
-The `bridge-ai-private` bucket is non-public and has size/MIME restrictions. Objects use `companies/<company-uuid>/...` paths. Storage policies validate the path company against active membership or protected administrator status for each operation. The application does not create buckets lazily and does not use a service key for ordinary supplier downloads. Supplier logos use a deterministic object key for upsert, immutable metadata replacement, an explicit logo-only delete policy and a `CLEAN` scanner-state gate before download.
+The `bridge-ai-private` bucket is non-public and has size/MIME restrictions. Supplier objects use `companies/<company-uuid>/...` paths. Storage policies validate the path company against active membership or protected administrator status for each operation. Customer WhatsApp media uses a separate `customers/<conversation-id>/...` server-worker prefix that suppliers cannot access. The application does not create buckets lazily and does not use a service key for ordinary supplier downloads. Supplier logos use a deterministic object key for upsert, immutable metadata replacement, an explicit logo-only delete policy and a `CLEAN` scanner-state gate before download.
 
 ## Administrator provisioning
 
@@ -55,6 +55,10 @@ New blind indexes use HMAC-SHA-256 with a dedicated server-only key. Migration `
 `tests/sql/security_integration.sql` is an adversarial transaction/rollback suite. It verifies cross-company read/write denial, Storage isolation, protected membership roles, append-only audit data, supplier denial from trusted webhook/customer/message tables, protected admin bypass, immediate suspension, case-insensitive uniqueness, primary-membership and numeric constraints, distribution limits, attachment ownership, consistent assignment/quotation state, payment-transition protection, success-fee tenant isolation, contact-grant isolation, and revoked execution on legacy privileged functions.
 
 The unit/static suite additionally rejects custom password/session implementations, client-side secret references, missing RLS/Storage/audit migration primitives and Prisma SQL migration files.
+
+Migration `20260804195726_whatsapp_ai_concierge.sql` adds the forced-RLS job queue, encrypted AI conversation state and encrypted Meta media references. Portal roles receive no queue policy. The webhook may only insert `PROCESS_INBOUND` jobs; the AI worker has separately named, session-user-bound policies for the limited customer/request/message rows it needs. Terminal failures create a sanitized `SystemEvent`, and the narrow security-definer audit writer still accepts only `WHATSAPP.*` actions from the two server worker contexts. Migration `20260804195834_whatsapp_job_policy_and_index.sql` adds the covering inbound-message index and consolidates queue-insert checks into one worker-aware policy.
+
+Migrations `20260804200707_whatsapp_contact_unlock_enum.sql` and `20260804200717_whatsapp_contact_unlock_worker.sql` add the post-payment customer notification job in two commits so PostgreSQL never uses a new enum value before it is committed. The AI worker receives read access to the selected supplier/paid fee and read-update access to the matching contact grant only under its server-bound worker context; normal portal policy behaviour is unchanged.
 
 Coverage migration `20260803210001_coverage_matching_invariants.sql` requires radius rules to carry bounded server-resolved coordinates, prevents mixed rule shapes, bounds mileage to 1–500 and allows only one active nationwide rule per company. Existing tenant-scoped CoverageArea policies remain in force. The SQL rollback suite additionally proves cross-company coverage insertion is denied, malformed rule shapes are rejected and duplicate nationwide rules cannot become active.
 

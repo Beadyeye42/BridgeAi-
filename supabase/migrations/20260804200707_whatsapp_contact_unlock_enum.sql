@@ -1,0 +1,1 @@
+ALTER TYPE bridge_ai."WhatsAppJobType" ADD VALUE 'SEND_CONTACT_UNLOCK';

@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentSession, getPrimarySupplierCompanyId } from "@/lib/auth/session";
 import { quotationSchema, validationError } from "@/lib/auth/validation";
 import { writeAuditLog } from "@/lib/audit";
+import { enqueueQuoteSummary, processWhatsAppJobs } from "@/lib/whatsapp/processor";
 
 export const runtime = "nodejs";
 
@@ -29,6 +30,14 @@ export async function POST(request: Request) {
     await tx.supplierAssignment.update({ where: { id: assignment.id }, data: { status: "QUOTED", respondedAt: new Date() } });
     await writeAuditLog({ actorUserId: session.userId, supplierCompanyId: companyId, action: "QUOTATION.SUBMITTED", entityType: "SupplierQuotation", entityId: saved.id, summary: "Supplier quotation submitted", metadata: { price: parsed.data.price, leadTimeDays: parsed.data.leadTimeDays }, request }, tx);
     return saved;
+  });
+  after(async () => {
+    try {
+      const job = await enqueueQuoteSummary(quotation.id);
+      if (job) await processWhatsAppJobs({ limit: 5 });
+    } catch {
+      console.error("Customer quote-summary scheduling failed", { quotationId: quotation.id });
+    }
   });
   return NextResponse.json({ ok: true, quotationId: quotation.id }, { status: 201 });
 }

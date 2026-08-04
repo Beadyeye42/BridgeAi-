@@ -33,3 +33,56 @@ export function metaWebhookCredentials() {
   }
   return { verifyToken, appSecret };
 }
+
+export function metaMessagingCredentials() {
+  const accessToken = process.env.META_WHATSAPP_ACCESS_TOKEN?.trim();
+  const phoneNumberId = process.env.META_WHATSAPP_PHONE_NUMBER_ID?.trim();
+  const graphApiVersion = process.env.META_GRAPH_API_VERSION?.trim() || "v26.0";
+  if (!accessToken || !phoneNumberId) {
+    throw new Error("Meta WhatsApp messaging credentials are not configured");
+  }
+  if (!/^\d{5,32}$/.test(phoneNumberId)) throw new Error("META_WHATSAPP_PHONE_NUMBER_ID is invalid");
+  if (!/^v\d+\.\d+$/.test(graphApiVersion)) throw new Error("META_GRAPH_API_VERSION is invalid");
+  return { accessToken, phoneNumberId, graphApiVersion };
+}
+
+export function metaQuoteTemplate() {
+  const name = process.env.META_WHATSAPP_QUOTE_TEMPLATE_NAME?.trim();
+  if (!name) return null;
+  if (!/^[a-z0-9_]{1,512}$/.test(name)) throw new Error("META_WHATSAPP_QUOTE_TEMPLATE_NAME is invalid");
+  const language = process.env.META_WHATSAPP_TEMPLATE_LANGUAGE?.trim() || "en_GB";
+  if (!/^[a-z]{2}(?:_[A-Z]{2})?$/.test(language)) throw new Error("META_WHATSAPP_TEMPLATE_LANGUAGE is invalid");
+  return { name, language };
+}
+
+export function metaContactTemplate() {
+  const name = process.env.META_WHATSAPP_CONTACT_TEMPLATE_NAME?.trim();
+  if (!name) return null;
+  if (!/^[a-z0-9_]{1,512}$/.test(name)) throw new Error("META_WHATSAPP_CONTACT_TEMPLATE_NAME is invalid");
+  const language = process.env.META_WHATSAPP_TEMPLATE_LANGUAGE?.trim() || "en_GB";
+  if (!/^[a-z]{2}(?:_[A-Z]{2})?$/.test(language)) throw new Error("META_WHATSAPP_TEMPLATE_LANGUAGE is invalid");
+  return { name, language };
+}
+
+export function openAiCredentials() {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) throw new Error("OpenAI API credentials are not configured");
+  return { apiKey, model: process.env.OPENAI_MODEL?.trim() || "gpt-5.6-terra" };
+}
+
+function boundedInteger(name: string, fallback: number, minimum: number, maximum: number) {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < minimum || value > maximum) {
+    throw new Error(`${name} must be an integer between ${minimum} and ${maximum}`);
+  }
+  return value;
+}
+
+export function whatsappConciergeConfig() {
+  return {
+    quoteResponseHours: boundedInteger("QUOTE_RESPONSE_HOURS", 24, 1, 336),
+    distributionLimit: boundedInteger("DEFAULT_QUOTE_DISTRIBUTION_LIMIT", 5, 1, 5),
+  };
+}
