@@ -102,6 +102,21 @@ describe("security foundation static controls", () => {
     expect(review.indexOf('scanStatus !== "CLEAN"')).toBeLessThan(review.indexOf("supplierAccreditation.update"));
   });
 
+  it("limits legacy customer image release to verified administrators and WhatsApp objects", () => {
+    const source = read("app/api/admin/attachments/[id]/sanitize/route.ts");
+    const guard = source.indexOf("await requireAdminApi()");
+    const databaseRead = source.indexOf("prisma.attachment.findUnique");
+    const storageRead = source.indexOf("bucket.download");
+    expect(guard).toBeGreaterThan(-1);
+    expect(databaseRead).toBeGreaterThan(guard);
+    expect(storageRead).toBeGreaterThan(databaseRead);
+    expect(source).toContain("attachment.whatsappMessageId");
+    expect(source).toContain('attachment.storageKey.startsWith("customers/")');
+    expect(source).toContain('scanStatus: "CLEAN"');
+    expect(source).toContain('action: "ADMIN.CUSTOMER_IMAGE_SANITIZED"');
+    expect(source).not.toContain("requireSupplierApi");
+  });
+
   it("does not retain a parallel Prisma migration history", () => {
     expect(globSync("prisma/migrations/**/*.sql")).toHaveLength(0);
     expect(globSync("supabase/migrations/*.sql").length).toBeGreaterThanOrEqual(
@@ -152,7 +167,9 @@ describe("security foundation static controls", () => {
     const processor = read("lib/whatsapp/processor.ts");
     expect(processor).toContain("if (!conversation.aiConsentAt)");
     expect(processor).toContain('stage === "AWAITING_CONFIRMATION" && isConfirmation(text)');
-    expect(processor).toContain('scanStatus: "PENDING"');
+    expect(processor).toContain("sanitizeCustomerImage");
+    expect(processor).toContain('scanStatus: "CLEAN"');
+    expect(processor).toContain('scanStatus: "PENDING" as const');
     expect(processor).toContain("take: 5");
     const messagingPolicy = read("lib/whatsapp/policy.ts");
     expect(messagingPolicy).toContain("24 * 60 * 60_000");
