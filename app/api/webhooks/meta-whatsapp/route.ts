@@ -11,6 +11,7 @@ import {
   verifyMetaToken,
 } from "@/lib/whatsapp/webhook";
 import { processWhatsAppJobs } from "@/lib/whatsapp/processor";
+import { writeWhatsAppSystemEvent } from "@/lib/whatsapp/system-events";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -91,14 +92,11 @@ async function recordProcessingFailure(externalEventId: string, summary: Prisma.
         retryCount: { increment: 1 },
       },
     });
-    await tx.systemEvent.create({
-      data: {
-        severity: "ERROR",
-        source: "whatsapp_webhook",
-        code: "META_WEBHOOK_PROCESSING_FAILED",
-        message: "A verified Meta WhatsApp webhook could not be processed and requires provider redelivery.",
-        context: { webhookEventId: event.id, externalEventId },
-      },
+    await writeWhatsAppSystemEvent(tx, "whatsapp_webhook", {
+      severity: "ERROR",
+      code: "META_WEBHOOK_PROCESSING_FAILED",
+      message: "A verified Meta WhatsApp webhook could not be processed and requires provider redelivery.",
+      context: { webhookEventId: event.id, externalEventId },
     });
     await writeWhatsAppAudit(tx, {
       action: "WHATSAPP.WEBHOOK_FAILED",

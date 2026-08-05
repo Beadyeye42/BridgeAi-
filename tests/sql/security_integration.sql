@@ -225,6 +225,21 @@ BEGIN
   ) VALUES (
     'security_whatsapp_job','PROCESS_INBOUND','PENDING','security-job','security_conversation','security_message',0,now(),now(),now()
   );
+  INSERT INTO bridge_ai."WhatsAppJob" (
+    id,type,status,"idempotencyKey","conversationId",attempts,"availableAt","createdAt","updatedAt"
+  ) VALUES (
+    'security_fallback_job','SEND_INTAKE_FALLBACK','PENDING','security-fallback-job','security_conversation',0,now(),now(),now()
+  );
+  BEGIN
+    UPDATE bridge_ai."Conversation" SET "aiLastQuestionKey"='NOT_A_REAL_QUESTION' WHERE id='security_conversation';
+    RAISE EXCEPTION 'invalid WhatsApp AI question state accepted';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+  BEGIN
+    UPDATE bridge_ai."Conversation" SET "aiUnproductiveTurns"=-1 WHERE id='security_conversation';
+    RAISE EXCEPTION 'negative WhatsApp AI loop count accepted';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
   UPDATE bridge_ai.platform_administrators SET active=true WHERE "userId"=user_a;
   EXECUTE 'SET LOCAL ROLE authenticated';
   PERFORM set_config('request.jwt.claim.sub', user_a::text, true);
@@ -251,6 +266,20 @@ BEGIN
     'security_request','SECURITY-1','security_customer','security_category','Test','Test','B1','GBP','OPEN',
     1,request_deadline,now(),now()
   );
+  UPDATE bridge_ai."QuoteRequest"
+  SET "customerConfirmationMessageId"='security_message'
+  WHERE id='security_request';
+  BEGIN
+    INSERT INTO bridge_ai."QuoteRequest" (
+      id,reference,"customerConfirmationMessageId","customerContactId","categoryId",title,summary,"deliveryPostcode",currency,status,
+      "distributionLimit","responseDueAt","createdAt","updatedAt"
+    ) VALUES (
+      'duplicate_confirmation','SECURITY-DUPLICATE','security_message','security_customer','security_category','Duplicate','Duplicate','B1','GBP','OPEN',
+      1,request_deadline,now(),now()
+    );
+    RAISE EXCEPTION 'one WhatsApp confirmation published more than one quote request';
+  EXCEPTION WHEN unique_violation THEN NULL;
+  END;
   INSERT INTO bridge_ai."SupplierAssignment" (
     id,"quoteRequestId","supplierCompanyId",status,"assignedAt","expiresAt"
   ) VALUES ('security_assignment','security_request','security_company_a','PENDING',now(),request_deadline);
@@ -261,8 +290,8 @@ BEGIN
   IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier selected encrypted customer identity'; END IF;
   SELECT count(*) INTO visible_count FROM bridge_ai."WhatsAppMessage" WHERE id='security_message';
   IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier selected private WhatsApp message'; END IF;
-  SELECT count(*) INTO visible_count FROM bridge_ai."WhatsAppJob" WHERE id='security_whatsapp_job';
-  IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier selected private WhatsApp processing state'; END IF;
+  SELECT count(*) INTO visible_count FROM bridge_ai."WhatsAppJob" WHERE "conversationId"='security_conversation';
+  IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier selected private WhatsApp processing or fallback state'; END IF;
   UPDATE bridge_ai."Conversation"
   SET "aiSessionStartedAt" = now()
   WHERE id='security_conversation';
@@ -428,7 +457,9 @@ BEGIN
      OR has_function_privilege('authenticated','public.handle_new_user()','EXECUTE')
      OR has_function_privilege('anon','public.sync_request_quote_count()','EXECUTE')
      OR has_function_privilege('authenticated','bridge_private.next_supplier_response_start(timestamptz)','EXECUTE')
-     OR has_function_privilege('authenticated','bridge_private.add_supplier_response_hours(timestamptz,integer)','EXECUTE') THEN
+     OR has_function_privilege('authenticated','bridge_private.add_supplier_response_hours(timestamptz,integer)','EXECUTE')
+     OR has_function_privilege('authenticated','bridge_private.write_whatsapp_system_event(bridge_ai."SystemEventSeverity",text,text,text,jsonb)','EXECUTE')
+     OR NOT has_function_privilege('bridge_ai_app','bridge_private.write_whatsapp_system_event(bridge_ai."SystemEventSeverity",text,text,text,jsonb)','EXECUTE') THEN
     RAISE EXCEPTION 'legacy privileged functions remain executable';
   END IF;
 END

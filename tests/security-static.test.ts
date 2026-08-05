@@ -159,6 +159,10 @@ describe("security foundation static controls", () => {
     expect(processor).toContain("quote-summary:${quotation.quoteRequestId}:first");
     expect(processor).toContain("META_QUOTE_TEMPLATE_REQUIRED");
     expect(processor).toContain("META_CONTACT_TEMPLATE_REQUIRED");
+    expect(processor).toContain('type: "SEND_INTAKE_FALLBACK"');
+    expect(processor).toContain("customerConfirmationMessageId");
+    expect(processor).toContain('code: "CUSTOMER_INTAKE_STALLED"');
+    expect(processor).toContain("writeWhatsAppSystemEvent");
     expect(processor).toContain("CONTACT_UNLOCK_NOT_AUTHORISED");
     expect(processor).toContain('action: "WHATSAPP.NEW_QUOTE_STARTED"');
     expect(processor).toContain("message.occurredAt >= refreshed.conversation!.aiSessionStartedAt");
@@ -172,6 +176,16 @@ describe("security foundation static controls", () => {
     expect(ai).toContain("store: false");
     expect(ai).toContain('type: "json_schema"');
     expect(ai).toContain("safety_identifier");
+    expect(ai).toContain("nextQuestionKey");
+    const reliability = read("supabase/migrations/20260805102631_whatsapp_conversation_reliability_constraints.sql");
+    expect(reliability).toContain("conversation_ai_question_key_valid");
+    expect(reliability).toContain('"customerConfirmationMessageId"');
+    expect(reliability).toContain("SEND_INTAKE_FALLBACK");
+    const systemEventWriter = read("supabase/migrations/20260805103603_whatsapp_system_event_writer.sql");
+    expect(systemEventWriter).toContain("session_user <> 'bridge_ai_app'");
+    expect(systemEventWriter).toContain("event_source <> worker_name");
+    expect(systemEventWriter).toContain("SET row_security = 'off'");
+    expect(systemEventWriter).toContain("TO bridge_ai_app");
     const attachmentAi = read("lib/ai/attachment-intake.ts");
     expect(attachmentAi).toContain("store: false");
     expect(attachmentAi).toContain('type: "input_file"');

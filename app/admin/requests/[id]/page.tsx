@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { Download, FileText, MessageSquareText, Paperclip, ShieldCheck } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { requireAdminPage } from "@/lib/auth/guards";
 import { AdminHeading } from "@/components/admin/admin-shell";
@@ -10,10 +11,54 @@ export default async function AdminRequestPage({ params }: { params: Promise<{ i
   const { id } = await params;
   const request = await prisma.quoteRequest.findUnique({
     where: { id },
-    include: { category: true, assignments: { include: { supplierCompany: true, quotation: { include: { successFee: true } } } }, items: true },
+    include: {
+      category: true,
+      attachments: { orderBy: { createdAt: "asc" } },
+      assignments: {
+        include: { supplierCompany: true, quotation: { include: { successFee: true } } },
+      },
+      items: { orderBy: [{ displayOrder: "asc" }, { createdAt: "asc" }] },
+    },
   });
   if (!request) notFound();
   const resolution = await resolveDeliveryLocation(request);
   const suppliers = await findSupplierMatches(prisma, request, resolution.location);
-  return <><AdminHeading eyebrow={request.reference} title={request.title} description={`${request.category.name} · delivery ${request.deliveryPostcode}`}/><div className="management-grid"><section className="panel form-section"><div className="section-heading"><div><p className="eyebrow">Supplier responses</p><h2>Distribution</h2></div></div><div className="entity-list">{request.assignments.length ? request.assignments.map((assignment)=><article className="entity-row" key={assignment.id}><div><b>{assignment.supplierCompany.tradingName??assignment.supplierCompany.legalName}</b><small>Assigned {assignment.assignedAt.toLocaleString("en-GB")} · responds by {assignment.expiresAt.toLocaleString("en-GB")}</small>{assignment.quotation?.status==="SUBMITTED"&&<RecordCustomerSelection quotationId={assignment.quotation.id}/>} {assignment.quotation?.successFee&&<small>£25 fee: {assignment.quotation.successFee.status} · due {assignment.quotation.successFee.paymentDueAt.toLocaleString("en-GB")}</small>}</div><span className={`status-pill ${(assignment.quotation?.status??assignment.status).toLowerCase()}`}>{assignment.quotation?.status??assignment.status}</span></article>) : <div className="empty-state">No suppliers assigned.</div>}</div></section><section className="panel form-section"><div className="section-heading"><div><p className="eyebrow">Category and delivery matches</p><h2>Assign suppliers</h2></div></div>{resolution.warning&&<div className="honesty-note">{resolution.warning} Postcode-area and nationwide rules are still checked.</div>}<AssignmentForm requestId={request.id} distributionLimit={request.distributionLimit} currentCount={request.assignments.length} responseDueAt={request.responseDueAt.toLocaleString("en-GB",{timeZone:"Europe/London"})} suppliers={suppliers.map((supplier)=>({id:supplier.id,name:supplier.name,postcode:supplier.postcode,matchDescription:supplier.match.description}))}/></section></div></>;
+  return <>
+    <AdminHeading
+      eyebrow={request.reference}
+      title={request.title}
+      description={`${request.category.name} · delivery ${request.deliveryPostcode}`}
+    />
+    <div className="management-grid">
+      <section className="panel request-section">
+        <div className="section-title"><MessageSquareText size={18}/><div><p className="eyebrow">{request.customerConfirmationMessageId ? "Confirmed through WhatsApp" : "Portal request"}</p><h2>Customer brief</h2></div></div>
+        <p className="request-summary">{request.summary}</p>
+        <div className="detail-list">
+          <div><dt>Budget</dt><dd>{request.customerBudget === null ? "Not supplied" : new Intl.NumberFormat("en-GB", { style: "currency", currency: request.currency }).format(Number(request.customerBudget))}</dd></div>
+          <div><dt>Published</dt><dd>{request.publishedAt?.toLocaleString("en-GB") ?? "Not published"}</dd></div>
+          <div><dt>Supplier deadline</dt><dd>{request.responseDueAt.toLocaleString("en-GB", { timeZone: "Europe/London" })}</dd></div>
+        </div>
+      </section>
+      <section className="panel request-section">
+        <div className="section-title"><FileText size={18}/><div><p className="eyebrow">{request.items.length} line items</p><h2>Requested items</h2></div></div>
+        <div className="items-table">{request.items.map((item, index) => <div className="item-row" key={item.id}><span className="item-number">{String(index + 1).padStart(2, "0")}</span><div><b>{item.description}</b><p>{item.specification || "No further specification supplied"}</p></div><strong>{Number(item.quantity)} {item.unit}</strong></div>)}</div>
+      </section>
+      <section className="panel request-section">
+        <div className="section-title"><Paperclip size={18}/><div><p className="eyebrow">{request.attachments.length} files</p><h2>Customer attachments</h2></div></div>
+        <div className="attachment-grid">{request.attachments.length ? request.attachments.map((file) => file.scanStatus === "CLEAN"
+          ? <a className="attachment-file" href={`/api/attachments/${file.id}/download`} key={file.id}><span><FileText size={19}/></span><div><b>{file.fileName}</b><small>{file.mimeType} · {Math.ceil(file.byteSize / 1024)} KB</small></div><Download size={16}/></a>
+          : <div className="attachment-file locked" key={file.id}><ShieldCheck size={18}/><div><b>{file.fileName}</b><small>Security check: {file.scanStatus.toLowerCase()}</small></div></div>)
+          : <div className="empty-state">No files were supplied with this enquiry.</div>}</div>
+      </section>
+      <section className="panel form-section">
+        <div className="section-heading"><div><p className="eyebrow">Supplier responses</p><h2>Distribution</h2></div></div>
+        <div className="entity-list">{request.assignments.length ? request.assignments.map((assignment) => <article className="entity-row" key={assignment.id}><div><b>{assignment.supplierCompany.tradingName ?? assignment.supplierCompany.legalName}</b><small>Assigned {assignment.assignedAt.toLocaleString("en-GB")} · responds by {assignment.expiresAt.toLocaleString("en-GB")}</small>{assignment.quotation?.status === "SUBMITTED" && <RecordCustomerSelection quotationId={assignment.quotation.id}/>} {assignment.quotation?.successFee && <small>£25 fee: {assignment.quotation.successFee.status} · due {assignment.quotation.successFee.paymentDueAt.toLocaleString("en-GB")}</small>}</div><span className={`status-pill ${(assignment.quotation?.status ?? assignment.status).toLowerCase()}`}>{assignment.quotation?.status ?? assignment.status}</span></article>) : <div className="empty-state">No suppliers assigned.</div>}</div>
+      </section>
+      <section className="panel form-section">
+        <div className="section-heading"><div><p className="eyebrow">Category and delivery matches</p><h2>Assign suppliers</h2></div></div>
+        {resolution.warning && <div className="honesty-note">{resolution.warning} Postcode-area and nationwide rules are still checked.</div>}
+        <AssignmentForm requestId={request.id} distributionLimit={request.distributionLimit} currentCount={request.assignments.length} responseDueAt={request.responseDueAt.toLocaleString("en-GB", { timeZone: "Europe/London" })} suppliers={suppliers.map((supplier) => ({ id: supplier.id, name: supplier.name, postcode: supplier.postcode, matchDescription: supplier.match.description }))}/>
+      </section>
+    </div>
+  </>;
 }
