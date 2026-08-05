@@ -433,6 +433,7 @@ model Conversation {
   lastMessageAt          DateTime?
   aiStage                AiConversationStage @default(CONSENT_REQUIRED)
   aiConsentAt            DateTime?
+  aiSessionStartedAt     DateTime            @default(now())
   aiDraftEncrypted       Bytes?
   closedAt               DateTime?
   createdAt              DateTime            @default(now())
@@ -473,30 +474,30 @@ model WhatsAppMessage {
 }
 
 model Attachment {
-  id                String                 @id @default(cuid())
-  kind              AttachmentKind
-  fileName          String
-  mimeType          String
-  byteSize          Int
-  storageKey        String                 @unique
-  sha256            String
-  scanStatus        ScanStatus             @default(PENDING)
+  id                 String                 @id @default(cuid())
+  kind               AttachmentKind
+  fileName           String
+  mimeType           String
+  byteSize           Int
+  storageKey         String                 @unique
+  sha256             String
+  scanStatus         ScanStatus             @default(PENDING)
   aiSummaryEncrypted Bytes?
   aiAnalyzedAt       DateTime?
   aiAnalysisModel    String?
   aiResponseIdHash   String?
-  whatsappMessageId String?
-  quoteRequestId    String?
-  quotationId       String?
-  supplierCompanyId String?
-  uploadedById      String?                @db.Uuid
-  createdAt         DateTime               @default(now())
-  whatsappMessage   WhatsAppMessage?       @relation(fields: [whatsappMessageId], references: [id], onDelete: SetNull)
-  quoteRequest      QuoteRequest?          @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
-  quotation         SupplierQuotation?     @relation(fields: [quotationId], references: [id], onDelete: Cascade)
-  supplierCompany   SupplierCompany?       @relation(fields: [supplierCompanyId], references: [id], onDelete: Cascade)
-  uploadedBy        User?                  @relation("AttachmentUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
-  accreditation     SupplierAccreditation?
+  whatsappMessageId  String?
+  quoteRequestId     String?
+  quotationId        String?
+  supplierCompanyId  String?
+  uploadedById       String?                @db.Uuid
+  createdAt          DateTime               @default(now())
+  whatsappMessage    WhatsAppMessage?       @relation(fields: [whatsappMessageId], references: [id], onDelete: SetNull)
+  quoteRequest       QuoteRequest?          @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
+  quotation          SupplierQuotation?     @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  supplierCompany    SupplierCompany?       @relation(fields: [supplierCompanyId], references: [id], onDelete: Cascade)
+  uploadedBy         User?                  @relation("AttachmentUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  accreditation      SupplierAccreditation?
 
   @@index([quoteRequestId])
   @@index([quotationId])

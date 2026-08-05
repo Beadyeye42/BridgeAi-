@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  isMenuRequest,
+  isNewQuoteRequest,
+  isQuoteHistoryRequest,
   isQuoteRefresh,
   isServiceWindowOpen,
   RECENT_REPLY_DEDUPE_MS,
@@ -43,5 +46,13 @@ describe("WhatsApp messaging policy", () => {
   it("recognises concise customer requests for the latest quote list", () => {
     expect(["quote", "QUOTES", " update ", "status"].every(isQuoteRefresh)).toBe(true);
     expect(isQuoteRefresh("accept 1")).toBe(false);
+  });
+
+  it("separates menu, new quote and quote history commands", () => {
+    expect(["hello", "MENU", " help "].every(isMenuRequest)).toBe(true);
+    expect(["new", "NEW QUOTE", "start new quote"].every(isNewQuoteRequest)).toBe(true);
+    expect(["MY QUOTES", "past quotes", "history"].every(isQuoteHistoryRequest)).toBe(true);
+    expect(isNewQuoteRequest("five new windows")).toBe(false);
+    expect(isQuoteHistoryRequest("quotes")).toBe(false);
   });
 });

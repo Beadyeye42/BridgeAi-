@@ -12,7 +12,15 @@ import { decryptPrivateValue, encryptPrivateValue } from "@/lib/security/encrypt
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { PRIVATE_BUCKET } from "@/lib/storage";
 import { downloadMetaMedia, sendMetaTemplate, sendMetaText } from "@/lib/whatsapp/meta-client";
-import { isQuoteRefresh, isServiceWindowOpen, wasReplyRecentlySent } from "@/lib/whatsapp/policy";
+import {
+  isMenuRequest,
+  isNewQuoteRequest,
+  isQuoteHistoryRequest,
+  isQuoteRefresh,
+  isServiceWindowOpen,
+  quoteMenu,
+  wasReplyRecentlySent,
+} from "@/lib/whatsapp/policy";
 
 const MAX_ATTEMPTS = 3;
 const STALE_LOCK_MS = 5 * 60_000;
@@ -502,7 +510,13 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
       },
     });
     await tx.attachment.updateMany({
-      where: { quoteRequestId: null, whatsappMessage: { conversationId: loaded.conversation!.id } },
+      where: {
+        quoteRequestId: null,
+        whatsappMessage: {
+          conversationId: loaded.conversation!.id,
+          occurredAt: { gte: loaded.conversation!.aiSessionStartedAt },
+        },
+      },
       data: { quoteRequestId: request.id },
     });
     await tx.conversation.update({ where: { id: loaded.conversation!.id }, data: { aiStage: "QUOTE_CREATED" } });
@@ -532,6 +546,79 @@ async function hasNewerInboundJob(job: WhatsAppJob) {
   }));
 }
 
+function quoteRequestStatus(status: string, submittedQuotes: number) {
+  if (status === "WON") return "accepted";
+  if (status === "LOST") return "not selected";
+  if (status === "EXPIRED") return "expired";
+  if (status === "CANCELLED") return "cancelled";
+  if (submittedQuotes > 0) return `${submittedQuotes} quote${submittedQuotes === 1 ? "" : "s"} ready`;
+  return "waiting for quotes";
+}
+
+async function quoteHistoryReply(conversation: LoadedJob["conversation"]) {
+  if (!conversation) throw new Error("CONVERSATION_NOT_FOUND");
+  const requests = await runAsDatabaseWorker("whatsapp_ai", (tx) => tx.quoteRequest.findMany({
+    where: { customerContactId: conversation.customerContactId },
+    orderBy: { createdAt: "desc" },
+    take: 5,
+    include: {
+      quotations: {
+        where: { status: { in: ["SUBMITTED", "SELECTED_PENDING_PAYMENT", "ACCEPTED"] } },
+        select: { id: true },
+      },
+    },
+  }));
+  const draft = decryptDraft(conversation.aiDraftEncrypted);
+  if (!requests.length) {
+    return [
+      "You do not have any submitted quote requests yet.",
+      draft?.title ? `Your unsent draft is still saved: ${draft.title}.` : null,
+      "Reply NEW QUOTE to start a fresh request.",
+    ].filter(Boolean).join("\n\n");
+  }
+  const lines = requests.map((request, index) => (
+    `${index + 1}. ${request.reference} — ${request.title} — ${quoteRequestStatus(request.status, request.quotations.length)}`
+  ));
+  return [
+    "Your recent quote requests:",
+    lines.join("\n"),
+    draft?.title ? `Unsent draft: ${draft.title}.` : null,
+    "Reply NEW QUOTE to start another request. For the latest supplier prices on your active request, reply QUOTES.",
+  ].filter(Boolean).join("\n\n");
+}
+
+async function startNewQuote(job: WhatsAppJob, conversation: NonNullable<LoadedJob["conversation"]>, inbound: NonNullable<LoadedJob["whatsappMessage"]>) {
+  const startedAt = new Date();
+  const updated = await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
+    const next = await tx.conversation.update({
+      where: { id: conversation.id },
+      data: {
+        aiStage: "COLLECTING",
+        aiSessionStartedAt: startedAt,
+        aiDraftEncrypted: null,
+        closedAt: null,
+      },
+      include: {
+        customerContact: true,
+        messages: {
+          orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+          take: 30,
+          include: { attachments: true },
+        },
+      },
+    });
+    await writeWhatsAppAudit(tx, {
+      action: "WHATSAPP.NEW_QUOTE_STARTED",
+      entityType: "Conversation",
+      entityId: conversation.id,
+      summary: "Customer started a fresh WhatsApp quote intake session",
+      metadata: { messageId: inbound.id, previousStage: conversation.aiStage, startedAt: startedAt.toISOString() },
+    });
+    return next;
+  });
+  await sendReply(job, updated, "Your new quote is ready to start. What product or materials do you need? You can send the details, photos or a PDF.");
+}
+
 async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   const conversation = loaded.conversation;
   const inbound = loaded.whatsappMessage;
@@ -542,6 +629,9 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     || isConsent(text)
     || isConfirmation(text)
     || isQuoteRefresh(text)
+    || isNewQuoteRequest(text)
+    || isQuoteHistoryRequest(text)
+    || isMenuRequest(text)
     || /^accept\s+[1-5]$/i.test(text.trim());
   if (!controlMessage && await hasNewerInboundJob(job)) {
     return undefined;
@@ -560,8 +650,25 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
       await sendReply(job, conversation, consentReply());
       return undefined;
     }
-    await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
-      await tx.conversation.update({ where: { id: conversation.id }, data: { aiConsentAt: new Date(), aiStage: "COLLECTING" } });
+    const consentedAt = new Date();
+    const consentedConversation = await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
+      const updated = await tx.conversation.update({
+        where: { id: conversation.id },
+        data: {
+          aiConsentAt: consentedAt,
+          aiSessionStartedAt: consentedAt,
+          aiStage: "COLLECTING",
+          closedAt: null,
+        },
+        include: {
+          customerContact: true,
+          messages: {
+            orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+            take: 30,
+            include: { attachments: true },
+          },
+        },
+      });
       await writeWhatsAppAudit(tx, {
         action: "WHATSAPP.AI_CONSENT_RECORDED",
         entityType: "Conversation",
@@ -569,11 +676,31 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
         summary: "Customer consented to automated WhatsApp quote intake",
         metadata: { messageId: inbound.id },
       });
+      return updated;
     });
+    await sendReply(job, consentedConversation, "You’re ready to begin. What product or materials do you need a quote for? You can send details, photos or a PDF.");
+    return undefined;
+  }
+
+  if (isNewQuoteRequest(text)) {
+    await startNewQuote(job, conversation, inbound);
+    return undefined;
+  }
+
+  if (isQuoteHistoryRequest(text)) {
+    await sendReply(job, conversation, await quoteHistoryReply(conversation));
+    return undefined;
+  }
+
+  if (isMenuRequest(text)) {
+    await sendReply(job, conversation, quoteMenu(Boolean(conversation.aiDraftEncrypted)));
+    return undefined;
   }
 
   const mediaMessages = conversation.messages
-    .filter((message) => message.mediaIdEncrypted && message.direction === "INBOUND")
+    .filter((message) => message.mediaIdEncrypted
+      && message.direction === "INBOUND"
+      && message.occurredAt >= conversation.aiSessionStartedAt)
     .slice(0, 10);
   let rejectedMedia = false;
   const attachmentAnalyses: QuoteAttachmentAnalysis[] = [];
@@ -676,6 +803,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   const messages = refreshed.conversation.messages
     .slice()
     .reverse()
+    .filter((message) => message.occurredAt >= refreshed.conversation!.aiSessionStartedAt)
     .filter((message) => message.direction === "INBOUND" || ["SENT", "DELIVERED", "READ"].includes(message.status))
     .flatMap((message) => {
       const parts: Array<{ direction: "INBOUND" | "OUTBOUND"; text: string }> = [];
@@ -723,7 +851,9 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
       metadata: { jobId: job.id, readyForConfirmation: ready, itemCount: result.draft.items.length },
     });
   });
-  const attachmentCount = refreshed.conversation.messages.reduce((count, message) => count + message.attachments.length, 0);
+  const attachmentCount = refreshed.conversation.messages
+    .filter((message) => message.occurredAt >= refreshed.conversation!.aiSessionStartedAt)
+    .reduce((count, message) => count + message.attachments.length, 0);
   const mediaAcknowledgement = attachmentCount > 0
     ? `\n\nI’ve securely received and read ${attachmentCount} attachment${attachmentCount === 1 ? "" : "s"}.`
     : "";
