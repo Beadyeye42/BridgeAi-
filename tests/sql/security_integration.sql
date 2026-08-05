@@ -234,6 +234,11 @@ BEGIN
   IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier selected private WhatsApp message'; END IF;
   SELECT count(*) INTO visible_count FROM bridge_ai."WhatsAppJob" WHERE id='security_whatsapp_job';
   IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier selected private WhatsApp processing state'; END IF;
+  UPDATE bridge_ai."Conversation"
+  SET "aiSessionStartedAt" = now()
+  WHERE id='security_conversation';
+  GET DIAGNOSTICS affected_count = ROW_COUNT;
+  IF affected_count <> 0 THEN RAISE EXCEPTION 'Supplier changed a customer WhatsApp quote session'; END IF;
   BEGIN
     INSERT INTO bridge_ai."WhatsAppJob" (
       id,type,status,"idempotencyKey","conversationId","whatsappMessageId",attempts,"availableAt","createdAt","updatedAt"

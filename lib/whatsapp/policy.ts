@@ -31,3 +31,24 @@ export function wasReplyRecentlySent(messages: ReplyMessage[], body: string, now
 export function isQuoteRefresh(value: string) {
   return /^(quotes?|update|status)$/i.test(value.trim());
 }
+
+export function isNewQuoteRequest(value: string) {
+  return /^(new|new quote|start new quote|create (?:a )?new quote)$/i.test(value.trim());
+}
+
+export function isQuoteHistoryRequest(value: string) {
+  return /^(my quotes?|past quotes?|quote history|previous quotes?|history)$/i.test(value.trim());
+}
+
+export function isMenuRequest(value: string) {
+  return /^(hi|hello|hey|menu|help|start)$/i.test(value.trim());
+}
+
+export function quoteMenu(hasDraft = false) {
+  return [
+    "Welcome to Bridge AI. What would you like to do?",
+    "Reply NEW QUOTE to start a fresh request.",
+    "Reply MY QUOTES to check your recent requests.",
+    hasDraft ? "Your unsent draft is still saved. You can also continue describing it, or reply CONFIRM when it is ready." : null,
+  ].filter(Boolean).join("\n\n");
+}

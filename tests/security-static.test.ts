@@ -160,6 +160,12 @@ describe("security foundation static controls", () => {
     expect(processor).toContain("META_QUOTE_TEMPLATE_REQUIRED");
     expect(processor).toContain("META_CONTACT_TEMPLATE_REQUIRED");
     expect(processor).toContain("CONTACT_UNLOCK_NOT_AUTHORISED");
+    expect(processor).toContain('action: "WHATSAPP.NEW_QUOTE_STARTED"');
+    expect(processor).toContain("message.occurredAt >= refreshed.conversation!.aiSessionStartedAt");
+    expect(processor).toContain("occurredAt: { gte: loaded.conversation!.aiSessionStartedAt }");
+    const sessions = read("supabase/migrations/20260805020238_whatsapp_quote_sessions.sql");
+    expect(sessions).toContain('ADD COLUMN "aiSessionStartedAt"');
+    expect(sessions).toContain('ALTER COLUMN "aiSessionStartedAt" SET NOT NULL');
     expect(read("lib/whatsapp/meta-client.ts")).toContain('type: "template"');
     expect(processor).not.toContain("supplierCompany.tradingName");
     const ai = read("lib/ai/quote-intake.ts");
