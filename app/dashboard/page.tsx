@@ -7,6 +7,7 @@ import {
 } from "@/lib/auth/session";
 import { getSupplierDashboard } from "@/lib/data/supplier-dashboard";
 import { supplierResponseMillisecondsBetween } from "@/lib/quotes/response-clock";
+import { supplierOnboardingReadiness } from "@/lib/suppliers/onboarding";
 
 export const dynamic = "force-dynamic";
 
@@ -83,7 +84,11 @@ export default async function DashboardPage() {
     })),
     recent: [],
   };
-  return <SupplierDashboard data={data} />;
+  return <SupplierDashboard
+    data={data}
+    onboarding={supplierOnboardingReadiness(dashboard.company)}
+    supplierStatus={dashboard.company.status}
+  />;
 }
 
 function formatDue(value: Date, now: number) {

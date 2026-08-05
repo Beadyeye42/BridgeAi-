@@ -8,7 +8,13 @@ export async function getSupplierDashboard(supplierCompanyId: string) {
   // sequentially so each request does not compete with itself for connections.
   const company = await prisma.supplierCompany.findUniqueOrThrow({
     where: { id: supplierCompanyId },
-    include: { subscription: true },
+    include: {
+      subscription: true,
+      categories: true,
+      coverageAreas: true,
+      memberships: true,
+      accreditations: { include: { attachment: true } },
+    },
   });
   const assignments = await prisma.supplierAssignment.findMany({
     where: {

@@ -91,6 +91,15 @@ async function recordProcessingFailure(externalEventId: string, summary: Prisma.
         retryCount: { increment: 1 },
       },
     });
+    await tx.systemEvent.create({
+      data: {
+        severity: "ERROR",
+        source: "whatsapp_webhook",
+        code: "META_WEBHOOK_PROCESSING_FAILED",
+        message: "A verified Meta WhatsApp webhook could not be processed and requires provider redelivery.",
+        context: { webhookEventId: event.id, externalEventId },
+      },
+    });
     await writeWhatsAppAudit(tx, {
       action: "WHATSAPP.WEBHOOK_FAILED",
       entityType: "WebhookEvent",

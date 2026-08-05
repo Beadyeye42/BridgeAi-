@@ -22,7 +22,7 @@ BEGIN
   INSERT INTO bridge_ai.supplier_companies (id,"legalName","contactEmail","contactPhone",status,"createdAt","updatedAt") VALUES
     ('security_company_a','Security Company A','a@bridge.test','1','APPROVED',now(),now()),
     ('security_company_b','Security Company B','b@bridge.test','2','APPROVED',now(),now()),
-    ('security_company_c','Security Company C','c@bridge.test','3','APPROVED',now(),now());
+    ('security_company_c','Security Company C','c@bridge.test','3','PENDING',now(),now());
   INSERT INTO bridge_ai.company_memberships (id,"userId","supplierCompanyId",role,status,"isPrimary","joinedAt") VALUES
     ('security_membership_a',user_a,'security_company_a','OWNER','ACTIVE',true,now()),
     ('security_membership_b',user_b,'security_company_b','OWNER','ACTIVE',true,now());
@@ -70,6 +70,12 @@ BEGIN
   UPDATE bridge_ai.supplier_companies SET "legalName"='forbidden' WHERE id='security_company_b';
   GET DIAGNOSTICS affected_count = ROW_COUNT;
   IF affected_count <> 0 THEN RAISE EXCEPTION 'Supplier A updated Supplier B company'; END IF;
+
+  BEGIN
+    UPDATE bridge_ai.supplier_companies SET status='SUSPENDED' WHERE id='security_company_a';
+    RAISE EXCEPTION 'Supplier changed its own protected review state';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
 
   BEGIN
     INSERT INTO bridge_ai."CoverageArea" (id,"supplierCompanyId",type,label,active,"createdAt","updatedAt")
@@ -160,6 +166,13 @@ BEGIN
   PERFORM set_config('request.jwt.claim.sub', user_a::text, true);
   SELECT count(*) INTO visible_count FROM bridge_ai.supplier_companies WHERE id='security_company_b';
   IF visible_count <> 1 THEN RAISE EXCEPTION 'verified administrator bypass failed'; END IF;
+  BEGIN
+    UPDATE bridge_ai.supplier_companies
+    SET status='APPROVED',"approvedAt"=now(),"approvedById"=user_a
+    WHERE id='security_company_c';
+    RAISE EXCEPTION 'Administrator approved an incomplete supplier';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
   EXECUTE 'RESET ROLE';
   UPDATE bridge_ai.platform_administrators SET active=false WHERE "userId"=user_a;
   EXECUTE 'SET LOCAL ROLE authenticated';
@@ -212,6 +225,22 @@ BEGIN
   ) VALUES (
     'security_whatsapp_job','PROCESS_INBOUND','PENDING','security-job','security_conversation','security_message',0,now(),now(),now()
   );
+  UPDATE bridge_ai.platform_administrators SET active=true WHERE "userId"=user_a;
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  PERFORM set_config('request.jwt.claim.sub', user_a::text, true);
+  SELECT count(*) INTO visible_count FROM bridge_ai."WhatsAppJob" WHERE id='security_whatsapp_job';
+  IF visible_count <> 1 THEN RAISE EXCEPTION 'Administrator could not inspect a WhatsApp job'; END IF;
+  UPDATE bridge_ai."WhatsAppJob"
+  SET status='FAILED',"failedAt"=now(),"errorCode"='SECURITY_TEST'
+  WHERE id='security_whatsapp_job';
+  GET DIAGNOSTICS affected_count = ROW_COUNT;
+  IF affected_count <> 1 THEN RAISE EXCEPTION 'Administrator could not safely update a WhatsApp job'; END IF;
+  UPDATE bridge_ai."WhatsAppJob"
+  SET status='PENDING',"failedAt"=NULL,"errorCode"=NULL
+  WHERE id='security_whatsapp_job';
+  EXECUTE 'RESET ROLE';
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  UPDATE bridge_ai.platform_administrators SET active=false WHERE "userId"=user_a;
   INSERT INTO bridge_ai."ProductCategory" (id,name,slug,active,"displayOrder","createdAt","updatedAt")
   VALUES ('security_category','Security category','security-category',true,0,now(),now());
   request_deadline := bridge_private.add_supplier_response_hours(now(), 24);

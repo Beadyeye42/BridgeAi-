@@ -1,5 +1,14 @@
+import { createClient } from "@supabase/supabase-js";
 import { trustedPrisma } from "../lib/db";
-import { getSupabaseAdmin } from "../lib/supabase/server";
+
+function getSeedSupabaseAdmin() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const secretKey = process.env.SUPABASE_SECRET_KEY;
+  if (!url || !secretKey) throw new Error("Supabase server credentials are not configured");
+  return createClient(url, secretKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
 
 async function main() {
   if (process.env.NODE_ENV === "production" || process.env.ALLOW_DEVELOPMENT_SEED !== "true") {
@@ -9,7 +18,7 @@ async function main() {
   const password = process.env.SEED_SUPPLIER_PASSWORD;
   if (!email || !password) throw new Error("SEED_SUPPLIER_EMAIL and SEED_SUPPLIER_PASSWORD are required");
 
-  const admin = getSupabaseAdmin();
+  const admin = getSeedSupabaseAdmin();
   const created = await admin.auth.admin.createUser({ email, password, email_confirm: true });
   if (created.error || !created.data.user) throw created.error ?? new Error("Seed Auth user was not created");
   try {

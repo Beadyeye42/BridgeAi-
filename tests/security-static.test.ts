@@ -222,10 +222,29 @@ describe("security foundation static controls", () => {
     expect(requests).toContain("expiresAt: { gt: now }");
     expect(requests).toContain("expiresAt: { lte: now }");
     const status = read("app/api/admin/suppliers/[id]/status/route.ts");
-    expect(status).toContain('existing.status==="SUSPENDED"');
-    expect(status).toContain('data:{status:"ACTIVE"}');
+    expect(status).toContain("supplierOnboardingReadiness(existing)");
+    expect(status).toContain('action: `ADMIN.SUPPLIER_${parsed.data.status}`');
+    expect(status).not.toContain("supplierTeamMembership.updateMany");
     const team = read("app/dashboard/team/page.tsx");
     expect(team).toContain('memberships:{where:{status:"ACTIVE"}');
+  });
+
+  it("enforces supplier approval readiness and limits administrator recovery actions", () => {
+    const migration = read("supabase/migrations/20260805074006_supplier_approval_and_admin_operations.sql");
+    expect(migration).toContain("enforce_supplier_review_state");
+    expect(migration).toContain("supplier review state can only be changed by a platform administrator");
+    expect(migration).toContain("supplier approval requirements are incomplete");
+    expect(migration).toContain("bridge_private.is_platform_admin()");
+    const retry = read("app/api/admin/system/jobs/[id]/retry/route.ts");
+    expect(retry).toContain("await requireAdminApi()");
+    expect(retry).toContain('existing.status !== "FAILED"');
+    expect(retry).toContain('existing.errorCode === "OUTBOUND_DELIVERY_UNCERTAIN"');
+    expect(retry).toContain("whatsAppJob.updateMany");
+    expect(retry).toContain('where: { id, status: "FAILED", errorCode: { not: "OUTBOUND_DELIVERY_UNCERTAIN" } }');
+    expect(retry).toContain('action: "ADMIN.WHATSAPP_JOB_RETRIED"');
+    expect(retry).toContain("processWhatsAppJobs({ limit: 20 })");
+    const matching = read("lib/matching/suppliers.ts");
+    expect(matching).toContain("supplierOnboardingReadiness(supplier, now).ready");
   });
 
   it("keeps browser location lookup authenticated and non-persistent", () => {

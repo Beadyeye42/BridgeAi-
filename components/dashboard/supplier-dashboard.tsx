@@ -3,8 +3,10 @@ import { ArrowUpRight, Bell, BriefcaseBusiness, CheckCircle2, ChevronRight, Circ
 import type { DashboardData } from "@/lib/demo-data";
 import { Sidebar } from "./sidebar";
 import { BrandMark } from "@/components/brand-mark";
+import type { SupplierOnboardingReadiness } from "@/lib/suppliers/onboarding";
+import { OnboardingReadiness as OnboardingReadinessCard } from "./onboarding-readiness";
 
-export function SupplierDashboard({ data, demo = false }: { data: DashboardData; demo?: boolean }) {
+export function SupplierDashboard({ data, demo = false, onboarding, supplierStatus = "APPROVED" }: { data: DashboardData; demo?: boolean; onboarding?: SupplierOnboardingReadiness; supplierStatus?: string }) {
   const requestBase = demo ? "/requests" : "/dashboard/requests";
   return (
     <div className="portal-shell">
@@ -16,6 +18,10 @@ export function SupplierDashboard({ data, demo = false }: { data: DashboardData;
           <div><p className="eyebrow">Sunday, 2 August</p><h1>Good afternoon, {data.contactName.split(" ")[0]}.</h1><p>Here’s what needs your attention across {data.companyName}.</p></div>
           <div className="heading-actions"><button className="search-button" aria-label="Search"><Search size={18} /><span>Search</span><kbd>⌘ K</kbd></button><button className="icon-button desktop-only" aria-label="Notifications"><Bell size={19} /><i /></button><span className="avatar">{data.initials}</span></div>
         </div>
+
+        {onboarding && (!onboarding.ready || supplierStatus !== "APPROVED")
+          ? <OnboardingReadinessCard readiness={onboarding} status={supplierStatus} />
+          : null}
 
         <section className="attention-card">
           <div className="attention-icon"><BriefcaseBusiness size={21} /></div>

@@ -6,6 +6,8 @@ import {
   LogoUpload,
 } from "@/components/dashboard/management-forms";
 import { AccreditationManager } from "@/components/dashboard/accreditation-manager";
+import { OnboardingReadiness } from "@/components/dashboard/onboarding-readiness";
+import { supplierOnboardingReadiness } from "@/lib/suppliers/onboarding";
 
 export const dynamic = "force-dynamic";
 export default async function CompanyPage() {
@@ -14,6 +16,8 @@ export default async function CompanyPage() {
     where: { id: companyId },
     include: {
       categories: true,
+      coverageAreas: true,
+      memberships: true,
       accreditations: {
         include: { attachment: true },
         orderBy: { createdAt: "desc" },
@@ -50,6 +54,7 @@ export default async function CompanyPage() {
       description="Keep your matching information, contact details and working hours accurate."
     >
       <div className="management-form">
+        <OnboardingReadiness readiness={supplierOnboardingReadiness(company)} status={company.status} />
         <LogoUpload hasLogo={Boolean(company.logoUrl)} />
         <CompanyProfileForm
           company={safeCompany}
