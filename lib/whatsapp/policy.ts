@@ -1,0 +1,33 @@
+export const WHATSAPP_SERVICE_WINDOW_MS = 24 * 60 * 60_000;
+export const RECENT_REPLY_DEDUPE_MS = 5 * 60_000;
+
+type WindowMessage = {
+  direction: "INBOUND" | "OUTBOUND";
+  occurredAt: Date;
+};
+
+type ReplyMessage = WindowMessage & {
+  status: string;
+  body?: string | null;
+};
+
+export function isServiceWindowOpen(messages: WindowMessage[], now = new Date()) {
+  const lastInboundAt = messages
+    .filter((message) => message.direction === "INBOUND")
+    .reduce<Date | null>(
+      (latest, message) => !latest || message.occurredAt > latest ? message.occurredAt : latest,
+      null,
+    );
+  return Boolean(lastInboundAt && now.getTime() - lastInboundAt.getTime() < WHATSAPP_SERVICE_WINDOW_MS);
+}
+
+export function wasReplyRecentlySent(messages: ReplyMessage[], body: string, now = new Date()) {
+  return messages.some((message) => message.direction === "OUTBOUND"
+    && ["SENT", "DELIVERED", "READ"].includes(message.status)
+    && message.body === body
+    && now.getTime() - message.occurredAt.getTime() < RECENT_REPLY_DEDUPE_MS);
+}
+
+export function isQuoteRefresh(value: string) {
+  return /^(quotes?|update|status)$/i.test(value.trim());
+}

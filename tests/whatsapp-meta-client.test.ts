@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { sendMetaTemplate, sendMetaText } from "../lib/whatsapp/meta-client";
+import { hasExpectedMediaSignature, sendMetaTemplate, sendMetaText } from "../lib/whatsapp/meta-client";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -13,6 +13,14 @@ function configureMeta() {
 }
 
 describe("Meta outbound client", () => {
+  it("accepts only the expected magic bytes for supported customer files", () => {
+    expect(hasExpectedMediaSignature("image/jpeg", new Uint8Array([0xff, 0xd8, 0xff, 0x00]))).toBe(true);
+    expect(hasExpectedMediaSignature("image/png", new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe(true);
+    expect(hasExpectedMediaSignature("application/pdf", new TextEncoder().encode("%PDF-1.7"))).toBe(true);
+    expect(hasExpectedMediaSignature("application/pdf", new TextEncoder().encode("<script>"))).toBe(false);
+    expect(hasExpectedMediaSignature("image/jpeg", new TextEncoder().encode("%PDF-1.7"))).toBe(false);
+  });
+
   it("sends free-form text through the configured phone-number endpoint", async () => {
     configureMeta();
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ messages: [{ id: "wamid.sent-1" }] }), { status: 200 }));

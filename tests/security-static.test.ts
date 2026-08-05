@@ -151,7 +151,12 @@ describe("security foundation static controls", () => {
     expect(processor).toContain('stage === "AWAITING_CONFIRMATION" && isConfirmation(text)');
     expect(processor).toContain('scanStatus: "PENDING"');
     expect(processor).toContain("take: 5");
-    expect(processor).toContain("24 * 60 * 60_000");
+    const messagingPolicy = read("lib/whatsapp/policy.ts");
+    expect(messagingPolicy).toContain("24 * 60 * 60_000");
+    expect(processor).toContain("wasReplyRecentlySent");
+    expect(processor).toContain("earlier.status IN ('PENDING', 'PROCESSING')");
+    expect(processor).toContain("STALE_JOB_EXHAUSTED");
+    expect(processor).toContain("quote-summary:${quotation.quoteRequestId}:first");
     expect(processor).toContain("META_QUOTE_TEMPLATE_REQUIRED");
     expect(processor).toContain("META_CONTACT_TEMPLATE_REQUIRED");
     expect(processor).toContain("CONTACT_UNLOCK_NOT_AUTHORISED");
@@ -161,6 +166,10 @@ describe("security foundation static controls", () => {
     expect(ai).toContain("store: false");
     expect(ai).toContain('type: "json_schema"');
     expect(ai).toContain("safety_identifier");
+    const attachmentAi = read("lib/ai/attachment-intake.ts");
+    expect(attachmentAi).toContain("store: false");
+    expect(attachmentAi).toContain('type: "input_file"');
+    expect(attachmentAi).toContain('type: "input_image"');
     const policyIndex = read("supabase/migrations/20260804195834_whatsapp_job_policy_and_index.sql");
     expect(policyIndex).toContain("whatsapp_job_message_idx");
     expect(policyIndex).toContain("whatsapp_job_insert");

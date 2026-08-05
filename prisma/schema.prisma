@@ -481,6 +481,10 @@ model Attachment {
   storageKey        String                 @unique
   sha256            String
   scanStatus        ScanStatus             @default(PENDING)
+  aiSummaryEncrypted Bytes?
+  aiAnalyzedAt       DateTime?
+  aiAnalysisModel    String?
+  aiResponseIdHash   String?
   whatsappMessageId String?
   quoteRequestId    String?
   quotationId       String?
