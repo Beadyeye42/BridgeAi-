@@ -97,3 +97,10 @@ export async function getSupplierRequest(
     },
   });
 }
+
+export async function getSupplierOpportunity(reference: string) {
+  return prisma.supplierOpportunity.findUnique({
+    where: { reference },
+    include: { category: true },
+  });
+}

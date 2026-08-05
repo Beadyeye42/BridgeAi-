@@ -9,6 +9,7 @@ DECLARE
   visible_count integer;
   affected_count integer;
   request_deadline timestamptz;
+  error_text text;
 BEGIN
   SELECT id INTO user_a FROM auth.users ORDER BY created_at LIMIT 1;
   SELECT id INTO user_b FROM auth.users ORDER BY created_at OFFSET 1 LIMIT 1;
@@ -299,6 +300,28 @@ BEGIN
   IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier selected private WhatsApp message'; END IF;
   SELECT count(*) INTO visible_count FROM bridge_ai."WhatsAppJob" WHERE "conversationId"='security_conversation';
   IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier selected private WhatsApp processing or fallback state'; END IF;
+  SELECT count(*) INTO visible_count FROM bridge_ai."SupplierOpportunity"
+  WHERE "quoteRequestId"='security_request_supplier_denied';
+  IF visible_count <> 1 THEN RAISE EXCEPTION 'Approved supplier could not browse safe opportunity projection'; END IF;
+  SELECT count(*) INTO visible_count FROM bridge_ai."QuoteRequest"
+  WHERE id='security_request_supplier_denied';
+  IF visible_count <> 0 THEN RAISE EXCEPTION 'Opportunity browsing exposed the private quote request row'; END IF;
+  BEGIN
+    UPDATE bridge_ai."SupplierOpportunity" SET title='forbidden'
+    WHERE "quoteRequestId"='security_request_supplier_denied';
+    RAISE EXCEPTION 'Supplier changed the opportunity projection';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  PERFORM set_config('request.jwt.claim.sub', user_b::text, true);
+  SELECT count(*) INTO visible_count FROM bridge_ai."SupplierOpportunity"
+  WHERE "quoteRequestId"='security_request_supplier_denied';
+  IF visible_count <> 1 THEN RAISE EXCEPTION 'Approved non-subscriber could not browse an opportunity'; END IF;
+  BEGIN
+    PERFORM bridge_private.claim_supplier_opportunity('SECURITY-SUPPLIER-DENIED','security_company_b');
+    RAISE EXCEPTION 'Authenticated client directly executed server-only opportunity claim';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  PERFORM set_config('request.jwt.claim.sub', user_a::text, true);
   BEGIN
     INSERT INTO bridge_ai."SupplierAssignment" (
       id,"quoteRequestId","supplierCompanyId",status,"assignedAt","expiresAt"
@@ -410,6 +433,11 @@ BEGIN
   EXCEPTION WHEN check_violation THEN NULL;
   END;
 
+  UPDATE bridge_ai."Conversation" conversation
+  SET "aiSessionStartedAt" = message."occurredAt"
+  FROM bridge_ai."WhatsAppMessage" message
+  WHERE conversation.id='security_conversation'
+    AND message.id='security_message';
   INSERT INTO bridge_ai."Attachment" (
     id,kind,"fileName","mimeType","byteSize","storageKey",sha256,"scanStatus","whatsappMessageId","quoteRequestId","createdAt"
   ) VALUES (
@@ -438,6 +466,52 @@ BEGIN
     'security_request_auto','SECURITY-AUTO','security_conversation','security_customer','security_category','Automatic','Automatic','B1','GBP','OPEN',
     1,request_deadline,now(),now()
   );
+
+  INSERT INTO bridge_ai."SupplierProductCategory" ("supplierCompanyId","productCategoryId","createdAt")
+  VALUES ('security_company_a','security_category',now());
+  INSERT INTO bridge_ai."Attachment" (
+    id,kind,"fileName","mimeType","byteSize","storageKey",sha256,"scanStatus","supplierCompanyId","uploadedById","createdAt"
+  ) VALUES (
+    'security_claim_accreditation_file','ACCREDITATION_DOCUMENT','claim.pdf','application/pdf',12,
+    'companies/security_company_a/accreditations/claim.pdf','claim-hash','CLEAN','security_company_a',user_a,now()
+  );
+  INSERT INTO bridge_ai.supplier_accreditations (
+    id,"supplierCompanyId","attachmentId",type,"displayName",status,"reviewedAt","reviewedById","createdById","createdAt","updatedAt"
+  ) VALUES (
+    'security_claim_accreditation','security_company_a','security_claim_accreditation_file','CERTIFICATION',
+    'Claim certificate','APPROVED',now(),user_a,user_a,now(),now()
+  );
+
+  PERFORM set_config('request.jwt.claim.sub', user_b::text, true);
+  BEGIN
+    PERFORM bridge_private.claim_supplier_opportunity('SECURITY-AUTO','security_company_a');
+    RAISE EXCEPTION 'Supplier B claimed an opportunity for Supplier A';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  BEGIN
+    PERFORM bridge_private.claim_supplier_opportunity('SECURITY-AUTO','security_company_b');
+    RAISE EXCEPTION 'Non-subscriber claimed an opportunity';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS error_text = MESSAGE_TEXT;
+    IF error_text <> 'ACTIVE_SUBSCRIPTION_REQUIRED' THEN
+      RAISE EXCEPTION 'Unexpected non-subscriber claim failure: %', error_text;
+    END IF;
+  END;
+  PERFORM set_config('request.jwt.claim.sub', user_a::text, true);
+  PERFORM bridge_private.claim_supplier_opportunity('SECURITY-AUTO','security_company_a');
+  IF NOT EXISTS (
+    SELECT 1 FROM bridge_ai."SupplierAssignment"
+    WHERE "quoteRequestId"='security_request_auto'
+      AND "supplierCompanyId"='security_company_a'
+      AND status='ACCEPTED'
+  ) THEN RAISE EXCEPTION 'Eligible subscriber claim did not create an accepted assignment'; END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM bridge_ai."AuditLog"
+    WHERE action='OPPORTUNITY.CLAIMED'
+      AND "supplierCompanyId"='security_company_a'
+      AND metadata->>'quoteRequestId'='security_request_auto'
+  ) THEN RAISE EXCEPTION 'Opportunity claim audit record is missing'; END IF;
+  PERFORM set_config('request.jwt.claim.sub', '', true);
 
   UPDATE bridge_ai."SupplierAssignment" SET status='ACCEPTED',"respondedAt"=now() WHERE id='security_assignment';
   INSERT INTO bridge_ai."SupplierQuotation" (
@@ -502,7 +576,9 @@ BEGIN
      OR has_function_privilege('authenticated','bridge_private.next_supplier_response_start(timestamptz)','EXECUTE')
      OR has_function_privilege('authenticated','bridge_private.add_supplier_response_hours(timestamptz,integer)','EXECUTE')
      OR has_function_privilege('authenticated','bridge_private.write_whatsapp_system_event(bridge_ai."SystemEventSeverity",text,text,text,jsonb)','EXECUTE')
-     OR NOT has_function_privilege('bridge_ai_app','bridge_private.write_whatsapp_system_event(bridge_ai."SystemEventSeverity",text,text,text,jsonb)','EXECUTE') THEN
+     OR has_function_privilege('authenticated','bridge_private.claim_supplier_opportunity(text,text)','EXECUTE')
+     OR NOT has_function_privilege('bridge_ai_app','bridge_private.write_whatsapp_system_event(bridge_ai."SystemEventSeverity",text,text,text,jsonb)','EXECUTE')
+     OR NOT has_function_privilege('bridge_ai_app','bridge_private.claim_supplier_opportunity(text,text)','EXECUTE') THEN
     RAISE EXCEPTION 'legacy privileged functions remain executable';
   END IF;
   SELECT count(*) INTO visible_count

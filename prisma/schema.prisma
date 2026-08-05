@@ -556,6 +556,7 @@ model ProductCategory {
   children      ProductCategory[]         @relation("CategoryTree")
   suppliers     SupplierProductCategory[]
   quoteRequests QuoteRequest[]
+  opportunities SupplierOpportunity[]
 
   @@unique([parentId, name])
   @@index([active, displayOrder])
@@ -604,11 +605,35 @@ model QuoteRequest {
   quotations                    SupplierQuotation[]
   successFees                   SupplierSuccessFee[]
   whatsappJobs                  WhatsAppJob[]
+  opportunity                   SupplierOpportunity?
 
   @@index([status, responseDueAt])
   @@index([categoryId, deliveryPostcode])
   @@index([customerContactId])
   @@index([conversationId])
+  @@schema("bridge_ai")
+}
+
+model SupplierOpportunity {
+  quoteRequestId    String             @id
+  reference         String             @unique
+  title             String
+  categoryId        String
+  deliveryArea      String             @db.VarChar(12)
+  itemCount         Int                @default(0)
+  attachmentCount   Int                @default(0)
+  distributionLimit Int
+  claimedSlots      Int                @default(0)
+  status            QuoteRequestStatus
+  publishedAt       DateTime
+  responseDueAt     DateTime
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  quoteRequest      QuoteRequest       @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
+  category          ProductCategory    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@index([status, responseDueAt])
+  @@index([categoryId, responseDueAt])
   @@schema("bridge_ai")
 }
 
