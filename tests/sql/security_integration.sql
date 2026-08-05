@@ -122,6 +122,11 @@ BEGIN
   VALUES ('bridge-ai-private','companies/security_company_b/b.txt',user_b::text);
   INSERT INTO bridge_ai."AuditLog" (id,"actorUserId","supplierCompanyId",action,"entityType",summary,"createdAt")
   VALUES ('security_audit',user_a,'security_company_a','SECURITY.TEST','Test','immutable',now());
+  INSERT INTO bridge_ai."ProductionAlert" (
+    id,fingerprint,source,severity,title,body,status,"createdAt","updatedAt"
+  ) VALUES (
+    'security_production_alert','security:test','WHATSAPP','ERROR','Security test alert','No customer data','PENDING',now(),now()
+  );
 
   EXECUTE 'SET LOCAL ROLE authenticated';
   PERFORM set_config('request.jwt.claim.sub', user_a::text, true);
@@ -146,6 +151,17 @@ BEGIN
 
   UPDATE bridge_ai."AuditLog" SET summary='changed' WHERE id='security_audit';
   DELETE FROM bridge_ai."AuditLog" WHERE id='security_audit';
+  SELECT count(*) INTO visible_count FROM bridge_ai."ProductionAlert" WHERE id='security_production_alert';
+  IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier read a production operations alert'; END IF;
+  BEGIN
+    INSERT INTO bridge_ai."ProductionAlert" (
+      id,fingerprint,source,severity,title,body,status,"createdAt","updatedAt"
+    ) VALUES (
+      'forbidden_production_alert','security:forbidden','STRIPE','CRITICAL','Forbidden','Forbidden','PENDING',now(),now()
+    );
+    RAISE EXCEPTION 'Supplier inserted a production operations alert';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
   EXECUTE 'RESET ROLE';
   PERFORM set_config('request.jwt.claim.sub', '', true);
   IF (SELECT summary FROM bridge_ai."AuditLog" WHERE id='security_audit') <> 'immutable' THEN
@@ -167,6 +183,8 @@ BEGIN
   PERFORM set_config('request.jwt.claim.sub', user_a::text, true);
   SELECT count(*) INTO visible_count FROM bridge_ai.supplier_companies WHERE id='security_company_b';
   IF visible_count <> 1 THEN RAISE EXCEPTION 'verified administrator bypass failed'; END IF;
+  SELECT count(*) INTO visible_count FROM bridge_ai."ProductionAlert" WHERE id='security_production_alert';
+  IF visible_count <> 1 THEN RAISE EXCEPTION 'verified administrator could not inspect production alerts'; END IF;
   BEGIN
     UPDATE bridge_ai.supplier_companies
     SET status='APPROVED',"approvedAt"=now(),"approvedById"=user_a

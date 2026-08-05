@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdminApi } from "@/lib/auth/api";
 import { writeAuditLog } from "@/lib/audit";
 import { sanitizeCustomerImage } from "@/lib/security/customer-image";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { PRIVATE_BUCKET } from "@/lib/storage";
+import { runProductionMonitoringSafely } from "@/lib/monitoring/operational-alerts";
 
 export const runtime = "nodejs";
 
@@ -33,7 +34,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const bucket = getSupabaseAdmin().storage.from(PRIVATE_BUCKET);
   const downloaded = await bucket.download(attachment.storageKey);
-  if (downloaded.error) return NextResponse.json({ error: "The private image could not be read" }, { status: 503 });
+  if (downloaded.error) {
+    await prisma.systemEvent.create({ data: { severity: "ERROR", source: "attachment", code: "ATTACHMENT_READ_FAILED", message: "A private customer image could not be read for security processing", context: { attachmentId: id } } }).catch(() => undefined);
+    after(runProductionMonitoringSafely);
+    return NextResponse.json({ error: "The private image could not be read" }, { status: 503 });
+  }
   const sourceBytes = new Uint8Array(await downloaded.data.arrayBuffer());
   if (sourceBytes.byteLength > 5_000_000) {
     return NextResponse.json({ error: "The stored image exceeds the safe processing limit" }, { status: 422 });
@@ -57,6 +62,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         request,
       }, tx);
     });
+    after(runProductionMonitoringSafely);
     return NextResponse.json({ error: "The image could not pass safe decoding" }, { status: 422 });
   }
 
@@ -65,7 +71,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     cacheControl: "3600",
     upsert: true,
   });
-  if (uploaded.error) return NextResponse.json({ error: "The safe image could not be stored" }, { status: 503 });
+  if (uploaded.error) {
+    await prisma.systemEvent.create({ data: { severity: "ERROR", source: "attachment", code: "ATTACHMENT_WRITE_FAILED", message: "A safely rebuilt customer image could not be stored", context: { attachmentId: id } } }).catch(() => undefined);
+    after(runProductionMonitoringSafely);
+    return NextResponse.json({ error: "The safe image could not be stored" }, { status: 503 });
+  }
 
   const sha256 = createHash("sha256").update(sanitized.bytes).digest("hex");
   await prisma.$transaction(async (tx) => {

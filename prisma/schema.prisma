@@ -239,6 +239,15 @@ enum SystemEventStatus {
   @@schema("bridge_ai")
 }
 
+enum ProductionAlertStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+
+  @@schema("bridge_ai")
+}
+
 enum AccreditationType {
   PUBLIC_LIABILITY_INSURANCE
   EMPLOYERS_LIABILITY_INSURANCE
@@ -928,5 +937,29 @@ model SystemEvent {
   @@index([status, severity, occurredAt])
   @@index([source, code])
   @@index([resolvedById])
+  @@schema("bridge_ai")
+}
+
+model ProductionAlert {
+  id              String                @id @default(cuid())
+  fingerprint     String                @unique
+  source          String
+  severity        SystemEventSeverity
+  title           String
+  body            String
+  actionUrl       String?
+  status          ProductionAlertStatus @default(PENDING)
+  attempts        Int                   @default(0)
+  availableAt     DateTime              @default(now())
+  lockedAt        DateTime?
+  sentAt          DateTime?
+  failedAt        DateTime?
+  lastError       String?
+  providerEmailId String?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@index([status, availableAt, createdAt])
+  @@index([source, createdAt])
   @@schema("bridge_ai")
 }
