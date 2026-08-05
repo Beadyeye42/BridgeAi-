@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   isMenuRequest,
   isNewQuoteRequest,
+  newQuoteDetails,
   isQuoteHistoryRequest,
   isQuoteRefresh,
   isServiceWindowOpen,
   RECENT_REPLY_DEDUPE_MS,
+  quoteMenu,
   wasReplyRecentlySent,
   WHATSAPP_SERVICE_WINDOW_MS,
 } from "../lib/whatsapp/policy";
@@ -50,9 +52,25 @@ describe("WhatsApp messaging policy", () => {
 
   it("separates menu, new quote and quote history commands", () => {
     expect(["hello", "MENU", " help "].every(isMenuRequest)).toBe(true);
-    expect(["new", "NEW QUOTE", "start new quote"].every(isNewQuoteRequest)).toBe(true);
-    expect(["MY QUOTES", "past quotes", "history"].every(isQuoteHistoryRequest)).toBe(true);
+    expect(["1", "new", "NEW QUOTE", "start new quote", "separate quote", "another job"].every(isNewQuoteRequest)).toBe(true);
+    expect(["2", "MY QUOTES", "past quotes", "history"].every(isQuoteHistoryRequest)).toBe(true);
     expect(isNewQuoteRequest("five new windows")).toBe(false);
     expect(isQuoteHistoryRequest("quotes")).toBe(false);
+  });
+
+  it("keeps product details when a customer starts another job", () => {
+    expect(isNewQuoteRequest("another quote for aluminium bifolds")).toBe(true);
+    expect(newQuoteDetails("another quote for aluminium bifolds")).toBe("aluminium bifolds");
+    expect(newQuoteDetails("I need a separate job: 3 uPVC windows")).toBe("3 uPVC windows");
+    expect(newQuoteDetails("NEW QUOTE")).toBeNull();
+  });
+
+  it("offers a warm two-choice menu and explains file support", () => {
+    const menu = quoteMenu(true);
+    expect(menu).toContain("industry partner");
+    expect(menu).toContain("1 — NEW QUOTE");
+    expect(menu).toContain("2 — MY QUOTES");
+    expect(menu).toContain("photo, drawing or PDF");
+    expect(menu).toContain("unsent draft is still safe");
   });
 });

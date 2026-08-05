@@ -57,7 +57,7 @@ describe("WhatsApp intake conversation state", () => {
   });
 
   it("uses a fixed professional clarification for a repeated field", () => {
-    expect(repeatClarification("DELIVERY_POSTCODE")).toContain("complete UK postcode");
+    expect(repeatClarification("DELIVERY_POSTCODE")).toContain("full UK delivery postcode");
     expect(repeatClarification("NONE")).toBeNull();
   });
 });

@@ -67,11 +67,11 @@ export function requiredQuestionKey(
 
 export function repeatClarification(questionKey: IntakeQuestionKey) {
   const prompts: Record<Exclude<IntakeQuestionKey, "NONE">, string> = {
-    PRODUCT: "I couldn’t safely identify the product and quantity. Please describe what you need and how many.",
-    DELIVERY_POSTCODE: "I couldn’t match that to a complete UK postcode. Please send the full delivery postcode, for example GL52 6TD.",
-    CATEGORY: "I couldn’t identify the product category. Please tell me what kind of product or material this is.",
-    SPECIFICATION: "I couldn’t safely add that specification. Please give the missing size, material, colour or other important detail in one message.",
-    REQUIREMENTS: "I couldn’t safely understand that requirement. Please describe exactly what should be supplied or done.",
+    PRODUCT: "I want to match this to the right suppliers. What product do you need and roughly how many? A photo, drawing or PDF is welcome too.",
+    DELIVERY_POSTCODE: "What is the full UK delivery postcode? For example, GL52 6TD.",
+    CATEGORY: "Which product is this for — for example uPVC windows, aluminium bifolds, a composite door or a roof lantern?",
+    SPECIFICATION: "What important detail should suppliers price — for example size, material, colour or opening style?",
+    REQUIREMENTS: "What would you like the supplier to include in this quote?",
   };
   return questionKey === "NONE" ? null : prompts[questionKey];
 }

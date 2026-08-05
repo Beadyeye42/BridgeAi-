@@ -17,6 +17,7 @@ import { writeWhatsAppSystemEvent } from "@/lib/whatsapp/system-events";
 import {
   isMenuRequest,
   isNewQuoteRequest,
+  newQuoteDetails,
   isQuoteHistoryRequest,
   isQuoteRefresh,
   isServiceWindowOpen,
@@ -455,8 +456,9 @@ function consentReply() {
   const origin = process.env.APP_URL?.trim();
   const privacyUrl = origin ? `${applicationOrigin(origin)}/legal/privacy` : "/legal/privacy";
   return [
-    "I’m Bridge AI, an automated assistant from Ironbridge Group Ltd.",
-    "I can collect the details and files needed to request quotes from approved suppliers. Your contact details stay private until you accept a quote and the selected supplier completes the unlock payment.",
+    "Hi 👋 I’m Bridge AI, your quotation assistant from Ironbridge Group Ltd.",
+    "I’ll help turn your details, photos, drawings or PDFs into a clear request for approved suppliers, then bring their prices and lead times back here.",
+    "Your contact details stay private until you accept a quote and the selected supplier completes the secure unlock payment.",
     `Privacy: ${privacyUrl}`,
     "Reply CONTINUE to proceed, or STOP to end.",
   ].join("\n\n");
@@ -477,15 +479,17 @@ export function isConfirmation(value: string) {
 export function formatConfirmation(draft: QuoteDraft, categoryName: string, attachmentCount = 0) {
   const items = draft.items.map((item, index) => `${index + 1}. ${item.quantity} ${item.unit} — ${item.description}`).join("\n");
   return [
-    "Please check your quote request:",
+    "Great — here’s the job I’ll send to suitable approved suppliers:",
     `Project: ${draft.title}`,
     `Category: ${categoryName}`,
     `Delivery: ${draft.deliveryPostcode}`,
     `Requirements: ${draft.summary}`,
     items,
-    attachmentCount > 0 ? `Attachments: ${attachmentCount} received securely` : null,
+    attachmentCount > 0
+      ? `Files: ${attachmentCount} received securely and added to this job`
+      : "For the most accurate pricing, send a photo, drawing or PDF now if you have one. You can still continue without a file.",
     draft.customerBudget === null ? null : `Budget: £${draft.customerBudget.toLocaleString("en-GB", { maximumFractionDigits: 2 })}`,
-    "Reply CONFIRM to send this request, or tell me what to change.",
+    "Reply CONFIRM to send it, or tell me what to change.",
   ].filter(Boolean).join("\n\n");
 }
 
@@ -697,8 +701,15 @@ async function quoteHistoryReply(conversation: LoadedJob["conversation"]) {
   ].filter(Boolean).join("\n\n");
 }
 
-async function startNewQuote(job: WhatsAppJob, conversation: NonNullable<LoadedJob["conversation"]>, inbound: NonNullable<LoadedJob["whatsappMessage"]>) {
-  const startedAt = new Date();
+async function startNewQuote(
+  job: WhatsAppJob,
+  conversation: NonNullable<LoadedJob["conversation"]>,
+  inbound: NonNullable<LoadedJob["whatsappMessage"]>,
+  announce = true,
+) {
+  // Keep details from messages such as “another quote for aluminium bifolds”
+  // inside the new session so the customer never has to type them twice.
+  const startedAt = inbound.occurredAt;
   const updated = await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
     const next = await tx.conversation.update({
       where: { id: conversation.id },
@@ -730,13 +741,17 @@ async function startNewQuote(job: WhatsAppJob, conversation: NonNullable<LoadedJ
     });
     return next;
   });
-  await sendReply(job, updated, "Your new quote is ready to start. What product or materials do you need? You can send the details, photos or a PDF.");
+  if (announce) {
+    await sendReply(job, updated, "Brilliant — let’s price another job. What product do you need? You can type the details or send a photo, drawing or PDF.");
+  }
+  return updated;
 }
 
 async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
-  const conversation = loaded.conversation;
+  const initialConversation = loaded.conversation;
   const inbound = loaded.whatsappMessage;
-  if (!conversation || !inbound || inbound.direction !== "INBOUND") throw new Error("INBOUND_JOB_INVALID");
+  if (!initialConversation || !inbound || inbound.direction !== "INBOUND") throw new Error("INBOUND_JOB_INVALID");
+  let conversation: NonNullable<LoadedJob["conversation"]> = initialConversation;
   const text = inbound.bodyEncrypted ? decryptPrivateValue(inbound.bodyEncrypted) : "";
 
   const controlMessage = isStop(text)
@@ -804,13 +819,14 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
       });
       return updated;
     });
-    await sendReply(job, consentedConversation, "You’re ready to begin. What product or materials do you need a quote for? You can send details, photos or a PDF.");
+    await sendReply(job, consentedConversation, "Perfect — what are you pricing today? For example, uPVC windows, aluminium bifolds, a composite door or a roof lantern. You can also send a photo, drawing or PDF.");
     return undefined;
   }
 
   if (isNewQuoteRequest(text)) {
-    await startNewQuote(job, conversation, inbound);
-    return undefined;
+    const includesJobDetails = newQuoteDetails(text) !== null || Boolean(inbound.mediaIdEncrypted);
+    conversation = await startNewQuote(job, conversation, inbound, !includesJobDetails);
+    if (!includesJobDetails) return undefined;
   }
 
   if (isQuoteHistoryRequest(text)) {
@@ -829,11 +845,13 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
       && message.occurredAt >= conversation.aiSessionStartedAt)
     .slice(0, 10);
   let rejectedMedia = false;
+  let currentAttachmentCount = 0;
   const attachmentAnalyses: QuoteAttachmentAnalysis[] = [];
   for (const message of mediaMessages) {
     const outcome = await persistMedia(message, conversation.id);
     rejectedMedia ||= outcome.rejected;
     if (outcome.attachment) {
+      if (message.id === inbound.id) currentAttachmentCount += 1;
       const analysis = await ensureAttachmentAnalysis(
         outcome.attachment,
         outcome.bytes,
@@ -889,13 +907,13 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
           metadata: { jobId: job.id, messageId: inbound.id, errorCode: error.code },
         });
       });
-      await sendReply(job, refreshed.conversation, "I couldn’t match that delivery postcode. Please send the full UK postcode, for example GL52 6TD.");
+      await sendReply(job, refreshed.conversation, "I couldn’t match that postcode. What is the full UK delivery postcode? For example, GL52 6TD.");
       return undefined;
     }
     const distributionMessage = request.assignmentCount > 0
       ? `It has been sent to ${request.assignmentCount} approved supplier${request.assignmentCount === 1 ? "" : "s"}.`
       : "It is safely recorded and awaiting an eligible supplier match. A Bridge AI administrator can review the distribution.";
-    await sendReply(job, refreshed.conversation, `Thanks — request ${request.request.reference} is now live. ${distributionMessage} I’ll send the first available price update here without revealing identities. You can reply QUOTES at any time for the latest list.`);
+    await sendReply(job, refreshed.conversation, `Perfect — request ${request.request.reference} is live. ${distributionMessage} I’ll bring the available prices and lead times back here while keeping identities private. Reply QUOTES for an update, or NEW QUOTE whenever you have another job to price.`);
     return undefined;
   }
 
@@ -943,8 +961,8 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
 
   if (["QUOTE_CREATED", "SELECTION_RECORDED", "CLOSED"].includes(stage)) {
     await sendReply(job, refreshed.conversation, stage === "QUOTE_CREATED"
-      ? "Your request is live. I’ll message you here when supplier quotes are ready."
-      : "This quote workflow is already complete. A Bridge AI administrator can help if you need anything changed.");
+      ? "This request is live and safely stored. I’ll message you when supplier prices and lead times are ready. Reply NEW QUOTE to price another job, or MY QUOTES to see your recent requests."
+      : "This quote is complete. Reply NEW QUOTE to price another job, or MY QUOTES to see your recent requests.");
     return undefined;
   }
 
@@ -987,7 +1005,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
       result.draft.deliveryPostcode = null;
       result.readyForConfirmation = false;
       result.nextQuestionKey = "DELIVERY_POSTCODE";
-      result.reply = "I couldn’t match that delivery postcode. Please send the full UK postcode, for example GL52 6TD.";
+      result.reply = "I couldn’t match that postcode. What is the full UK delivery postcode? For example, GL52 6TD.";
     }
   }
   if (result.needsHumanReview) {
@@ -1068,8 +1086,8 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   const attachmentCount = refreshed.conversation.messages
     .filter((message) => message.occurredAt >= refreshed.conversation!.aiSessionStartedAt)
     .reduce((count, message) => count + message.attachments.length, 0);
-  const mediaAcknowledgement = attachmentCount > 0
-    ? `\n\nI’ve securely received and read ${attachmentCount} attachment${attachmentCount === 1 ? "" : "s"}.`
+  const mediaAcknowledgement = currentAttachmentCount > 0
+    ? `\n\nGreat — I’ve securely received and read ${currentAttachmentCount === 1 ? "that file" : `those ${currentAttachmentCount} files`} and added the useful details.`
     : "";
   const repeatedClarification = !ready && progress.repeatedQuestion && !progress.progressed
     ? repeatClarification(questionKey)
