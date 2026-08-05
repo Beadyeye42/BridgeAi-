@@ -11,12 +11,12 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     metadataBase: new URL(origin),
     title: { default: "Bridge AI — Supplier Portal", template: "%s · Bridge AI" },
-    description: "Qualified customer enquiries, matched to approved suppliers through WhatsApp.",
+    description: "Turn customer WhatsApp messages, photos, drawings and PDFs into matched trade quote opportunities with Bridge AI.",
     applicationName: "Bridge AI",
     authors: [{ name: "Ironbridge Group Ltd" }],
     icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
-    openGraph: { title: "Bridge AI — Supplier Portal", description: "Qualified enquiries. Better supplier matches.", siteName: "Bridge AI", type: "website", images: [{ url: `${origin}/og.png`, width: 1731, height: 909, alt: "Bridge AI supplier portal" }] },
-    twitter: { card: "summary_large_image", title: "Bridge AI — Supplier Portal", description: "Qualified enquiries. Better supplier matches.", images: [`${origin}/og.png`] },
+    openGraph: { title: "Bridge AI — WhatsApp enquiries for trade suppliers", description: "Customer conversations become matched, quote-ready trade opportunities.", siteName: "Bridge AI", type: "website", images: [{ url: `${origin}/og.png`, width: 1731, height: 909, alt: "Bridge AI supplier portal" }] },
+    twitter: { card: "summary_large_image", title: "Bridge AI — WhatsApp enquiries for trade suppliers", description: "Customer conversations become matched, quote-ready trade opportunities.", images: [`${origin}/og.png`] },
   };
 }
 
