@@ -10,6 +10,7 @@ import { findSupplierMatches } from "@/lib/matching/suppliers";
 import { addSupplierResponseHours } from "@/lib/quotes/response-clock";
 import { selectQuotationForCustomer } from "@/lib/quotes/selection";
 import { decryptPrivateValue, encryptPrivateValue } from "@/lib/security/encryption";
+import { sanitizeCustomerImage } from "@/lib/security/customer-image";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { PRIVATE_BUCKET } from "@/lib/storage";
 import { downloadMetaMedia, sendMetaTemplate, sendMetaText } from "@/lib/whatsapp/meta-client";
@@ -351,10 +352,35 @@ async function persistMedia(message: LoadedJob["whatsappMessage"], conversationI
       && downloaded.providerSha256 !== sha256Base64) {
     throw new Error("META_MEDIA_HASH_MISMATCH");
   }
-  const storageKey = `customers/${conversationId}/messages/${message.id}/${randomUUID()}.${downloaded.extension}`;
+
+  let prepared: {
+    bytes: Uint8Array;
+    mimeType: string;
+    extension: string;
+    scanStatus: "PENDING" | "CLEAN";
+  } = {
+    bytes: downloaded.bytes,
+    mimeType: downloaded.mimeType,
+    extension: downloaded.extension,
+    scanStatus: "PENDING" as const,
+  };
+  if (downloaded.mimeType === "image/jpeg" || downloaded.mimeType === "image/png") {
+    try {
+      const sanitized = await sanitizeCustomerImage(downloaded.bytes, downloaded.mimeType);
+      prepared = { ...sanitized, scanStatus: "CLEAN" as const };
+    } catch (error) {
+      if (["CUSTOMER_IMAGE_SANITIZE_FAILED", "CUSTOMER_IMAGE_SANITIZED_TOO_LARGE"].includes(errorCode(error))) {
+        return { stored: false, rejected: true };
+      }
+      throw error;
+    }
+  }
+
+  const storedSha256 = createHash("sha256").update(prepared.bytes).digest("hex");
+  const storageKey = `customers/${conversationId}/messages/${message.id}/${randomUUID()}.${prepared.extension}`;
   const storage = getSupabaseAdmin().storage.from(PRIVATE_BUCKET);
-  const uploaded = await storage.upload(storageKey, downloaded.bytes, {
-    contentType: downloaded.mimeType,
+  const uploaded = await storage.upload(storageKey, prepared.bytes, {
+    contentType: prepared.mimeType,
     cacheControl: "3600",
     upsert: false,
   });
@@ -363,13 +389,13 @@ async function persistMedia(message: LoadedJob["whatsappMessage"], conversationI
     const attachment = await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
       const attachment = await tx.attachment.create({
         data: {
-          kind: downloaded.mimeType.startsWith("image/") ? "PHOTO" : "DRAWING",
+          kind: prepared.mimeType.startsWith("image/") ? "PHOTO" : "DRAWING",
           fileName: downloaded.fileName,
-          mimeType: downloaded.mimeType,
-          byteSize: downloaded.bytes.byteLength,
+          mimeType: prepared.mimeType,
+          byteSize: prepared.bytes.byteLength,
           storageKey,
-          sha256,
-          scanStatus: "PENDING",
+          sha256: storedSha256,
+          scanStatus: prepared.scanStatus,
           whatsappMessageId: message.id,
         },
       });
@@ -377,12 +403,20 @@ async function persistMedia(message: LoadedJob["whatsappMessage"], conversationI
         action: "WHATSAPP.MEDIA_STORED",
         entityType: "Attachment",
         entityId: attachment.id,
-        summary: "Customer media stored privately and queued for security scanning",
-        metadata: { messageId: message.id, mimeType: downloaded.mimeType, byteSize: downloaded.bytes.byteLength },
+        summary: prepared.scanStatus === "CLEAN"
+          ? "Customer image was safely rebuilt and stored privately"
+          : "Customer document stored privately and queued for security scanning",
+        metadata: {
+          messageId: message.id,
+          mimeType: prepared.mimeType,
+          byteSize: prepared.bytes.byteLength,
+          scanStatus: prepared.scanStatus,
+          imageReencoded: prepared.scanStatus === "CLEAN",
+        },
       });
       return attachment;
     });
-    return { stored: true, rejected: false, attachment, bytes: downloaded.bytes };
+    return { stored: true, rejected: false, attachment, bytes: prepared.bytes };
   } catch (error) {
     await storage.remove([storageKey]).catch(() => undefined);
     throw error;

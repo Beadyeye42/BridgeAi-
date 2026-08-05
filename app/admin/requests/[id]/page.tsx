@@ -1,10 +1,11 @@
 import { notFound } from "next/navigation";
-import { Download, FileText, MessageSquareText, Paperclip, ShieldCheck } from "lucide-react";
+import { FileText, MessageSquareText, Paperclip } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { requireAdminPage } from "@/lib/auth/guards";
 import { AdminHeading } from "@/components/admin/admin-shell";
 import { AssignmentForm, RecordCustomerSelection } from "@/components/admin/admin-actions";
 import { findSupplierMatches, resolveDeliveryLocation } from "@/lib/matching/suppliers";
+import { AttachmentList } from "@/components/attachments/attachment-list";
 
 export default async function AdminRequestPage({ params }: { params: Promise<{ id: string }> }) {
   await requireAdminPage();
@@ -45,10 +46,7 @@ export default async function AdminRequestPage({ params }: { params: Promise<{ i
       </section>
       <section className="panel request-section">
         <div className="section-title"><Paperclip size={18}/><div><p className="eyebrow">{request.attachments.length} files</p><h2>Customer attachments</h2></div></div>
-        <div className="attachment-grid">{request.attachments.length ? request.attachments.map((file) => file.scanStatus === "CLEAN"
-          ? <a className="attachment-file" href={`/api/attachments/${file.id}/download`} key={file.id}><span><FileText size={19}/></span><div><b>{file.fileName}</b><small>{file.mimeType} · {Math.ceil(file.byteSize / 1024)} KB</small></div><Download size={16}/></a>
-          : <div className="attachment-file locked" key={file.id}><ShieldCheck size={18}/><div><b>{file.fileName}</b><small>Security check: {file.scanStatus.toLowerCase()}</small></div></div>)
-          : <div className="empty-state">No files were supplied with this enquiry.</div>}</div>
+        <div className="attachment-grid"><AttachmentList files={request.attachments} emptyMessage="No files were supplied with this enquiry." canSanitizeImages/></div>
       </section>
       <section className="panel form-section">
         <div className="section-heading"><div><p className="eyebrow">Supplier responses</p><h2>Distribution</h2></div></div>
