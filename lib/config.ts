@@ -64,6 +64,14 @@ export function metaContactTemplate() {
   return { name, language };
 }
 
+export function whatsappMessagingPolicy() {
+  const raw = process.env.WHATSAPP_ALLOW_PAID_TEMPLATES?.trim().toLowerCase();
+  if (raw && raw !== "true" && raw !== "false") {
+    throw new Error("WHATSAPP_ALLOW_PAID_TEMPLATES must be true or false");
+  }
+  return { allowPaidTemplates: raw === "true" };
+}
+
 export function openAiCredentials() {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) throw new Error("OpenAI API credentials are not configured");

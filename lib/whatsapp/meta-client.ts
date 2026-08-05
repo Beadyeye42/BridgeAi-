@@ -27,6 +27,20 @@ const ALLOWED_MEDIA = new Map([
   ["application/pdf", { extension: "pdf", maxBytes: 20_000_000 }],
 ]);
 
+export function hasExpectedMediaSignature(mimeType: string, bytes: Uint8Array) {
+  if (mimeType === "image/jpeg") {
+    return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  }
+  if (mimeType === "image/png") {
+    const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+    return bytes.length >= signature.length && signature.every((value, index) => bytes[index] === value);
+  }
+  if (mimeType === "application/pdf") {
+    return bytes.length >= 5 && Buffer.from(bytes.subarray(0, 5)).toString("ascii") === "%PDF-";
+  }
+  return false;
+}
+
 function graphUrl(path: string) {
   const { graphApiVersion } = metaMessagingCredentials();
   return `https://graph.facebook.com/${graphApiVersion}/${path}`;
@@ -161,6 +175,9 @@ export async function downloadMetaMedia(mediaId: string, hintedFileName?: string
   if (metadata.file_size > rule.maxBytes) throw new Error("META_MEDIA_TOO_LARGE");
   const mediaResponse = await metaFetch(assertMetaMediaHost(metadata.url));
   const bytes = await readBounded(mediaResponse, rule.maxBytes);
+  if (!hasExpectedMediaSignature(metadata.mime_type.toLowerCase(), bytes)) {
+    throw new Error("META_MEDIA_SIGNATURE_MISMATCH");
+  }
   return {
     bytes,
     mimeType: metadata.mime_type.toLowerCase(),

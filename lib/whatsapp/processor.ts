@@ -1,8 +1,9 @@
 import "server-only";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { Prisma, type WhatsAppJob } from "@prisma/client";
-import { applicationOrigin, metaContactTemplate, metaQuoteTemplate, whatsappConciergeConfig } from "@/lib/config";
+import { Prisma, type Attachment, type WhatsAppJob } from "@prisma/client";
+import { applicationOrigin, metaContactTemplate, metaQuoteTemplate, whatsappConciergeConfig, whatsappMessagingPolicy } from "@/lib/config";
 import { runAsDatabaseWorker } from "@/lib/db";
+import { analyzeQuoteAttachment, quoteAttachmentAnalysisSchema, type QuoteAttachmentAnalysis } from "@/lib/ai/attachment-intake";
 import { extractQuoteIntake, quoteDraftSchema, type QuoteDraft } from "@/lib/ai/quote-intake";
 import { lookupPostcode } from "@/lib/location/postcodes";
 import { addSupplierResponseHours } from "@/lib/quotes/response-clock";
@@ -11,6 +12,7 @@ import { decryptPrivateValue, encryptPrivateValue } from "@/lib/security/encrypt
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { PRIVATE_BUCKET } from "@/lib/storage";
 import { downloadMetaMedia, sendMetaTemplate, sendMetaText } from "@/lib/whatsapp/meta-client";
+import { isQuoteRefresh, isServiceWindowOpen, wasReplyRecentlySent } from "@/lib/whatsapp/policy";
 
 const MAX_ATTEMPTS = 3;
 const STALE_LOCK_MS = 5 * 60_000;
@@ -37,17 +39,50 @@ function errorCode(error: unknown) {
 async function claimJob() {
   return runAsDatabaseWorker("whatsapp_ai", async (tx) => {
     const staleBefore = new Date(Date.now() - STALE_LOCK_MS);
+    const exhausted = await tx.whatsAppJob.findMany({
+      where: { status: "PROCESSING", lockedAt: { lt: staleBefore }, attempts: { gte: MAX_ATTEMPTS } },
+      select: { id: true, type: true, attempts: true },
+    });
+    for (const stale of exhausted) {
+      await tx.whatsAppJob.update({
+        where: { id: stale.id },
+        data: { status: "FAILED", failedAt: new Date(), lockedAt: null, errorCode: "STALE_JOB_EXHAUSTED" },
+      });
+      await tx.systemEvent.create({
+        data: {
+          severity: "ERROR",
+          source: "whatsapp_ai",
+          code: "WHATSAPP_JOB_FAILED",
+          message: "A stale WhatsApp background job exhausted its retry policy",
+          context: { jobId: stale.id, jobType: stale.type, errorCode: "STALE_JOB_EXHAUSTED", attempts: stale.attempts },
+        },
+      });
+      await writeWhatsAppAudit(tx, {
+        action: "WHATSAPP.JOB_FAILED",
+        entityType: "WhatsAppJob",
+        entityId: stale.id,
+        summary: "A stale WhatsApp background job exhausted its retry policy",
+        metadata: { type: stale.type, errorCode: "STALE_JOB_EXHAUSTED", attempts: stale.attempts },
+      });
+    }
     await tx.whatsAppJob.updateMany({
       where: { status: "PROCESSING", lockedAt: { lt: staleBefore }, attempts: { lt: MAX_ATTEMPTS } },
       data: { status: "PENDING", lockedAt: null, availableAt: new Date() },
     });
     const rows = await tx.$queryRaw<Array<{ id: string }>>`
-      SELECT id
-      FROM bridge_ai."WhatsAppJob"
-      WHERE status = 'PENDING'
-        AND "availableAt" <= now()
-        AND attempts < ${MAX_ATTEMPTS}
-      ORDER BY "createdAt" ASC
+      SELECT candidate.id
+      FROM bridge_ai."WhatsAppJob" candidate
+      WHERE candidate.status = 'PENDING'
+        AND candidate."availableAt" <= now()
+        AND candidate.attempts < ${MAX_ATTEMPTS}
+        AND NOT EXISTS (
+          SELECT 1
+          FROM bridge_ai."WhatsAppJob" earlier
+          WHERE earlier."conversationId" = candidate."conversationId"
+            AND earlier.status IN ('PENDING', 'PROCESSING')
+            AND (earlier."createdAt", earlier.id) < (candidate."createdAt", candidate.id)
+        )
+      ORDER BY candidate."createdAt" ASC, candidate.id ASC
       FOR UPDATE SKIP LOCKED
       LIMIT 1
     `;
@@ -68,7 +103,11 @@ async function loadJob(id: string) {
       conversation: {
         include: {
           customerContact: true,
-          messages: { orderBy: [{ occurredAt: "desc" }, { id: "desc" }], take: 20 },
+          messages: {
+            orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+            take: 30,
+            include: { attachments: true },
+          },
         },
       },
       quoteRequest: true,
@@ -105,6 +144,7 @@ async function failJob(job: WhatsAppJob, cause: unknown) {
   const code = errorCode(cause);
   const terminal = job.attempts >= MAX_ATTEMPTS
     || code === "OUTBOUND_DELIVERY_UNCERTAIN"
+    || code === "META_PAID_TEMPLATE_DISABLED"
     || code === "META_QUOTE_TEMPLATE_REQUIRED"
     || code === "META_CONTACT_TEMPLATE_REQUIRED";
   await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
@@ -145,20 +185,60 @@ async function sendReply(
   },
 ) {
   if (!conversation) throw new Error("CONVERSATION_NOT_FOUND");
-  const lastInboundAt = conversation.messages
-    .filter((message) => message.direction === "INBOUND")
-    .reduce<Date | null>((latest, message) => !latest || message.occurredAt > latest ? message.occurredAt : latest, null);
-  const serviceWindowOpen = Boolean(lastInboundAt && Date.now() - lastInboundAt.getTime() < 24 * 60 * 60_000);
+  const serviceWindowOpen = isServiceWindowOpen(conversation.messages);
   if (!serviceWindowOpen && !options?.outOfWindowTemplate) {
     throw new Error(options?.missingTemplateCode ?? "META_QUOTE_TEMPLATE_REQUIRED");
   }
-  const localMessageId = `queued:${job.id}:${job.attempts}`;
+  if (!serviceWindowOpen && !whatsappMessagingPolicy().allowPaidTemplates) {
+    throw new Error("META_PAID_TEMPLATE_DISABLED");
+  }
+  const recentMessages = conversation.messages.flatMap((message) => message.bodyEncrypted
+    ? [{
+        direction: message.direction,
+        status: message.status,
+        occurredAt: message.occurredAt,
+        body: decryptPrivateValue(message.bodyEncrypted),
+      }]
+    : []);
+  if (wasReplyRecentlySent(recentMessages, body)) {
+    await runAsDatabaseWorker("whatsapp_ai", (tx) => writeWhatsAppAudit(tx, {
+      action: "WHATSAPP.REPLY_SUPPRESSED",
+      entityType: "WhatsAppJob",
+      entityId: job.id,
+      summary: "A duplicate WhatsApp reply was suppressed",
+      metadata: { conversationId: conversation.id },
+    }));
+    return;
+  }
+
+  const localMessageId = `queued:${job.id}`;
   const existing = await runAsDatabaseWorker("whatsapp_ai", (tx) => tx.whatsAppMessage.findUnique({
     where: { externalMessageId: localMessageId },
   }));
+  if (existing && ["SENT", "DELIVERED", "READ"].includes(existing.status)) return;
   if (existing?.status === "QUEUED") throw new Error("OUTBOUND_DELIVERY_UNCERTAIN");
 
   const queued = await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
+    if (existing?.status === "FAILED") {
+      const message = await tx.whatsAppMessage.update({
+        where: { id: existing.id },
+        data: {
+          bodyEncrypted: encryptPrivateValue(body),
+          status: "QUEUED",
+          occurredAt: new Date(),
+          failureCode: null,
+          failureMessage: null,
+        },
+      });
+      await writeWhatsAppAudit(tx, {
+        action: "WHATSAPP.MESSAGE_RETRY_QUEUED",
+        entityType: "WhatsAppMessage",
+        entityId: message.id,
+        summary: "A definitively rejected WhatsApp reply was safely queued for retry",
+        metadata: { jobId: job.id },
+      });
+      return message;
+    }
     const message = await tx.whatsAppMessage.create({
       data: {
         conversationId: conversation.id,
@@ -200,19 +280,24 @@ async function sendReply(
       });
     });
   } catch (error) {
+    const code = errorCode(error);
+    const definitivelyRejected = code.startsWith("META_HTTP_");
     await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
       await tx.whatsAppMessage.updateMany({
         where: { id: queued.id, status: "QUEUED" },
-        data: { status: "FAILED", failureCode: errorCode(error), failureMessage: "Outbound delivery failed" },
+        data: definitivelyRejected
+          ? { status: "FAILED", failureCode: code, failureMessage: "Meta rejected outbound delivery" }
+          : { failureCode: "OUTBOUND_DELIVERY_UNCERTAIN", failureMessage: "Outbound delivery could not be confirmed" },
       });
       await writeWhatsAppAudit(tx, {
         action: "WHATSAPP.MESSAGE_SEND_FAILED",
         entityType: "WhatsAppMessage",
         entityId: queued.id,
         summary: "Outbound WhatsApp reply failed",
-        metadata: { jobId: job.id, errorCode: errorCode(error) },
+        metadata: { jobId: job.id, errorCode: definitivelyRejected ? code : "OUTBOUND_DELIVERY_UNCERTAIN" },
       });
     });
+    if (!definitivelyRejected) throw new Error("OUTBOUND_DELIVERY_UNCERTAIN");
     throw error;
   }
 }
@@ -220,9 +305,9 @@ async function sendReply(
 async function persistMedia(message: LoadedJob["whatsappMessage"], conversationId: string) {
   if (!message?.mediaIdEncrypted) return { stored: false, rejected: false };
   const existing = await runAsDatabaseWorker("whatsapp_ai", (tx) => tx.attachment.findFirst({
-    where: { whatsappMessageId: message.id }, select: { id: true },
+    where: { whatsappMessageId: message.id },
   }));
-  if (existing) return { stored: true, rejected: false };
+  if (existing) return { stored: true, rejected: false, attachment: existing };
   if (message.messageType === "AUDIO") return { stored: false, rejected: true };
 
   const mediaId = decryptPrivateValue(message.mediaIdEncrypted);
@@ -231,7 +316,7 @@ async function persistMedia(message: LoadedJob["whatsappMessage"], conversationI
   try {
     downloaded = await downloadMetaMedia(mediaId, hintedName);
   } catch (error) {
-    if (["META_MEDIA_TYPE_REJECTED", "META_MEDIA_TOO_LARGE"].includes(errorCode(error))) {
+    if (["META_MEDIA_TYPE_REJECTED", "META_MEDIA_TOO_LARGE", "META_MEDIA_SIGNATURE_MISMATCH"].includes(errorCode(error))) {
       return { stored: false, rejected: true };
     }
     throw error;
@@ -252,7 +337,7 @@ async function persistMedia(message: LoadedJob["whatsappMessage"], conversationI
   });
   if (uploaded.error) throw new Error("CUSTOMER_MEDIA_STORAGE_FAILED");
   try {
-    await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
+    const attachment = await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
       const attachment = await tx.attachment.create({
         data: {
           kind: downloaded.mimeType.startsWith("image/") ? "PHOTO" : "DRAWING",
@@ -272,12 +357,71 @@ async function persistMedia(message: LoadedJob["whatsappMessage"], conversationI
         summary: "Customer media stored privately and queued for security scanning",
         metadata: { messageId: message.id, mimeType: downloaded.mimeType, byteSize: downloaded.bytes.byteLength },
       });
+      return attachment;
     });
+    return { stored: true, rejected: false, attachment, bytes: downloaded.bytes };
   } catch (error) {
     await storage.remove([storageKey]).catch(() => undefined);
     throw error;
   }
-  return { stored: true, rejected: false };
+}
+
+function decryptAttachmentAnalysis(value: Uint8Array | null) {
+  if (!value) return null;
+  return quoteAttachmentAnalysisSchema.parse(JSON.parse(decryptPrivateValue(value)));
+}
+
+async function loadAttachmentBytes(storageKey: string) {
+  const downloaded = await getSupabaseAdmin().storage.from(PRIVATE_BUCKET).download(storageKey);
+  if (downloaded.error) throw new Error("CUSTOMER_MEDIA_STORAGE_READ_FAILED");
+  return new Uint8Array(await downloaded.data.arrayBuffer());
+}
+
+async function ensureAttachmentAnalysis(
+  attachment: Attachment,
+  initialBytes: Uint8Array | undefined,
+  safetyIdentifier: string,
+) {
+  const existing = decryptAttachmentAnalysis(attachment.aiSummaryEncrypted);
+  if (existing) return existing;
+  if (!["image/jpeg", "image/png", "application/pdf"].includes(attachment.mimeType)) return null;
+  const bytes = initialBytes ?? await loadAttachmentBytes(attachment.storageKey);
+  const { result, telemetry } = await analyzeQuoteAttachment({
+    fileName: attachment.fileName,
+    mimeType: attachment.mimeType as "image/jpeg" | "image/png" | "application/pdf",
+    bytes,
+    safetyIdentifier,
+  });
+  await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
+    await tx.attachment.update({
+      where: { id: attachment.id },
+      data: {
+        aiSummaryEncrypted: encryptPrivateValue(JSON.stringify(result)),
+        aiAnalyzedAt: new Date(),
+        aiAnalysisModel: telemetry.model,
+        aiResponseIdHash: telemetry.providerResponseIdHash,
+      },
+    });
+    await writeWhatsAppAudit(tx, {
+      action: "WHATSAPP.MEDIA_ANALYSED",
+      entityType: "Attachment",
+      entityId: attachment.id,
+      summary: "A private customer attachment was analysed for quote requirements",
+      metadata: {
+        model: telemetry.model,
+        usefulForQuote: result.usefulForQuote,
+        needsHumanReview: result.needsHumanReview,
+        inputTokens: telemetry.inputTokens,
+        outputTokens: telemetry.outputTokens,
+      },
+    });
+  });
+  return result;
+}
+
+function attachmentContext(fileName: string, analysis: QuoteAttachmentAnalysis) {
+  const facts = analysis.facts.length ? ` Facts: ${analysis.facts.join("; ")}` : "";
+  return `[Customer attachment ${JSON.stringify(fileName)}: ${analysis.summary}${facts}]`;
 }
 
 function decryptDraft(value: Uint8Array | null) {
@@ -308,7 +452,7 @@ export function isConfirmation(value: string) {
   return /^confirm$/i.test(value.trim());
 }
 
-export function formatConfirmation(draft: QuoteDraft, categoryName: string) {
+export function formatConfirmation(draft: QuoteDraft, categoryName: string, attachmentCount = 0) {
   const items = draft.items.map((item, index) => `${index + 1}. ${item.quantity} ${item.unit} — ${item.description}`).join("\n");
   return [
     "Please check your quote request:",
@@ -317,6 +461,7 @@ export function formatConfirmation(draft: QuoteDraft, categoryName: string) {
     `Delivery: ${draft.deliveryPostcode}`,
     `Requirements: ${draft.summary}`,
     items,
+    attachmentCount > 0 ? `Attachments: ${attachmentCount} received securely` : null,
     draft.customerBudget === null ? null : `Budget: £${draft.customerBudget.toLocaleString("en-GB", { maximumFractionDigits: 2 })}`,
     "Reply CONFIRM to send this request, or tell me what to change.",
   ].filter(Boolean).join("\n\n");
@@ -372,11 +517,35 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
   });
 }
 
+async function hasNewerInboundJob(job: WhatsAppJob) {
+  return runAsDatabaseWorker("whatsapp_ai", (tx) => tx.whatsAppJob.findFirst({
+    where: {
+      conversationId: job.conversationId,
+      type: "PROCESS_INBOUND",
+      status: "PENDING",
+      OR: [
+        { createdAt: { gt: job.createdAt } },
+        { createdAt: job.createdAt, id: { gt: job.id } },
+      ],
+    },
+    select: { id: true },
+  }));
+}
+
 async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   const conversation = loaded.conversation;
   const inbound = loaded.whatsappMessage;
   if (!conversation || !inbound || inbound.direction !== "INBOUND") throw new Error("INBOUND_JOB_INVALID");
   const text = inbound.bodyEncrypted ? decryptPrivateValue(inbound.bodyEncrypted) : "";
+
+  const controlMessage = isStop(text)
+    || isConsent(text)
+    || isConfirmation(text)
+    || isQuoteRefresh(text)
+    || /^accept\s+[1-5]$/i.test(text.trim());
+  if (!controlMessage && await hasNewerInboundJob(job)) {
+    return undefined;
+  }
 
   if (isStop(text)) {
     await runAsDatabaseWorker("whatsapp_ai", (tx) => tx.conversation.update({
@@ -403,11 +572,22 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     });
   }
 
-  const mediaMessages = conversation.messages.filter((message) => message.mediaIdEncrypted && message.direction === "INBOUND");
+  const mediaMessages = conversation.messages
+    .filter((message) => message.mediaIdEncrypted && message.direction === "INBOUND")
+    .slice(0, 10);
   let rejectedMedia = false;
+  const attachmentAnalyses: QuoteAttachmentAnalysis[] = [];
   for (const message of mediaMessages) {
     const outcome = await persistMedia(message, conversation.id);
     rejectedMedia ||= outcome.rejected;
+    if (outcome.attachment) {
+      const analysis = await ensureAttachmentAnalysis(
+        outcome.attachment,
+        outcome.bytes,
+        conversation.customerContact.phoneHash,
+      );
+      if (analysis) attachmentAnalyses.push(analysis);
+    }
   }
 
   const refreshed = await loadJob(job.id);
@@ -415,10 +595,38 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   const stage = refreshed.conversation.aiStage;
   const draft = decryptDraft(refreshed.conversation.aiDraftEncrypted);
 
+  if (attachmentAnalyses.some((analysis) => analysis.needsHumanReview)) {
+    await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
+      await tx.conversation.update({ where: { id: refreshed.conversation!.id }, data: { aiStage: "HUMAN_REVIEW" } });
+      await tx.systemEvent.create({
+        data: {
+          severity: "WARNING",
+          source: "whatsapp_ai",
+          code: "CUSTOMER_ATTACHMENT_REVIEW",
+          message: "A WhatsApp attachment requires administrator review",
+          context: { conversationId: refreshed.conversation!.id, jobId: job.id },
+        },
+      });
+    });
+    await sendReply(job, refreshed.conversation, "I’ve received your file, but it needs a Bridge AI administrator to review it before the quote request can continue.");
+    return undefined;
+  }
+
   if (stage === "AWAITING_CONFIRMATION" && isConfirmation(text)) {
     if (!draft) throw new Error("QUOTE_DRAFT_MISSING");
     const request = await createQuoteRequest(job, refreshed, draft);
-    await sendReply(job, refreshed.conversation, `Thanks — request ${request.reference} is now live. Up to five approved suppliers can quote. I’ll send their prices and lead times here without revealing identities.`);
+    await sendReply(job, refreshed.conversation, `Thanks — request ${request.reference} is now live. Up to five approved suppliers can quote. I’ll send the first available price update here without revealing identities. You can reply QUOTES at any time for the latest list.`);
+    return undefined;
+  }
+
+  if (isQuoteRefresh(text) && ["QUOTE_CREATED", "AWAITING_SELECTION"].includes(stage)) {
+    const summary = await currentQuoteSummary(refreshed.conversation.id);
+    if (!summary) {
+      await sendReply(job, refreshed.conversation, "No supplier quotes are available yet. I’ll send the first price update here; you can reply QUOTES again whenever you want the latest list.");
+      return undefined;
+    }
+    await sendReply(job, refreshed.conversation, summary.body);
+    await markQuotesPresented(job, refreshed.conversation.id, summary.requestId, summary.quoteCount, "WHATSAPP.QUOTE_SUMMARY_REQUESTED");
     return undefined;
   }
 
@@ -468,11 +676,21 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   const messages = refreshed.conversation.messages
     .slice()
     .reverse()
-    .flatMap((message) => message.bodyEncrypted
-      ? [{ direction: message.direction, text: decryptPrivateValue(message.bodyEncrypted) }]
-      : message.mediaIdEncrypted
-        ? [{ direction: message.direction, text: `[Customer uploaded a ${message.messageType.toLowerCase()} file; content is not available to the AI until security scanning completes.]` }]
-        : []);
+    .filter((message) => message.direction === "INBOUND" || ["SENT", "DELIVERED", "READ"].includes(message.status))
+    .flatMap((message) => {
+      const parts: Array<{ direction: "INBOUND" | "OUTBOUND"; text: string }> = [];
+      if (message.bodyEncrypted) {
+        parts.push({ direction: message.direction, text: decryptPrivateValue(message.bodyEncrypted) });
+      }
+      for (const attachment of message.attachments) {
+        const analysis = decryptAttachmentAnalysis(attachment.aiSummaryEncrypted);
+        if (analysis) parts.push({ direction: message.direction, text: attachmentContext(attachment.fileName, analysis) });
+      }
+      if (message.mediaIdEncrypted && !message.attachments.length) {
+        parts.push({ direction: message.direction, text: `[Customer uploaded a ${message.messageType.toLowerCase()} file that is being processed.]` });
+      }
+      return parts;
+    });
   const { result, telemetry } = await extractQuoteIntake({
     messages,
     currentDraft: draft,
@@ -505,9 +723,13 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
       metadata: { jobId: job.id, readyForConfirmation: ready, itemCount: result.draft.items.length },
     });
   });
+  const attachmentCount = refreshed.conversation.messages.reduce((count, message) => count + message.attachments.length, 0);
+  const mediaAcknowledgement = attachmentCount > 0
+    ? `\n\nI’ve securely received and read ${attachmentCount} attachment${attachmentCount === 1 ? "" : "s"}.`
+    : "";
   const reply = ready && category
-      ? formatConfirmation(result.draft, category.name)
-      : `${result.reply}${rejectedMedia ? "\n\nOne uploaded file could not be accepted. Please send a JPG, PNG or PDF within the size limit." : ""}`;
+      ? formatConfirmation(result.draft, category.name, attachmentCount)
+      : `${result.reply}${mediaAcknowledgement}${rejectedMedia ? "\n\nOne uploaded file could not be accepted. Please send a genuine JPG, PNG or PDF within the size limit." : ""}`;
   await sendReply(job, refreshed.conversation, reply);
   return telemetry;
 }
@@ -516,39 +738,63 @@ function formatPrice(value: Prisma.Decimal, currency: string) {
   return new Intl.NumberFormat("en-GB", { style: "currency", currency }).format(Number(value));
 }
 
-async function processQuoteSummary(job: WhatsAppJob, loaded: LoadedJob) {
-  if (!loaded.conversation || !loaded.quoteRequest || !loaded.quotation) throw new Error("QUOTE_SUMMARY_JOB_INVALID");
-  const request = await runAsDatabaseWorker("whatsapp_ai", (tx) => tx.quoteRequest.findUnique({
-    where: { id: loaded.quoteRequest!.id },
+async function currentQuoteSummary(conversationId: string) {
+  const request = await runAsDatabaseWorker("whatsapp_ai", (tx) => tx.quoteRequest.findFirst({
+    where: { conversationId, status: { in: ["OPEN", "MATCHING", "QUOTED"] } },
+    orderBy: { createdAt: "desc" },
     include: { quotations: { where: { status: "SUBMITTED" }, orderBy: [{ submittedAt: "asc" }, { id: "asc" }], take: 5 } },
   }));
-  if (!request || !["OPEN", "MATCHING", "QUOTED"].includes(request.status)) return undefined;
+  if (!request) return null;
   const quotes = request.quotations.filter((quote) => !quote.validUntil || quote.validUntil > new Date());
-  if (!quotes.length) return undefined;
+  if (!quotes.length) return null;
   const lines = quotes.map((quote, index) => `Quote ${index + 1}: ${formatPrice(quote.price, quote.currency)} — lead time ${quote.leadTimeDays} day${quote.leadTimeDays === 1 ? "" : "s"}`);
-  const body = [
-    `New prices are available for ${request.reference}. Supplier identities remain private:`,
-    lines.join("\n"),
-    "Reply ACCEPT followed by the quote number, for example ACCEPT 1. Contact details remain locked until the selected supplier pays the £25 success fee.",
-  ].join("\n\n");
-  const template = metaQuoteTemplate();
-  await sendReply(job, loaded.conversation, body, template ? {
-    outOfWindowTemplate: {
-      ...template,
-      parameters: [request.reference, lines.join("\n")],
-    },
-  } : undefined);
+  return {
+    requestId: request.id,
+    reference: request.reference,
+    quoteCount: quotes.length,
+    lines,
+    body: [
+      `Current prices for ${request.reference}. Supplier identities remain private:`,
+      lines.join("\n"),
+      "Reply ACCEPT followed by the quote number, for example ACCEPT 1. Contact details remain locked until the selected supplier pays the £25 success fee.",
+    ].join("\n\n"),
+  };
+}
+
+async function markQuotesPresented(
+  job: WhatsAppJob,
+  conversationId: string,
+  requestId: string,
+  quoteCount: number,
+  action = "WHATSAPP.QUOTE_SUMMARY_SENT",
+) {
   await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
-    await tx.conversation.update({ where: { id: loaded.conversation!.id }, data: { aiStage: "AWAITING_SELECTION" } });
-    await tx.quoteRequest.updateMany({ where: { id: request.id, status: { in: ["OPEN", "MATCHING"] } }, data: { status: "QUOTED" } });
+    await tx.conversation.update({ where: { id: conversationId }, data: { aiStage: "AWAITING_SELECTION" } });
+    await tx.quoteRequest.updateMany({ where: { id: requestId, status: { in: ["OPEN", "MATCHING"] } }, data: { status: "QUOTED" } });
     await writeWhatsAppAudit(tx, {
-      action: "WHATSAPP.QUOTE_SUMMARY_SENT",
+      action,
       entityType: "QuoteRequest",
-      entityId: request.id,
-      summary: "Anonymised supplier prices and lead times sent to customer",
-      metadata: { jobId: job.id, quoteCount: quotes.length },
+      entityId: requestId,
+      summary: action === "WHATSAPP.QUOTE_SUMMARY_SENT"
+        ? "Anonymised supplier prices and lead times sent to customer"
+        : "Customer requested the latest anonymised supplier prices and lead times",
+      metadata: { jobId: job.id, quoteCount },
     });
   });
+}
+
+async function processQuoteSummary(job: WhatsAppJob, loaded: LoadedJob) {
+  if (!loaded.conversation || !loaded.quoteRequest || !loaded.quotation) throw new Error("QUOTE_SUMMARY_JOB_INVALID");
+  const summary = await currentQuoteSummary(loaded.conversation.id);
+  if (!summary || summary.requestId !== loaded.quoteRequest.id) return undefined;
+  const template = metaQuoteTemplate();
+  await sendReply(job, loaded.conversation, summary.body, template ? {
+    outOfWindowTemplate: {
+      ...template,
+      parameters: [summary.reference, summary.lines.join("\n")],
+    },
+  } : undefined);
+  await markQuotesPresented(job, loaded.conversation.id, summary.requestId, summary.quoteCount);
   return undefined;
 }
 
@@ -616,17 +862,19 @@ export async function enqueueQuoteSummary(quotationId: string) {
       where: { id: quotationId }, include: { quoteRequest: true },
     });
     if (!quotation?.quoteRequest.conversationId || quotation.status !== "SUBMITTED") return null;
-    return tx.whatsAppJob.upsert({
-      where: { idempotencyKey: `quote-summary:${quotation.id}:${quotation.updatedAt.getTime()}` },
-      create: {
+    const idempotencyKey = `quote-summary:${quotation.quoteRequestId}:first`;
+    const created = await tx.whatsAppJob.createMany({
+      data: [{
         type: "SEND_QUOTE_SUMMARY",
-        idempotencyKey: `quote-summary:${quotation.id}:${quotation.updatedAt.getTime()}`,
+        idempotencyKey,
         conversationId: quotation.quoteRequest.conversationId,
         quoteRequestId: quotation.quoteRequestId,
         quotationId: quotation.id,
-      },
-      update: {},
+      }],
+      skipDuplicates: true,
     });
+    if (!created.count) return null;
+    return tx.whatsAppJob.findUnique({ where: { idempotencyKey } });
   });
 }
 
