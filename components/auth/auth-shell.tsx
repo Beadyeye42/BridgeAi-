@@ -14,7 +14,7 @@ export function AuthShell({ children, title, description, footer }: { children: 
         <p className="owner-line">A platform by Ironbridge Group Ltd</p>
       </section>
       <section className="auth-panel">
-        <div className="auth-card"><Link href="/" className="back-link"><ArrowLeft size={14} />Back to preview</Link><div className="auth-heading"><div className="auth-shield"><ShieldCheck size={20} /></div><h2>{title}</h2><p>{description}</p></div>{children}{footer && <div className="auth-footer">{footer}</div>}</div>
+        <div className="auth-card"><Link href="/" className="back-link"><ArrowLeft size={14} />Bridge AI home</Link><div className="auth-heading"><div className="auth-shield"><ShieldCheck size={20} /></div><h2>{title}</h2><p>{description}</p></div>{children}{footer && <div className="auth-footer">{footer}</div>}</div>
       </section>
     </main>
   );
