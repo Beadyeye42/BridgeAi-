@@ -230,6 +230,32 @@ describe("security foundation static controls", () => {
     expect(coverageRoute).toContain('action: "COVERAGE.CREATED"');
   });
 
+  it("allows approved suppliers to browse only a safe opportunity projection and gates claims on membership", () => {
+    const migration = read("supabase/migrations/20260805135021_supplier_opportunity_marketplace.sql");
+    const claimRoute = read("app/api/opportunities/[reference]/claim/route.ts");
+    const listPage = read("app/dashboard/requests/page.tsx");
+    const detailPage = read("app/dashboard/requests/[reference]/page.tsx");
+    expect(migration).toContain('SupplierOpportunity" FORCE ROW LEVEL SECURITY');
+    expect(migration).toContain("supplier_opportunity_approved_read");
+    expect(read("supabase/migrations/20260805140640_optimize_supplier_opportunity_policy.sql")).toContain("supplier_opportunity_read");
+    expect(migration).toContain("company.status = 'APPROVED'");
+    expect(migration).toContain("ACTIVE_SUBSCRIPTION_REQUIRED");
+    expect(migration).toContain("CATEGORY_NOT_MATCHED");
+    expect(migration).toContain("ACCREDITATION_REQUIRED");
+    expect(migration).toContain("COVERAGE_NOT_MATCHED");
+    expect(migration).toContain("LEAST(request_row.\"distributionLimit\", 5)");
+    expect(migration).toContain("OPPORTUNITY.CLAIMED");
+    expect(migration).toContain("TO bridge_ai_app");
+    expect(migration).not.toMatch(/CREATE POLICY[^;]+SupplierOpportunity[^;]+FOR (INSERT|UPDATE|DELETE)/i);
+    const projection = migration.slice(migration.indexOf('CREATE TABLE bridge_ai."SupplierOpportunity"'), migration.indexOf("CREATE INDEX"));
+    expect(projection).not.toMatch(/customerContactId|conversationId|summary|deliveryPostcode|customerBudget/);
+    expect(claimRoute).toContain("requireSupplierApi()");
+    expect(claimRoute).toContain("claim_supplier_opportunity");
+    expect(claimRoute).not.toContain("trustedPrisma");
+    expect(listPage).toContain("supplierOpportunity.findMany");
+    expect(detailPage).toContain("The exact postcode, detailed brief, drawings, photos and PDFs remain locked");
+  });
+
   it("automatically distributes confirmed WhatsApp requests without weakening tenant isolation", () => {
     const processor = read("lib/whatsapp/processor.ts");
     const migration = read("supabase/migrations/20260805130054_whatsapp_auto_distribution.sql");
@@ -264,7 +290,7 @@ describe("security foundation static controls", () => {
     expect(viewed).toContain('action: "ASSIGNMENT.VIEWED"');
     expect(viewed).toContain('supplierCompanyId: auth.companyId');
     const requests = read("app/dashboard/requests/page.tsx");
-    expect(requests).toContain("expiresAt: { gt: now }");
+    expect(requests).toContain("responseDueAt: { gt: now }");
     expect(requests).toContain("expiresAt: { lte: now }");
     const status = read("app/api/admin/suppliers/[id]/status/route.ts");
     expect(status).toContain("supplierOnboardingReadiness(existing)");

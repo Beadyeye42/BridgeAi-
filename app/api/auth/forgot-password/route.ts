@@ -14,6 +14,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Password recovery is not configured." }, { status: 503 });
   }
   const supabase = await createClient();
-  await supabase.auth.resetPasswordForEmail(parsed.data.email, { redirectTo: `${origin}/auth/callback?next=/reset-password` });
+  const { error } = await supabase.auth.resetPasswordForEmail(parsed.data.email, {
+    redirectTo: `${origin}/auth/callback?next=/reset-password`,
+  });
+  if (error?.status === 429) {
+    return NextResponse.json(
+      { error: "Please wait a few minutes before requesting another reset email." },
+      { status: 429 },
+    );
+  }
+  if (error) {
+    console.error("Password recovery request failed", { code: error.code, status: error.status });
+    return NextResponse.json(
+      { error: "We could not send the reset email just now. Please try again shortly." },
+      { status: 503 },
+    );
+  }
   return accepted;
 }

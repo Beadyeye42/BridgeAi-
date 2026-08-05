@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CalendarClock, Clock3, Download, FileImage, FileText, LockKeyhole, Mail, MapPin, MessageSquareText, Paperclip, Phone, ShieldCheck, UserRound } from "lucide-react";
+import { ArrowLeft, CalendarClock, Clock3, Download, FileImage, FileText, LockKeyhole, Mail, MapPin, MessageSquareText, PackageCheck, Paperclip, Phone, ShieldCheck, UserRound, UsersRound } from "lucide-react";
 import { requireSupplierPage } from "@/lib/auth/guards";
-import { getSupplierRequest } from "@/lib/data/supplier-dashboard";
+import { getSupplierOpportunity, getSupplierRequest } from "@/lib/data/supplier-dashboard";
 import { getUnlockedCustomerContact } from "@/lib/contacts/access";
 import { PortalPage, identity } from "@/components/dashboard/portal-page";
 import { ConnectedResponse } from "@/components/requests/connected-response";
 import { AssignmentViewTracker } from "@/components/requests/assignment-view-tracker";
+import { ClaimOpportunity } from "@/components/requests/claim-opportunity";
+import { prisma } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -14,13 +16,31 @@ export default async function ConnectedRequestPage({ params }: { params: Promise
   const { session, companyId } = await requireSupplierPage();
   const { reference } = await params;
   const assignment = await getSupplierRequest(companyId, reference);
+  const opportunity = assignment ? null : await getSupplierOpportunity(reference);
+  if (!assignment && !opportunity) notFound();
+  const company = session.user.memberships.find((membership) => membership.supplierCompanyId === companyId)!.supplierCompany;
+  const subscription = await prisma.subscription.findUnique({ where: { supplierCompanyId: companyId } });
+  const subscriptionActive = subscription?.status === "ACTIVE"
+    && (!subscription.currentPeriodEnd || subscription.currentPeriodEnd > new Date());
+
+  if (opportunity) {
+    const available = Math.max(0, opportunity.distributionLimit - opportunity.claimedSlots);
+    return <PortalPage {...identity(session, company)} eyebrow={opportunity.reference} title={opportunity.title} description={opportunity.category.name}>
+      <Link href="/dashboard/requests" className="back-link request-back"><ArrowLeft size={14}/>Back to opportunities</Link>
+      <div className="request-title-row"><div><div className="request-ref"><span className="status-dot urgent"/>{opportunity.reference}<span className="tag new">Open</span></div></div><div className="deadline-box"><Clock3 size={18}/><span>Response deadline<b>{opportunity.responseDueAt.toLocaleString("en-GB")}</b></span></div></div>
+      <div className="request-layout"><div className="request-content">
+        <section className="panel request-section"><div className="section-title"><PackageCheck size={18}/><div><p className="eyebrow">Safe job summary</p><h2>Opportunity overview</h2></div></div><p className="request-summary">A customer has requested quotations for this {opportunity.category.name.toLowerCase()} job in the {opportunity.deliveryArea} area. The full requirements are reserved for eligible suppliers who claim a place.</p><div className="privacy-note"><LockKeyhole size={17}/><div><b>Customer information is protected</b><p>The exact postcode, detailed brief, drawings, photos and PDFs remain locked until your subscribed company claims one of the available places.</p></div></div></section>
+        <section className="panel request-section"><div className="section-title"><FileText size={18}/><div><p className="eyebrow">Information received</p><h2>Quote pack contents</h2></div></div><div className="items-table"><div className="item-row"><span className="item-number">01</span><div><b>Requested items</b><p>Descriptions, quantities and specifications unlock after claiming.</p></div><strong>{opportunity.itemCount} items</strong></div><div className="item-row"><span className="item-number">02</span><div><b>Customer files</b><p>Security-checked drawings, photos and PDFs unlock after claiming.</p></div><strong>{opportunity.attachmentCount} files</strong></div></div></section>
+      </div><aside className="request-action-rail"><section className="panel action-card"><div className="action-heading"><span><ShieldCheck size={18}/></span><div><p className="eyebrow">Supplier place</p><h2>{available ? "Quote this job" : "Places filled"}</h2></div></div>{available === 0 ? <div className="decision-state"><span><UsersRound size={17}/></span><b>All places have been taken</b><p>This request has reached its supplier limit.</p></div> : subscriptionActive ? <ClaimOpportunity reference={opportunity.reference}/> : <div><p>You can browse opportunities free. An active £5 monthly membership is required only when you choose to quote.</p><Link className="button button-dark action-primary" href="/dashboard/subscription">Subscribe to claim a place</Link></div>}</section><section className="panel request-facts"><h3>Opportunity details</h3><Fact icon={<MapPin size={16}/>} label="Delivery area" value={`${opportunity.deliveryArea} area`}/><Fact icon={<UsersRound size={16}/>} label="Places available" value={`${available} of ${opportunity.distributionLimit}`}/><Fact icon={<CalendarClock size={16}/>} label="Published" value={opportunity.publishedAt.toLocaleDateString("en-GB")}/><Fact icon={<Clock3 size={16}/>} label="Response due" value={opportunity.responseDueAt.toLocaleString("en-GB")}/></section></aside></div>
+    </PortalPage>;
+  }
+
   if (!assignment) notFound();
   const request = assignment.quoteRequest;
   const quotation = assignment.quotation;
   const contact = quotation?.contactAccess
     ? await getUnlockedCustomerContact({ quotationId: quotation.id, companyId, actorUserId: session.userId })
     : null;
-  const company = session.user.memberships.find((membership) => membership.supplierCompanyId === companyId)!.supplierCompany;
   return <PortalPage {...identity(session, company)} eyebrow={request.reference} title={request.title} description={request.category.name}>
     <AssignmentViewTracker assignmentId={assignment.id} status={assignment.status} />
     <Link href="/dashboard/requests" className="back-link request-back"><ArrowLeft size={14}/>Back to requests</Link>
