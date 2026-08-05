@@ -6,6 +6,7 @@ import { runAsDatabaseWorker } from "@/lib/db";
 import { analyzeQuoteAttachment, quoteAttachmentAnalysisSchema, type QuoteAttachmentAnalysis } from "@/lib/ai/attachment-intake";
 import { extractQuoteIntake, quoteDraftSchema, type QuoteDraft } from "@/lib/ai/quote-intake";
 import { lookupPostcode, PostcodeLookupError } from "@/lib/location/postcodes";
+import { findSupplierMatches } from "@/lib/matching/suppliers";
 import { addSupplierResponseHours } from "@/lib/quotes/response-clock";
 import { selectQuotationForCustomer } from "@/lib/quotes/selection";
 import { decryptPrivateValue, encryptPrivateValue } from "@/lib/security/encryption";
@@ -513,7 +514,10 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
         where: { id: loaded.conversation!.id },
         data: { aiStage: "QUOTE_CREATED" },
       });
-      return existing;
+      const assignmentCount = await tx.supplierAssignment.count({
+        where: { quoteRequestId: existing.id, status: { not: "WITHDRAWN" } },
+      });
+      return { request: existing, assignmentCount };
     }
     const request = await tx.quoteRequest.create({
       data: {
@@ -535,7 +539,7 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
         items: { create: draft.items.map((item, index) => ({ ...item, displayOrder: index })) },
       },
     });
-    await tx.attachment.updateMany({
+    const linkedAttachments = await tx.attachment.updateMany({
       where: {
         quoteRequestId: null,
         whatsappMessage: {
@@ -545,6 +549,71 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
       },
       data: { quoteRequestId: request.id },
     });
+    const matches = await findSupplierMatches(
+      tx,
+      request,
+      {
+        postcode: delivery.postcode,
+        latitude: delivery.latitude,
+        longitude: delivery.longitude,
+      },
+      { limit: Math.min(distributionLimit, 5) },
+    );
+    const assignedSupplierIds: string[] = [];
+    for (const match of matches) {
+      const assignment = await tx.supplierAssignment.create({
+        data: {
+          quoteRequestId: request.id,
+          supplierCompanyId: match.id,
+          status: "PENDING",
+          expiresAt: request.responseDueAt,
+          assignedById: null,
+        },
+      });
+      assignedSupplierIds.push(assignment.supplierCompanyId);
+      await writeWhatsAppAudit(tx, {
+        action: "WHATSAPP.REQUEST_AUTO_ASSIGNED",
+        entityType: "SupplierAssignment",
+        entityId: assignment.id,
+        summary: "Confirmed WhatsApp request automatically assigned to an eligible supplier",
+        metadata: {
+          quoteRequestId: request.id,
+          supplierCompanyId: match.id,
+          coverageType: match.match.type,
+          coverageLabel: match.match.label,
+          responseDueAt: request.responseDueAt.toISOString(),
+        },
+      });
+    }
+    if (assignedSupplierIds.length > 0) {
+      const members = await tx.supplierTeamMembership.findMany({
+        where: { supplierCompanyId: { in: assignedSupplierIds }, status: "ACTIVE" },
+        select: { userId: true, supplierCompanyId: true },
+      });
+      const disabledPreferences = await tx.notificationPreference.findMany({
+        where: { supplierCompanyId: { in: assignedSupplierIds }, inAppEnabled: false },
+        select: { userId: true, supplierCompanyId: true },
+      });
+      const disabled = new Set(disabledPreferences.map((item) => `${item.userId}:${item.supplierCompanyId}`));
+      const recipients = members.filter((item) => !disabled.has(`${item.userId}:${item.supplierCompanyId}`));
+      if (recipients.length > 0) {
+        await tx.notification.createMany({
+          data: recipients.map((member) => ({
+            userId: member.userId,
+            supplierCompanyId: member.supplierCompanyId,
+            type: "NEW_QUOTE_REQUEST" as const,
+            channel: "IN_APP" as const,
+            title: `New quote request ${request.reference}`,
+            body: `${request.title} is available for review until the recorded response deadline.`,
+            actionUrl: `/dashboard/requests/${request.reference}`,
+          })),
+        });
+      }
+      await tx.quoteRequest.update({
+        where: { id: request.id },
+        data: { status: "MATCHING" },
+      });
+    }
     await tx.conversation.update({
       where: { id: loaded.conversation!.id },
       data: {
@@ -558,9 +627,17 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
       entityType: "QuoteRequest",
       entityId: request.id,
       summary: "Customer-confirmed WhatsApp quote request created",
-      metadata: { jobId: job.id, reference, categoryId: category.id, itemCount: draft.items.length, distributionLimit },
+      metadata: {
+        jobId: job.id,
+        reference,
+        categoryId: category.id,
+        itemCount: draft.items.length,
+        attachmentCount: linkedAttachments.count,
+        distributionLimit,
+        automaticAssignmentCount: assignedSupplierIds.length,
+      },
     });
-    return request;
+    return { request, assignmentCount: assignedSupplierIds.length };
   });
 }
 
@@ -815,7 +892,10 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
       await sendReply(job, refreshed.conversation, "I couldn’t match that delivery postcode. Please send the full UK postcode, for example GL52 6TD.");
       return undefined;
     }
-    await sendReply(job, refreshed.conversation, `Thanks — request ${request.reference} is now live. Up to five approved suppliers can quote. I’ll send the first available price update here without revealing identities. You can reply QUOTES at any time for the latest list.`);
+    const distributionMessage = request.assignmentCount > 0
+      ? `It has been sent to ${request.assignmentCount} approved supplier${request.assignmentCount === 1 ? "" : "s"}.`
+      : "It is safely recorded and awaiting an eligible supplier match. A Bridge AI administrator can review the distribution.";
+    await sendReply(job, refreshed.conversation, `Thanks — request ${request.request.reference} is now live. ${distributionMessage} I’ll send the first available price update here without revealing identities. You can reply QUOTES at any time for the latest list.`);
     return undefined;
   }
 

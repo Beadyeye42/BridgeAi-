@@ -260,10 +260,17 @@ BEGIN
   VALUES ('security_category','Security category','security-category',true,0,now(),now());
   request_deadline := bridge_private.add_supplier_response_hours(now(), 24);
   INSERT INTO bridge_ai."QuoteRequest" (
-    id,reference,"customerContactId","categoryId",title,summary,"deliveryPostcode",currency,status,
+    id,reference,"conversationId","customerContactId","categoryId",title,summary,"deliveryPostcode",currency,status,
     "distributionLimit","responseDueAt","createdAt","updatedAt"
   ) VALUES (
-    'security_request','SECURITY-1','security_customer','security_category','Test','Test','B1','GBP','OPEN',
+    'security_request','SECURITY-1','security_conversation','security_customer','security_category','Test','Test','B1','GBP','OPEN',
+    1,request_deadline,now(),now()
+  );
+  INSERT INTO bridge_ai."QuoteRequest" (
+    id,reference,"conversationId","customerContactId","categoryId",title,summary,"deliveryPostcode",currency,status,
+    "distributionLimit","responseDueAt","createdAt","updatedAt"
+  ) VALUES (
+    'security_request_supplier_denied','SECURITY-SUPPLIER-DENIED','security_conversation','security_customer','security_category','Denied','Denied','B1','GBP','OPEN',
     1,request_deadline,now(),now()
   );
   UPDATE bridge_ai."QuoteRequest"
@@ -292,6 +299,13 @@ BEGIN
   IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier selected private WhatsApp message'; END IF;
   SELECT count(*) INTO visible_count FROM bridge_ai."WhatsAppJob" WHERE "conversationId"='security_conversation';
   IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier selected private WhatsApp processing or fallback state'; END IF;
+  BEGIN
+    INSERT INTO bridge_ai."SupplierAssignment" (
+      id,"quoteRequestId","supplierCompanyId",status,"assignedAt","expiresAt"
+    ) VALUES ('forbidden_supplier_assignment','security_request_supplier_denied','security_company_a','PENDING',now(),request_deadline);
+    RAISE EXCEPTION 'Supplier created its own request assignment';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
   UPDATE bridge_ai."Conversation"
   SET "aiSessionStartedAt" = now()
   WHERE id='security_conversation';
@@ -396,6 +410,35 @@ BEGIN
   EXCEPTION WHEN check_violation THEN NULL;
   END;
 
+  INSERT INTO bridge_ai."Attachment" (
+    id,kind,"fileName","mimeType","byteSize","storageKey",sha256,"scanStatus","whatsappMessageId","quoteRequestId","createdAt"
+  ) VALUES (
+    'security_whatsapp_quote_attachment','PHOTO','customer.jpg','image/jpeg',12,'whatsapp/security/customer.jpg','customer-hash','CLEAN','security_message','security_request',now()
+  );
+  INSERT INTO bridge_ai."WhatsAppMessage" (
+    id,"conversationId","externalMessageId",direction,"messageType",status,"occurredAt","createdAt"
+  ) VALUES (
+    'security_old_message','security_conversation','security-old-message','INBOUND','IMAGE','RECEIVED',
+    (SELECT "aiSessionStartedAt" - interval '1 second' FROM bridge_ai."Conversation" WHERE id='security_conversation'),now()
+  );
+  BEGIN
+    INSERT INTO bridge_ai."Attachment" (
+      id,kind,"fileName","mimeType","byteSize","storageKey",sha256,"scanStatus","whatsappMessageId","quoteRequestId","createdAt"
+    ) VALUES (
+      'security_old_quote_attachment','PHOTO','old.jpg','image/jpeg',12,'whatsapp/security/old.jpg','old-hash','CLEAN','security_old_message','security_request',now()
+    );
+    RAISE EXCEPTION 'Attachment from an older WhatsApp intake session linked to a new request';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+
+  INSERT INTO bridge_ai."QuoteRequest" (
+    id,reference,"conversationId","customerContactId","categoryId",title,summary,"deliveryPostcode",currency,status,
+    "distributionLimit","responseDueAt","createdAt","updatedAt"
+  ) VALUES (
+    'security_request_auto','SECURITY-AUTO','security_conversation','security_customer','security_category','Automatic','Automatic','B1','GBP','OPEN',
+    1,request_deadline,now(),now()
+  );
+
   UPDATE bridge_ai."SupplierAssignment" SET status='ACCEPTED',"respondedAt"=now() WHERE id='security_assignment';
   INSERT INTO bridge_ai."SupplierQuotation" (
     id,"quoteRequestId","supplierCompanyId","assignmentId",status,price,currency,"leadTimeDays","submittedAt","createdAt","updatedAt"
@@ -461,6 +504,23 @@ BEGIN
      OR has_function_privilege('authenticated','bridge_private.write_whatsapp_system_event(bridge_ai."SystemEventSeverity",text,text,text,jsonb)','EXECUTE')
      OR NOT has_function_privilege('bridge_ai_app','bridge_private.write_whatsapp_system_event(bridge_ai."SystemEventSeverity",text,text,text,jsonb)','EXECUTE') THEN
     RAISE EXCEPTION 'legacy privileged functions remain executable';
+  END IF;
+  SELECT count(*) INTO visible_count
+  FROM pg_policies
+  WHERE schemaname='bridge_ai'
+    AND policyname IN (
+      'whatsapp_ai_membership_match_select',
+      'whatsapp_ai_supplier_category_match_select',
+      'whatsapp_ai_coverage_match_select',
+      'whatsapp_ai_accreditation_match_select',
+      'whatsapp_ai_subscription_match_select',
+      'whatsapp_ai_assignment_insert',
+      'whatsapp_ai_notification_insert',
+      'whatsapp_ai_notification_preference_select'
+    )
+    AND roles @> ARRAY['authenticated']::name[];
+  IF visible_count <> 8 THEN
+    RAISE EXCEPTION 'trusted WhatsApp matching policies are incomplete';
   END IF;
 END
 $test$;

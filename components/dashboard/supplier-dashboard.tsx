@@ -10,30 +10,30 @@ export function SupplierDashboard({ data, demo = false, onboarding, supplierStat
   const requestBase = demo ? "/requests" : "/dashboard/requests";
   return (
     <div className="portal-shell">
-      <Sidebar companyName={data.companyName} initials={data.initials} />
+      <Sidebar companyName={data.companyName} initials={data.initials} companyStatus={supplierStatus} activeRequestCount={data.stats.newRequests} unreadNotificationCount={data.unreadNotificationCount} />
       <header className="mobile-header"><BrandMark compact /><span>{data.companyName}</span><button className="icon-button" aria-label="Notifications"><Bell size={19} /></button></header>
       <main className="portal-main">
         {demo && <div className="demo-banner"><Sparkles size={15} /><span><b>Demonstration workspace</b> — realistic sample data, no customer information.</span><Link href="/login">Supplier sign in <ArrowUpRight size={14} /></Link></div>}
         <div className="page-heading">
-          <div><p className="eyebrow">Sunday, 2 August</p><h1>Good afternoon, {data.contactName.split(" ")[0]}.</h1><p>Here’s what needs your attention across {data.companyName}.</p></div>
-          <div className="heading-actions"><button className="search-button" aria-label="Search"><Search size={18} /><span>Search</span><kbd>⌘ K</kbd></button><button className="icon-button desktop-only" aria-label="Notifications"><Bell size={19} /><i /></button><span className="avatar">{data.initials}</span></div>
+          <div><p className="eyebrow">{demo ? "Sunday, 2 August" : new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long" }).format(new Date())}</p><h1>Good afternoon, {data.contactName.split(" ")[0]}.</h1><p>Here’s what needs your attention across {data.companyName}.</p></div>
+          <div className="heading-actions"><button className="search-button" aria-label="Search"><Search size={18} /><span>Search</span><kbd>⌘ K</kbd></button><button className="icon-button desktop-only" aria-label="Notifications"><Bell size={19} />{data.unreadNotificationCount > 0 && <i />}</button><span className="avatar">{data.initials}</span></div>
         </div>
 
         {onboarding && (!onboarding.ready || supplierStatus !== "APPROVED")
           ? <OnboardingReadinessCard readiness={onboarding} status={supplierStatus} />
           : null}
 
-        <section className="attention-card">
+        {data.stats.newRequests > 0 ? <section className="attention-card">
           <div className="attention-icon"><BriefcaseBusiness size={21} /></div>
           <div><b>{data.stats.newRequests} quote request{data.stats.newRequests === 1 ? " is" : "s are"} waiting for your response</b><p>Respond before each recorded deadline to keep the opportunity active.</p></div>
           <Link href="/dashboard/requests" className="button button-dark">Review requests <ArrowUpRight size={16} /></Link>
-        </section>
+        </section> : null}
 
         <section className="stats-grid" aria-label="Supplier overview">
-          <Stat label="New requests" value={String(data.stats.newRequests).padStart(2, "0")} helper="2 added today" icon={<FileText size={19} />} tone="amber" />
-          <Stat label="Quotes in progress" value={String(data.stats.openQuotes).padStart(2, "0")} helper="£86.4k total value" icon={<CircleGauge size={19} />} tone="blue" />
-          <Stat label="Won this month" value={String(data.stats.wonThisMonth).padStart(2, "0")} helper="£42.8k secured" icon={<Target size={19} />} tone="green" />
-          <Stat label="Response rate" value={`${data.stats.responseRate}%`} helper="Up 6% from July" icon={<TrendingUp size={19} />} tone="violet" />
+          <Stat label="New requests" value={String(data.stats.newRequests).padStart(2, "0")} helper={demo ? "2 added today" : "Awaiting your response"} icon={<FileText size={19} />} tone="amber" />
+          <Stat label="Quotes in progress" value={String(data.stats.openQuotes).padStart(2, "0")} helper={demo ? "£86.4k total value" : "Submitted and awaiting a decision"} icon={<CircleGauge size={19} />} tone="blue" />
+          <Stat label="Won this month" value={String(data.stats.wonThisMonth).padStart(2, "0")} helper={demo ? "£42.8k secured" : data.performance.monthValue === "£0" ? "No wins recorded yet" : `${data.performance.monthValue} secured`} icon={<Target size={19} />} tone="green" />
+          <Stat label="Response rate" value={`${data.stats.responseRate}%`} helper={demo ? "Up 6% from July" : "Assigned requests answered in 30 days"} icon={<TrendingUp size={19} />} tone="violet" />
         </section>
 
         <div className="dashboard-grid">
@@ -61,23 +61,30 @@ export function SupplierDashboard({ data, demo = false, onboarding, supplierStat
 
           <aside className="dashboard-rail">
             <section className="panel scorecard">
-              <div className="panel-heading compact"><div><p className="eyebrow">Last 30 days</p><h2>Performance</h2></div><span className="score-badge">Excellent</span></div>
+              <div className="panel-heading compact"><div><p className="eyebrow">Last 30 days</p><h2>Performance</h2></div><span className="score-badge">{scoreLabel(data.stats.responseRate)}</span></div>
               <div className="score-ring" style={{ "--score": `${data.stats.responseRate * 3.6}deg` } as React.CSSProperties}><div><b>{data.stats.responseRate}</b><span>/100</span><small>Supplier score</small></div></div>
               <div className="performance-list"><div><span>Average response</span><b>{data.performance.responseTime}</b></div><div><span>Quote win rate</span><b>{data.performance.winRate}</b></div><div><span>Won value</span><b>{data.performance.monthValue}</b></div></div>
-              <p className="score-note"><CheckCircle2 size={16} />You’re responding 48 minutes faster than similar suppliers.</p>
+              <p className="score-note"><CheckCircle2 size={16} />{demo ? "You’re responding 48 minutes faster than similar suppliers." : "Based on recorded assignments and submitted quotations."}</p>
             </section>
 
             <section className="panel subscription-card">
-              <div className="plan-orbit"><i /><Plus size={18} /></div><p className="eyebrow">{data.subscription.plan} plan</p><h3>Your subscription is {data.subscription.status.toLowerCase()}</h3><p>Unlimited team members and up to 25 qualified requests each month.</p><div className="usage"><span><b>11</b> of 25 requests</span><span>44%</span></div><div className="usage-track"><i /></div><small>Renews {data.subscription.renewal}</small><Link href="/dashboard/subscription" className="text-link">Manage subscription <ArrowUpRight size={14} /></Link>
+              <div className="plan-orbit"><i /><Plus size={18} /></div><p className="eyebrow">{data.subscription.plan} plan</p><h3>Your subscription is {data.subscription.status.toLowerCase()}</h3><p>{demo ? "Unlimited team members and up to 25 qualified requests each month." : "Your live billing status and renewal date are shown here."}</p>{demo ? <><div className="usage"><span><b>11</b> of 25 requests</span><span>44%</span></div><div className="usage-track"><i /></div></> : null}<small>{data.subscription.renewal === "—" ? "No renewal date recorded" : `Renews ${data.subscription.renewal}`}</small><Link href="/dashboard/subscription" className="text-link">Manage subscription <ArrowUpRight size={14} /></Link>
             </section>
 
             <section className="help-card"><HelpCircle size={20} /><div><b>Need a hand?</b><p>Your supplier success team usually replies within one working hour.</p><Link href="/help">Contact support</Link></div></section>
           </aside>
         </div>
       </main>
-      <nav className="mobile-nav" aria-label="Mobile navigation"><Link href="/dashboard" className="active"><CircleGauge size={20} />Overview</Link><Link href="/dashboard/requests"><FileText size={20} />Requests<i>4</i></Link><Link href="/dashboard/company"><BriefcaseBusiness size={20} />Company</Link><Link href="/dashboard/settings"><MoreHorizontal size={20} />More</Link></nav>
+      <nav className="mobile-nav" aria-label="Mobile navigation"><Link href="/dashboard" className="active"><CircleGauge size={20} />Overview</Link><Link href="/dashboard/requests"><FileText size={20} />Requests{data.stats.newRequests > 0 && <i>{data.stats.newRequests}</i>}</Link><Link href="/dashboard/company"><BriefcaseBusiness size={20} />Company</Link><Link href="/dashboard/settings"><MoreHorizontal size={20} />More</Link></nav>
     </div>
   );
+}
+
+function scoreLabel(score: number) {
+  if (score === 0) return "No score yet";
+  if (score >= 90) return "Excellent";
+  if (score >= 70) return "Good";
+  return "Needs attention";
 }
 
 function Stat({ label, value, helper, icon, tone }: { label: string; value: string; helper: string; icon: React.ReactNode; tone: string }) {

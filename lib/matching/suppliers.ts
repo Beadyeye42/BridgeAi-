@@ -80,10 +80,10 @@ export async function findSupplierMatches(
       accreditations: { include: { attachment: true } },
     },
     orderBy: { legalName: "asc" },
-    take: options.limit ?? 250,
+    take: 250,
   });
 
-  return candidates.flatMap((supplier) => {
+  const matches = candidates.flatMap((supplier) => {
     if (!supplierOnboardingReadiness(supplier, now).ready) return [];
     const match = bestCoverageMatch(supplier.coverageAreas, location);
     return match ? [{
@@ -93,4 +93,15 @@ export async function findSupplierMatches(
       match,
     }] : [];
   });
+  const coveragePriority: Record<CoverageMatch["type"], number> = {
+    DISTANCE: 0,
+    POSTCODE: 1,
+    NATIONWIDE: 2,
+  };
+  matches.sort((left, right) =>
+    coveragePriority[left.match.type] - coveragePriority[right.match.type]
+    || (left.match.distanceMiles ?? Number.POSITIVE_INFINITY) - (right.match.distanceMiles ?? Number.POSITIVE_INFINITY)
+    || left.name.localeCompare(right.name),
+  );
+  return options.limit ? matches.slice(0, options.limit) : matches;
 }

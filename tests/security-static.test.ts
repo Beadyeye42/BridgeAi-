@@ -31,7 +31,10 @@ describe("security foundation static controls", () => {
 
   it("re-verifies Supabase identity outside an explicit database scope", () => {
     const source = read("lib/db.ts");
-    expect(source).toContain("supabase.auth.getUser()");
+    const verifiedUser = read("lib/supabase/verified-user.ts");
+    expect(source).toContain("getVerifiedAuthUser()");
+    expect(verifiedUser).toContain("supabase.auth.getUser()");
+    expect(verifiedUser).toContain("cache(async");
     expect(source).not.toContain("enterDatabaseIdentity");
   });
 
@@ -223,7 +226,35 @@ describe("security foundation static controls", () => {
     expect(matching).toContain('status: "APPROVED"');
     expect(matching).toContain('status: "ACTIVE"');
     expect(matching).toContain("bestCoverageMatch");
+    expect(matching).toContain("matches.slice(0, options.limit)");
     expect(coverageRoute).toContain('action: "COVERAGE.CREATED"');
+  });
+
+  it("automatically distributes confirmed WhatsApp requests without weakening tenant isolation", () => {
+    const processor = read("lib/whatsapp/processor.ts");
+    const migration = read("supabase/migrations/20260805130054_whatsapp_auto_distribution.sql");
+    expect(processor).toContain("findSupplierMatches(");
+    expect(processor).toContain("Math.min(distributionLimit, 5)");
+    expect(processor).toContain('action: "WHATSAPP.REQUEST_AUTO_ASSIGNED"');
+    expect(processor).toContain("automaticAssignmentCount");
+    expect(processor).toContain("awaiting an eligible supplier match");
+    expect(migration).toContain("enforce_whatsapp_attachment_quote_consistency");
+    expect(migration).toContain('"whatsappMessageId" IS NOT NULL');
+    expect(migration).toContain('"quoteRequestId"');
+    expect(migration).toContain("whatsapp_ai_assignment_insert");
+    expect(migration).toContain("whatsapp_ai_notification_insert");
+    expect(migration).toContain("whatsapp_ai_supplier_category_match_select");
+    expect(migration).toContain("whatsapp_ai_coverage_match_select");
+  });
+
+  it("does not present demonstration counts as live supplier data", () => {
+    const sidebar = read("components/dashboard/sidebar.tsx");
+    const dashboard = read("components/dashboard/supplier-dashboard.tsx");
+    expect(sidebar).not.toContain('badge: "4"');
+    expect(sidebar).toContain("statusLabel(companyStatus)");
+    expect(dashboard).toContain("data.stats.newRequests > 0");
+    expect(dashboard).toContain("data.unreadNotificationCount > 0");
+    expect(dashboard).toContain('demo ? "2 added today"');
   });
 
   it("closes supplier lifecycle and response-window edge cases", () => {
