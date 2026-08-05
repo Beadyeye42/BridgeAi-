@@ -34,9 +34,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   const now = new Date();
+  let foundingMemberNumber = existing.foundingMemberNumber;
   try {
     await prisma.$transaction(async (tx) => {
-      await tx.supplierCompany.update({
+      const updated = await tx.supplierCompany.update({
         where: { id },
         data: {
           status: parsed.data.status,
@@ -46,6 +47,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           suspensionNote: parsed.data.status === "SUSPENDED" ? parsed.data.note : null,
         },
       });
+      foundingMemberNumber = updated.foundingMemberNumber;
       await writeAuditLog({
         actorUserId: auth.session.userId,
         supplierCompanyId: id,
@@ -53,16 +55,19 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         entityType: "SupplierCompany",
         entityId: id,
         summary: `Supplier status changed from ${existing.status} to ${parsed.data.status}`,
-        metadata: { note: parsed.data.note ?? null, readiness: readiness.items.map((item) => ({ key: item.key, complete: item.complete })) },
+        metadata: { note: parsed.data.note ?? null, foundingMemberNumber: updated.foundingMemberNumber, readiness: readiness.items.map((item) => ({ key: item.key, complete: item.complete })) },
         request,
       }, tx);
     });
   } catch (error) {
+    if (error instanceof Error && error.message.includes("FOUNDING_SUPPLIER_CAPACITY_REACHED")) {
+      return NextResponse.json({ error: "All 100 founding supplier places have been allocated." }, { status: 409 });
+    }
     if ((error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2004")
       || (error instanceof Error && error.message.includes("supplier approval requirements are incomplete"))) {
       return NextResponse.json({ error: "Supplier approval requirements changed. Refresh and review the checklist again." }, { status: 409 });
     }
     throw error;
   }
-  return NextResponse.json({ ok: true, status: parsed.data.status });
+  return NextResponse.json({ ok: true, status: parsed.data.status, foundingMemberNumber });
 }

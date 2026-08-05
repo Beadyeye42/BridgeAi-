@@ -980,7 +980,8 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
       await sendReply(job, refreshed.conversation, "That quote number is not available. Please choose one of the numbers in the latest quote list.");
       return undefined;
     }
-    await selectQuotationForCustomer({ quotationId: selected.id, evidence: `WhatsApp message ${inbound.externalMessageId}` });
+    const grant = await selectQuotationForCustomer({ quotationId: selected.id, evidence: `WhatsApp message ${inbound.externalMessageId}` });
+    await enqueueContactUnlock(grant.id);
     await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
       await tx.conversation.update({ where: { id: refreshed.conversation!.id }, data: { aiStage: "SELECTION_RECORDED" } });
       await writeWhatsAppAudit(tx, {
@@ -991,7 +992,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
         metadata: { messageId: inbound.id, quoteRequestId: request!.id, displayedPosition: Number(match[1]) },
       });
     });
-    await sendReply(job, refreshed.conversation, "Your choice is recorded. The supplier has been asked to pay the £25 success fee. Contact details remain private until payment is verified.");
+    await sendReply(job, refreshed.conversation, "Great choice — it’s confirmed. There is no introduction fee or winning fee. I’m sharing the selected supplier’s business contact details securely now.");
     return undefined;
   }
 
@@ -1157,7 +1158,7 @@ async function currentQuoteSummary(conversationId: string) {
     body: [
       `Current prices for ${request.reference}. Supplier identities remain private:`,
       lines.join("\n"),
-      "Reply ACCEPT followed by the quote number, for example ACCEPT 1. Contact details remain locked until the selected supplier pays the £25 success fee.",
+      "Reply ACCEPT followed by the quote number, for example ACCEPT 1. There are no introduction or winning fees.",
     ].join("\n\n"),
   };
 }
@@ -1203,13 +1204,12 @@ async function processContactUnlock(job: WhatsAppJob, loaded: LoadedJob) {
   if (!loaded.conversation || !loaded.quoteRequest || !loaded.quotation) throw new Error("CONTACT_UNLOCK_JOB_INVALID");
   const grant = await runAsDatabaseWorker("whatsapp_ai", (tx) => tx.contactAccessGrant.findUnique({
     where: { quotationId: loaded.quotation!.id },
-    include: { successFee: true },
   }));
-  if (!grant || grant.successFee.status !== "PAID" || grant.revokedAt) throw new Error("CONTACT_UNLOCK_NOT_AUTHORISED");
+  if (!grant || grant.revokedAt) throw new Error("CONTACT_UNLOCK_NOT_AUTHORISED");
   const supplier = loaded.quotation.supplierCompany;
   const supplierName = supplier.tradingName ?? supplier.legalName;
   const body = [
-    `Payment is verified for ${loaded.quoteRequest.reference}. You and the selected supplier can now contact each other.`,
+    `Your selection is confirmed for ${loaded.quoteRequest.reference}. You and the selected supplier can now contact each other.`,
     `Supplier: ${supplierName}`,
     `Email: ${supplier.contactEmail}`,
     `Phone: ${supplier.contactPhone}`,
@@ -1241,7 +1241,7 @@ async function processContactUnlock(job: WhatsAppJob, loaded: LoadedJob) {
       action: "WHATSAPP.CONTACT_DETAILS_RELEASED",
       entityType: "ContactAccessGrant",
       entityId: grant.id,
-      summary: "Selected supplier contact details sent after verified payment",
+      summary: "Selected supplier contact details sent after customer selection",
       metadata: { jobId: job.id, quoteRequestId: loaded.quoteRequest!.id, quotationId: loaded.quotation!.id },
     });
   });
@@ -1309,21 +1309,21 @@ export async function enqueueQuoteSummary(quotationId: string) {
   });
 }
 
-export async function enqueueContactUnlock(successFeeId: string) {
+export async function enqueueContactUnlock(contactAccessGrantId: string) {
   return runAsDatabaseWorker("whatsapp_ai", async (tx) => {
-    const fee = await tx.supplierSuccessFee.findUnique({
-      where: { id: successFeeId },
-      include: { quoteRequest: true, quotation: true },
+    const grant = await tx.contactAccessGrant.findUnique({
+      where: { id: contactAccessGrantId },
+      include: { quotation: { include: { quoteRequest: true } } },
     });
-    if (!fee || fee.status !== "PAID" || !fee.quoteRequest.conversationId) return null;
+    if (!grant || grant.revokedAt || !grant.quotation.quoteRequest.conversationId) return null;
     return tx.whatsAppJob.upsert({
-      where: { idempotencyKey: `contact-unlock:${fee.id}` },
+      where: { idempotencyKey: `contact-unlock:${grant.id}` },
       create: {
         type: "SEND_CONTACT_UNLOCK",
-        idempotencyKey: `contact-unlock:${fee.id}`,
-        conversationId: fee.quoteRequest.conversationId,
-        quoteRequestId: fee.quoteRequestId,
-        quotationId: fee.quotationId,
+        idempotencyKey: `contact-unlock:${grant.id}`,
+        conversationId: grant.quotation.quoteRequest.conversationId,
+        quoteRequestId: grant.quotation.quoteRequestId,
+        quotationId: grant.quotationId,
       },
       update: {},
     });

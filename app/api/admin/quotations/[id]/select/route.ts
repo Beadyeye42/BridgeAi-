@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdminApi } from "@/lib/auth/api";
 import { selectQuotationForCustomer } from "@/lib/quotes/selection";
+import { enqueueContactUnlock, processWhatsAppJobs } from "@/lib/whatsapp/processor";
 
 const schema = z.object({ evidence: z.string().trim().min(8).max(250) });
 
@@ -12,8 +13,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!parsed.success) return NextResponse.json({ error: "Record the WhatsApp message ID or selection evidence" }, { status: 400 });
   const { id } = await params;
   try {
-    const fee = await selectQuotationForCustomer({ quotationId: id, actorUserId: auth.session.userId, evidence: parsed.data.evidence });
-    return NextResponse.json({ ok: true, successFeeId: fee.id, paymentDueAt: fee.paymentDueAt });
+    const grant = await selectQuotationForCustomer({ quotationId: id, actorUserId: auth.session.userId, evidence: parsed.data.evidence });
+    after(async () => {
+      const job = await enqueueContactUnlock(grant.id);
+      if (job) await processWhatsAppJobs({ limit: 5 });
+    });
+    return NextResponse.json({ ok: true, contactAccessGrantId: grant.id });
   } catch (error) {
     const code = error instanceof Error ? error.message : "";
     if (code === "QUOTATION_NOT_FOUND") return NextResponse.json({ error: "Quotation not found" }, { status: 404 });

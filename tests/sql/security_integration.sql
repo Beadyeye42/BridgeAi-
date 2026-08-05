@@ -10,6 +10,8 @@ DECLARE
   affected_count integer;
   request_deadline timestamptz;
   error_text text;
+  founding_a integer;
+  founding_b integer;
 BEGIN
   SELECT id INTO user_a FROM auth.users ORDER BY created_at LIMIT 1;
   SELECT id INTO user_b FROM auth.users ORDER BY created_at OFFSET 1 LIMIT 1;
@@ -17,18 +19,39 @@ BEGIN
     RAISE EXCEPTION 'security integration test requires two auth users';
   END IF;
 
+  SELECT candidate INTO founding_a
+  FROM generate_series(1, 100) AS candidate
+  WHERE NOT EXISTS (
+    SELECT 1 FROM bridge_ai.supplier_companies
+    WHERE "foundingMemberNumber" = candidate
+  )
+  ORDER BY candidate
+  LIMIT 1;
+  SELECT candidate INTO founding_b
+  FROM generate_series(1, 100) AS candidate
+  WHERE candidate <> founding_a
+    AND NOT EXISTS (
+      SELECT 1 FROM bridge_ai.supplier_companies
+      WHERE "foundingMemberNumber" = candidate
+    )
+  ORDER BY candidate
+  LIMIT 1;
+  IF founding_a IS NULL OR founding_b IS NULL THEN
+    RAISE EXCEPTION 'security integration test requires two unused founding supplier places';
+  END IF;
+
   INSERT INTO bridge_ai.portal_profiles (id,email,"firstName","lastName",status,"createdAt","updatedAt") VALUES
     (user_a,'rls-a@bridge.test','Supplier','A','ACTIVE',now(),now()),
     (user_b,'rls-b@bridge.test','Supplier','B','ACTIVE',now(),now());
-  INSERT INTO bridge_ai.supplier_companies (id,"legalName","contactEmail","contactPhone",status,"createdAt","updatedAt") VALUES
-    ('security_company_a','Security Company A','a@bridge.test','1','APPROVED',now(),now()),
-    ('security_company_b','Security Company B','b@bridge.test','2','APPROVED',now(),now()),
-    ('security_company_c','Security Company C','c@bridge.test','3','PENDING',now(),now());
+  INSERT INTO bridge_ai.supplier_companies (id,"legalName","contactEmail","contactPhone",status,"foundingMemberNumber","createdAt","updatedAt") VALUES
+    ('security_company_a','Security Company A','a@bridge.test','1','APPROVED',founding_a,now(),now()),
+    ('security_company_b','Security Company B','b@bridge.test','2','APPROVED',founding_b,now(),now()),
+    ('security_company_c','Security Company C','c@bridge.test','3','PENDING',NULL,now(),now());
   INSERT INTO bridge_ai.company_memberships (id,"userId","supplierCompanyId",role,status,"isPrimary","joinedAt") VALUES
     ('security_membership_a',user_a,'security_company_a','OWNER','ACTIVE',true,now()),
     ('security_membership_b',user_b,'security_company_b','OWNER','ACTIVE',true,now());
   INSERT INTO bridge_ai."Subscription" (id,"supplierCompanyId",provider,"planCode",status,"currentPeriodStart","currentPeriodEnd","createdAt","updatedAt")
-  VALUES ('security_subscription_a','security_company_a','stripe','bridge-ai-monthly','ACTIVE',now(),now()+interval '1 month',now(),now());
+  VALUES ('security_subscription_a','security_company_a','stripe','bridge-ai-founding-supplier','ACTIVE',now(),now()+interval '1 month',now(),now());
   INSERT INTO bridge_ai."Attachment" (id,kind,"fileName","mimeType","byteSize","storageKey",sha256,"scanStatus","supplierCompanyId","uploadedById","createdAt") VALUES
     ('security_accreditation_file_a','ACCREDITATION_DOCUMENT','a.pdf','application/pdf',1,'companies/security_company_a/accreditations/a.pdf','a','CLEAN','security_company_a',user_a,now()),
     ('security_accreditation_file_b','ACCREDITATION_DOCUMENT','b.pdf','application/pdf',1,'companies/security_company_b/accreditations/b.pdf','b','CLEAN','security_company_b',user_b,now());
@@ -75,6 +98,11 @@ BEGIN
   BEGIN
     UPDATE bridge_ai.supplier_companies SET status='SUSPENDED' WHERE id='security_company_a';
     RAISE EXCEPTION 'Supplier changed its own protected review state';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  BEGIN
+    UPDATE bridge_ai.supplier_companies SET "foundingMemberNumber"=50 WHERE id='security_company_a';
+    RAISE EXCEPTION 'Supplier changed its founding supplier place';
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   END;
 
@@ -511,7 +539,7 @@ BEGIN
     RAISE EXCEPTION 'Non-subscriber claimed an opportunity';
   EXCEPTION WHEN raise_exception THEN
     GET STACKED DIAGNOSTICS error_text = MESSAGE_TEXT;
-    IF error_text <> 'ACTIVE_SUBSCRIPTION_REQUIRED' THEN
+    IF error_text <> 'ACTIVE_FOUNDING_SUBSCRIPTION_REQUIRED' THEN
       RAISE EXCEPTION 'Unexpected non-subscriber claim failure: %', error_text;
     END IF;
   END;
@@ -536,20 +564,8 @@ BEGIN
     id,"quoteRequestId","supplierCompanyId","assignmentId",status,price,currency,"leadTimeDays","submittedAt","createdAt","updatedAt"
   ) VALUES ('security_quote','security_request','security_company_a','security_assignment','SUBMITTED',125,'GBP',7,now(),now(),now());
   UPDATE bridge_ai."SupplierAssignment" SET status='QUOTED' WHERE id='security_assignment';
-  INSERT INTO bridge_ai."SupplierSuccessFee" (
-    id,"quotationId","quoteRequestId","supplierCompanyId","amountPence",currency,status,provider,"selectedAt","paymentDueAt","createdAt","updatedAt"
-  ) VALUES (
-    'security_fee','security_quote','security_request','security_company_a',2500,'GBP','PENDING','stripe',now(),
-    bridge_private.add_supplier_response_hours(now(),2),now(),now()
-  );
-  PERFORM set_config('bridge_ai.payment_transition','on',true);
-  UPDATE bridge_ai."SupplierQuotation" SET status='SELECTED_PENDING_PAYMENT',"decidedAt"=now() WHERE id='security_quote';
-  PERFORM set_config('bridge_ai.payment_transition','',true);
-
   EXECUTE 'SET LOCAL ROLE authenticated';
   PERFORM set_config('request.jwt.claim.sub', user_a::text, true);
-  SELECT count(*) INTO visible_count FROM bridge_ai."SupplierSuccessFee" WHERE id='security_fee';
-  IF visible_count <> 1 THEN RAISE EXCEPTION 'Supplier could not read own success fee'; END IF;
   BEGIN
     UPDATE bridge_ai."SupplierQuotation" SET status='ACCEPTED' WHERE id='security_quote';
     RAISE EXCEPTION 'Supplier marked its own quote as accepted';
@@ -557,29 +573,25 @@ BEGIN
   END;
   BEGIN
     INSERT INTO bridge_ai."ContactAccessGrant" (
-      id,"successFeeId","quotationId","customerContactId","supplierCompanyId","createdAt"
-    ) VALUES ('forbidden_grant','security_fee','security_quote','security_customer','security_company_a',now());
+      id,"quotationId","customerContactId","supplierCompanyId",reason,"createdAt"
+    ) VALUES ('forbidden_grant','security_quote','security_customer','security_company_a','CUSTOMER_SELECTED',now());
     RAISE EXCEPTION 'Supplier inserted its own contact access grant';
   EXCEPTION WHEN insufficient_privilege OR check_violation THEN NULL;
   END;
   PERFORM set_config('request.jwt.claim.sub', user_b::text, true);
-  SELECT count(*) INTO visible_count FROM bridge_ai."SupplierSuccessFee" WHERE id='security_fee';
-  IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier B read Supplier A success fee'; END IF;
   EXECUTE 'RESET ROLE';
   PERFORM set_config('request.jwt.claim.sub', '', true);
 
-  UPDATE bridge_ai."SupplierSuccessFee" SET status='PAID',"providerPaymentIntentId"='pi_security',"paidAt"=now(),"unlockedAt"=now(),"updatedAt"=now()
-  WHERE id='security_fee';
   INSERT INTO bridge_ai."ContactAccessGrant" (
-    id,"successFeeId","quotationId","customerContactId","supplierCompanyId","createdAt"
-  ) VALUES ('security_grant','security_fee','security_quote','security_customer','security_company_a',now());
+    id,"quotationId","customerContactId","supplierCompanyId",reason,"createdAt"
+  ) VALUES ('security_grant','security_quote','security_customer','security_company_a','CUSTOMER_SELECTED',now());
   PERFORM set_config('bridge_ai.payment_transition','on',true);
-  UPDATE bridge_ai."SupplierQuotation" SET status='ACCEPTED' WHERE id='security_quote';
+  UPDATE bridge_ai."SupplierQuotation" SET status='ACCEPTED',"decidedAt"=now() WHERE id='security_quote';
   PERFORM set_config('bridge_ai.payment_transition','',true);
   EXECUTE 'SET LOCAL ROLE authenticated';
   PERFORM set_config('request.jwt.claim.sub', user_a::text, true);
   SELECT count(*) INTO visible_count FROM bridge_ai."ContactAccessGrant" WHERE id='security_grant';
-  IF visible_count <> 1 THEN RAISE EXCEPTION 'Paid supplier could not read its contact grant'; END IF;
+  IF visible_count <> 1 THEN RAISE EXCEPTION 'Selected supplier could not read its contact grant'; END IF;
   SELECT count(*) INTO visible_count FROM bridge_ai."CustomerContact" WHERE id='security_customer';
   IF visible_count <> 0 THEN RAISE EXCEPTION 'Contact grant exposed encrypted customer row through the Data API'; END IF;
   PERFORM set_config('request.jwt.claim.sub', user_b::text, true);

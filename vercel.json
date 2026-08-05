@@ -3,10 +3,6 @@
   "regions": ["lhr1"],
   "crons": [
     {
-      "path": "/api/cron/expire-success-fees",
-      "schedule": "0 3 * * *"
-    },
-    {
       "path": "/api/cron/monitor-production",
       "schedule": "0 9 * * *"
     }

@@ -10,9 +10,15 @@ export function getStripe() {
   return client;
 }
 
-export function membershipPriceId() {
-  const value = process.env.STRIPE_MEMBERSHIP_PRICE_ID?.trim();
-  if (!value) throw new Error("Stripe supplier membership is not configured");
+export function introductoryMembershipPriceId() {
+  const value = process.env.STRIPE_INTRODUCTORY_PRICE_ID?.trim();
+  if (!value) throw new Error("Stripe introductory supplier price is not configured");
+  return value;
+}
+
+export function standardMembershipPriceId() {
+  const value = process.env.STRIPE_STANDARD_PRICE_ID?.trim();
+  if (!value) throw new Error("Stripe standard supplier price is not configured");
   return value;
 }
 
@@ -23,5 +29,9 @@ export function stripeWebhookSecret() {
 }
 
 export function stripeConfigured() {
-  return Boolean(process.env.STRIPE_SECRET_KEY?.trim() && process.env.STRIPE_MEMBERSHIP_PRICE_ID?.trim());
+  return Boolean(
+    process.env.STRIPE_SECRET_KEY?.trim()
+    && process.env.STRIPE_INTRODUCTORY_PRICE_ID?.trim()
+    && process.env.STRIPE_STANDARD_PRICE_ID?.trim(),
+  );
 }

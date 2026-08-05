@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 const referenceSchema = z.string().trim().min(3).max(64).regex(/^[A-Z0-9-]+$/, "Invalid quote reference");
 
 const failures: Array<[string, number, string]> = [
-  ["ACTIVE_SUBSCRIPTION_REQUIRED", 402, "An active £5 monthly membership is required to quote"],
+  ["ACTIVE_SUBSCRIPTION_REQUIRED", 402, "An active Bridge AI supplier membership is required to quote"],
   ["OPPORTUNITY_FULL", 409, "All supplier places for this opportunity have been taken"],
   ["OPPORTUNITY_CLOSED", 410, "The response window for this opportunity has closed"],
   ["CATEGORY_NOT_MATCHED", 403, "Add this product category to your company profile before quoting"],

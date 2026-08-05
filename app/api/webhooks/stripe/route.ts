@@ -2,9 +2,8 @@ import { after, NextResponse } from "next/server";
 import { Prisma, type SubscriptionStatus } from "@prisma/client";
 import type Stripe from "stripe";
 import { trustedPrisma } from "@/lib/db";
-import { getStripe, stripeWebhookSecret } from "@/lib/stripe/server";
-import { unlockPaidQuotation } from "@/lib/quotes/selection";
-import { enqueueContactUnlock, processWhatsAppJobs } from "@/lib/whatsapp/processor";
+import { getStripe, introductoryMembershipPriceId, standardMembershipPriceId, stripeWebhookSecret } from "@/lib/stripe/server";
+import { FOUNDING_PLAN_CODE, INTRODUCTORY_MONTHS } from "@/lib/billing/pricing";
 import { runProductionMonitoringSafely } from "@/lib/monitoring/operational-alerts";
 
 export const runtime = "nodejs";
@@ -28,7 +27,8 @@ async function syncSubscription(subscription: Stripe.Subscription) {
     update: {
       providerCustomerId: typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id,
       providerSubscriptionId: subscription.id,
-      planCode: subscription.metadata.planCode || "bridge-ai-monthly",
+      providerScheduleId: typeof subscription.schedule === "string" ? subscription.schedule : subscription.schedule?.id ?? null,
+      planCode: subscription.metadata.planCode || FOUNDING_PLAN_CODE,
       status: localSubscriptionStatus(subscription.status),
       currentPeriodStart: item?.current_period_start ? new Date(item.current_period_start * 1000) : null,
       currentPeriodEnd: item?.current_period_end ? new Date(item.current_period_end * 1000) : null,
@@ -38,7 +38,8 @@ async function syncSubscription(subscription: Stripe.Subscription) {
       supplierCompanyId: companyId,
       providerCustomerId: typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id,
       providerSubscriptionId: subscription.id,
-      planCode: subscription.metadata.planCode || "bridge-ai-monthly",
+      providerScheduleId: typeof subscription.schedule === "string" ? subscription.schedule : subscription.schedule?.id ?? null,
+      planCode: subscription.metadata.planCode || FOUNDING_PLAN_CODE,
       status: localSubscriptionStatus(subscription.status),
       currentPeriodStart: item?.current_period_start ? new Date(item.current_period_start * 1000) : null,
       currentPeriodEnd: item?.current_period_end ? new Date(item.current_period_end * 1000) : null,
@@ -55,6 +56,41 @@ async function syncSubscription(subscription: Stripe.Subscription) {
   } });
 }
 
+async function ensureFoundingPriceSchedule(subscription: Stripe.Subscription) {
+  if (subscription.metadata.planCode !== FOUNDING_PLAN_CODE) return null;
+  const stripe = getStripe();
+  let schedule = typeof subscription.schedule === "string"
+    ? await stripe.subscriptionSchedules.retrieve(subscription.schedule)
+    : subscription.schedule;
+  if (!schedule) {
+    schedule = await stripe.subscriptionSchedules.create({ from_subscription: subscription.id });
+  }
+  if (schedule.metadata?.bridgeAiPricingVersion === "founding-v1") return schedule;
+  const currentStart = schedule.current_phase?.start_date ?? subscription.items.data[0]?.current_period_start;
+  if (!currentStart) throw new Error("STRIPE_SUBSCRIPTION_PERIOD_MISSING");
+  return stripe.subscriptionSchedules.update(schedule.id, {
+    end_behavior: "release",
+    metadata: {
+      bridgeAiPricingVersion: "founding-v1",
+      supplierCompanyId: subscription.metadata.supplierCompanyId,
+    },
+    phases: [
+      {
+        start_date: currentStart,
+        duration: { interval: "month", interval_count: INTRODUCTORY_MONTHS },
+        items: [{ price: introductoryMembershipPriceId(), quantity: 1 }],
+        proration_behavior: "none",
+        metadata: { supplierCompanyId: subscription.metadata.supplierCompanyId, planCode: FOUNDING_PLAN_CODE, pricingPhase: "introductory" },
+      },
+      {
+        items: [{ price: standardMembershipPriceId(), quantity: 1 }],
+        proration_behavior: "none",
+        metadata: { supplierCompanyId: subscription.metadata.supplierCompanyId, planCode: FOUNDING_PLAN_CODE, pricingPhase: "standard" },
+      },
+    ],
+  });
+}
+
 async function processEvent(event: Stripe.Event) {
   if (["customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"].includes(event.type)) {
     await syncSubscription(event.data.object as Stripe.Subscription);
@@ -63,41 +99,10 @@ async function processEvent(event: Stripe.Event) {
   if (!["checkout.session.completed", "checkout.session.async_payment_succeeded"].includes(event.type)) return;
   const session = event.data.object as Stripe.Checkout.Session;
   if (session.metadata?.kind === "supplier_membership" && typeof session.subscription === "string") {
-    const subscription = await getStripe().subscriptions.retrieve(session.subscription);
+    let subscription = await getStripe().subscriptions.retrieve(session.subscription);
+    const schedule = await ensureFoundingPriceSchedule(subscription);
+    if (schedule) subscription = await getStripe().subscriptions.retrieve(session.subscription);
     await syncSubscription(subscription);
-    return;
-  }
-  if (session.metadata?.kind === "success_fee" && session.payment_status === "paid") {
-    const successFeeId = session.metadata.successFeeId;
-    const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id;
-    if (!successFeeId || !paymentIntentId) throw new Error("STRIPE_SUCCESS_FEE_METADATA_MISSING");
-    const paidAt = new Date(event.created * 1000);
-    try {
-      await unlockPaidQuotation({ successFeeId, paymentIntentId, paidAt });
-      after(async () => {
-        try {
-          const job = await enqueueContactUnlock(successFeeId);
-          if (job) await processWhatsAppJobs({ limit: 5 });
-        } catch {
-          console.error("Customer contact-unlock scheduling failed", { successFeeId });
-        }
-      });
-    } catch (error) {
-      if (!(error instanceof Error) || error.message !== "SUCCESS_FEE_PAID_AFTER_DEADLINE") throw error;
-      const fee = await trustedPrisma.supplierSuccessFee.update({
-        where: { id: successFeeId },
-        data: { status: "EXPIRED", expiredAt: paidAt, providerPaymentIntentId: paymentIntentId },
-      });
-      await trustedPrisma.supplierQuotation.updateMany({ where: { id: fee.quotationId, status: "SELECTED_PENDING_PAYMENT" }, data: { status: "EXPIRED" } });
-      await trustedPrisma.auditLog.create({ data: { supplierCompanyId: fee.supplierCompanyId, action: "BILLING.LATE_SUCCESS_FEE_CAPTURED", entityType: "SupplierSuccessFee", entityId: fee.id, summary: "Late payment captured; contact access remained locked pending refund review", metadata: { paymentIntentId } } });
-      await trustedPrisma.systemEvent.create({ data: {
-        severity: "CRITICAL",
-        source: "STRIPE_WEBHOOK",
-        code: "SUCCESS_FEE_CAPTURED_AFTER_DEADLINE",
-        message: "A £25 payment was captured after the supplier unlock deadline; contact remained locked and a refund review is required.",
-        context: { successFeeId, paymentIntentId, supplierCompanyId: fee.supplierCompanyId },
-      } });
-    }
   }
 }
 

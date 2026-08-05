@@ -4,6 +4,7 @@ import { getCurrentSession, getPrimarySupplierCompanyId } from "@/lib/auth/sessi
 import { quotationSchema, validationError } from "@/lib/auth/validation";
 import { writeAuditLog } from "@/lib/audit";
 import { enqueueQuoteSummary, processWhatsAppJobs } from "@/lib/whatsapp/processor";
+import { isFoundingSupplier } from "@/lib/billing/pricing";
 
 export const runtime = "nodejs";
 
@@ -18,8 +19,10 @@ export async function POST(request: Request) {
 
   const assignment = await prisma.supplierAssignment.findFirst({ where: { id: parsed.data.assignmentId, supplierCompanyId: companyId, status: "ACCEPTED", expiresAt: { gt: new Date() } } });
   if (!assignment) return NextResponse.json({ error: "Accepted request not found or response window has closed" }, { status: 404 });
+  const company = await prisma.supplierCompany.findUnique({ where: { id: companyId }, select: { status: true, foundingMemberNumber: true } });
   const subscription = await prisma.subscription.findUnique({ where: { supplierCompanyId: companyId } });
-  if (!subscription || subscription.status !== "ACTIVE" || (subscription.currentPeriodEnd && subscription.currentPeriodEnd <= new Date())) return NextResponse.json({ error: "An active £5 monthly membership is required before submitting a quotation" }, { status: 402 });
+  if (!company || company.status !== "APPROVED" || !isFoundingSupplier(company.foundingMemberNumber)) return NextResponse.json({ error: "An approved founding supplier account is required before submitting a quotation" }, { status: 403 });
+  if (!subscription || subscription.status !== "ACTIVE" || (subscription.currentPeriodEnd && subscription.currentPeriodEnd <= new Date())) return NextResponse.json({ error: "An active Bridge AI supplier membership is required before submitting a quotation" }, { status: 402 });
 
   const quotation = await prisma.$transaction(async (tx) => {
     const saved = await tx.supplierQuotation.upsert({

@@ -261,6 +261,7 @@ describe("security foundation static controls", () => {
     expect(pendingBrowse).toContain("company.status IN ('PENDING', 'APPROVED')");
     expect(pendingBrowse).not.toContain("'SUSPENDED', 'REJECTED'");
     expect(migration).toContain("ACTIVE_SUBSCRIPTION_REQUIRED");
+    expect(read("supabase/migrations/20260805215057_founding_supplier_pricing.sql")).toContain("ACTIVE_FOUNDING_SUBSCRIPTION_REQUIRED");
     expect(migration).toContain("CATEGORY_NOT_MATCHED");
     const simplifiedApproval = read("supabase/migrations/20260805172853_simplify_supplier_company_approval.sql");
     expect(simplifiedApproval).not.toContain("ACCREDITATION_REQUIRED");
@@ -352,18 +353,21 @@ describe("security foundation static controls", () => {
     expect(source).not.toMatch(/prisma\.|trustedPrisma|writeAuditLog/);
   });
 
-  it("unlocks customer contact only through a verified Stripe webhook", () => {
+  it("unlocks customer contact only through the server-controlled selection transaction", () => {
     const webhook = read("app/api/webhooks/stripe/route.ts");
     const handler = webhook.slice(webhook.indexOf("export async function POST"));
     expect(handler.indexOf("constructEvent(")).toBeGreaterThan(-1);
     expect(handler.indexOf("constructEvent(")).toBeLessThan(handler.indexOf("processEvent(event)"));
-    expect(webhook).toContain("unlockPaidQuotation");
+    expect(webhook).not.toContain("success_fee");
     expect(webhook).not.toContain("await request.json()");
-    const migration = read("supabase/migrations/20260803195826_payment_gated_contact_unlock_schema.sql");
-    expect(migration).toContain("supplier_quotation_one_customer_selection");
-    expect(migration).toContain("customer selection and payment transitions are server controlled");
-    expect(migration).toContain("accepted quotation requires paid fee and contact grant");
-    expect(migration).toContain("FORCE ROW LEVEL SECURITY");
+    const migration = read("supabase/migrations/20260805215057_founding_supplier_pricing.sql");
+    expect(migration).toContain("customer selection transitions are server controlled");
+    expect(migration).toContain("accepted quotation requires a matching contact grant");
+    expect(migration).toContain("CUSTOMER_SELECTED");
+    const selection = read("lib/quotes/selection.ts");
+    expect(selection).toContain('reason: "CUSTOMER_SELECTED"');
+    expect(selection).toContain('action: "CONTACT_ACCESS.GRANTED"');
+    expect(selection.indexOf("contactAccessGrant.create")).toBeLessThan(selection.indexOf('status: "ACCEPTED"'));
     const contact = read("lib/contacts/access.ts");
     expect(contact.indexOf("prisma.contactAccessGrant.findFirst")).toBeLessThan(contact.indexOf("trustedPrisma.customerContact.findUniqueOrThrow"));
     expect(contact).toContain('action: "CONTACT_ACCESS.VIEWED"');
