@@ -7,3 +7,61 @@ export async function sendTeamInvitationEmail(email: string, invitationUrl: stri
   if (!response.ok) throw new Error(`Team invitation email failed with status ${response.status}`);
   return { delivered: true as const };
 }
+
+export type OperationalEmailAlert = {
+  severity: "WARNING" | "ERROR" | "CRITICAL";
+  title: string;
+  body: string;
+  actionUrl?: string | null;
+};
+
+export function operationalEmailConfiguration() {
+  const recipients = (process.env.MONITORING_ALERT_EMAILS ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  const validRecipients = recipients.length > 0
+    && recipients.length <= 10
+    && recipients.every((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+  if (!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM) {
+    return { configured: false as const, recipients: [], reason: "Resend email delivery is not configured" };
+  }
+  if (!validRecipients) {
+    return { configured: false as const, recipients: [], reason: "MONITORING_ALERT_EMAILS is missing or invalid" };
+  }
+  return { configured: true as const, recipients: [...new Set(recipients)], reason: null };
+}
+
+export async function sendOperationalAlertEmail(
+  alerts: OperationalEmailAlert[],
+  idempotencyKey: string,
+) {
+  const config = operationalEmailConfiguration();
+  if (!config.configured) throw new Error(`MONITORING_EMAIL_NOT_CONFIGURED: ${config.reason}`);
+  if (!alerts.length) throw new Error("MONITORING_ALERTS_EMPTY");
+  const critical = alerts.some((alert) => alert.severity === "CRITICAL");
+  const subject = `${critical ? "[CRITICAL]" : "[Action required]"} Bridge AI production alert${alerts.length === 1 ? "" : "s"} (${alerts.length})`;
+  const text = [
+    "Bridge AI detected production issues that require administrator attention.",
+    "No customer contact details or message contents are included in this email.",
+    "",
+    ...alerts.flatMap((alert, index) => [
+      `${index + 1}. [${alert.severity}] ${alert.title}`,
+      alert.body,
+      ...(alert.actionUrl ? [`Review: ${alert.actionUrl}`] : []),
+      "",
+    ]),
+  ].join("\n");
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+      "Idempotency-Key": idempotencyKey,
+    },
+    body: JSON.stringify({ from: process.env.EMAIL_FROM, to: config.recipients, subject, text }),
+  });
+  if (!response.ok) throw new Error(`Operational alert email failed with status ${response.status}`);
+  const payload = await response.json().catch(() => null) as { id?: string } | null;
+  return { delivered: true as const, providerEmailId: payload?.id ?? null };
+}

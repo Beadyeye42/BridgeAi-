@@ -7,6 +7,7 @@ import { analyzeQuoteAttachment, quoteAttachmentAnalysisSchema, type QuoteAttach
 import { extractQuoteIntake, quoteDraftSchema, type QuoteDraft } from "@/lib/ai/quote-intake";
 import { lookupPostcode, PostcodeLookupError } from "@/lib/location/postcodes";
 import { findSupplierMatches } from "@/lib/matching/suppliers";
+import { runProductionMonitoringSafely } from "@/lib/monitoring/operational-alerts";
 import { addSupplierResponseHours } from "@/lib/quotes/response-clock";
 import { selectQuotationForCustomer } from "@/lib/quotes/selection";
 import { decryptPrivateValue, encryptPrivateValue } from "@/lib/security/encryption";
@@ -197,6 +198,7 @@ async function failJob(job: WhatsAppJob, cause: unknown) {
       }
     }
   });
+  return terminal;
 }
 
 async function sendReply(
@@ -1340,7 +1342,8 @@ export async function processWhatsAppJobs({ limit = 5 }: { limit?: number } = {}
       processed += 1;
     } catch (error) {
       console.error("WhatsApp job processing failed", { jobId: job.id, type: job.type, errorCode: errorCode(error) });
-      await failJob(job, error);
+      const terminal = await failJob(job, error);
+      if (terminal) await runProductionMonitoringSafely();
     }
   }
   return processed;

@@ -5,6 +5,7 @@ import { trustedPrisma } from "@/lib/db";
 import { getStripe, stripeWebhookSecret } from "@/lib/stripe/server";
 import { unlockPaidQuotation } from "@/lib/quotes/selection";
 import { enqueueContactUnlock, processWhatsAppJobs } from "@/lib/whatsapp/processor";
+import { runProductionMonitoringSafely } from "@/lib/monitoring/operational-alerts";
 
 export const runtime = "nodejs";
 const PROVIDER = "STRIPE";
@@ -138,6 +139,7 @@ export async function POST(request: Request) {
         context: { externalEventId: event.id, eventType: event.type, failureCode: message },
       },
     }).catch(() => undefined);
+    after(runProductionMonitoringSafely);
     return NextResponse.json({ error: "Processing failed" }, { status: 500 });
   }
 }

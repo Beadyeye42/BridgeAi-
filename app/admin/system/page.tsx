@@ -2,7 +2,8 @@ import { AlertTriangle, BellOff, MessageSquareWarning, Webhook } from "lucide-re
 import { prisma } from "@/lib/db";
 import { requireAdminPage } from "@/lib/auth/guards";
 import { AdminHeading } from "@/components/admin/admin-shell";
-import { ResolveEventButton, RetryWhatsAppJobButton } from "@/components/admin/admin-actions";
+import { ResolveEventButton, RetryWhatsAppJobButton, RunProductionMonitoringButton } from "@/components/admin/admin-actions";
+import { operationalEmailConfiguration } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,12 @@ export default async function SystemPage() {
     orderBy: [{ status: "asc" }, { occurredAt: "desc" }],
     take: 100,
   });
+  const productionAlerts = await prisma.productionAlert.findMany({
+    orderBy: { createdAt: "desc" },
+    take: 50,
+  });
+  const alertConfiguration = operationalEmailConfiguration();
+  const waitingAlerts = productionAlerts.filter((alert) => ["PENDING", "PROCESSING", "FAILED"].includes(alert.status)).length;
   const openCritical = events.filter((event) => event.status !== "RESOLVED" && ["ERROR", "CRITICAL"].includes(event.severity)).length;
 
   return <>
@@ -43,7 +50,14 @@ export default async function SystemPage() {
       <OperationStat icon={<Webhook size={20} />} label="Failed webhooks" value={failedWebhooks.length} tone="warning" />
       <OperationStat icon={<BellOff size={20} />} label="Failed notifications" value={failedNotifications.length} tone="warning" />
       <OperationStat icon={<AlertTriangle size={20} />} label="Open serious events" value={openCritical} tone="error" />
+      <OperationStat icon={<BellOff size={20} />} label="Email alerts waiting" value={waitingAlerts} tone={waitingAlerts ? "warning" : "success"} />
     </section>
+
+    {!alertConfiguration.configured && <div className="honesty-note spaced-section">
+      Production email alerts are queued safely, but delivery is not configured: {alertConfiguration.reason}. Add the server-only monitoring email setting in Vercel.
+    </div>}
+
+    <div className="form-actions spaced-section"><RunProductionMonitoringButton /></div>
 
     <div className="management-grid operations-grid">
       <section className="panel form-section">
@@ -85,6 +99,17 @@ export default async function SystemPage() {
           <span className={`status-pill ${event.status.toLowerCase()}`}>{event.status}</span>
           {event.status !== "RESOLVED" && <ResolveEventButton id={event.id} />}
         </article>) : <div className="empty-state">No system events recorded.</div>}
+      </div>
+    </section>
+
+    <section className="panel form-section spaced-section">
+      <div className="section-heading"><div><p className="eyebrow">Automatic notifications</p><h2>Production alert delivery</h2></div><BellOff size={20} /></div>
+      <div className="entity-list">
+        {productionAlerts.length ? productionAlerts.map((alert) => <article className="entity-row system-event" key={alert.id}>
+          <span className={`severity ${alert.severity.toLowerCase()}`}>{alert.severity}</span>
+          <div><b>{alert.title}</b><small>{alert.source} · {alert.attempts} delivery attempt{alert.attempts === 1 ? "" : "s"}</small><time>{alert.createdAt.toLocaleString("en-GB")}</time>{alert.lastError && <small className="error-text">{alert.lastError}</small>}</div>
+          <span className={`status-pill ${alert.status.toLowerCase()}`}>{alert.status}</span>
+        </article>) : <div className="empty-state">No production alerts have been generated.</div>}
       </div>
     </section>
   </>;

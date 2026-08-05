@@ -1,9 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSupplierApi } from "@/lib/auth/api";
 import { getPrivateStorage, PRIVATE_BUCKET } from "@/lib/storage";
 import { writeAuditLog } from "@/lib/audit";
+import { runProductionMonitoringSafely } from "@/lib/monitoring/operational-alerts";
 
 export const runtime = "nodejs";
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -26,6 +27,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, attachmentId: attachment.id, scanStatus: attachment.scanStatus }, { status: 201 });
   } catch (error) {
     await prisma.systemEvent.create({ data: { severity: "ERROR", source: "storage", code: "QUOTATION_UPLOAD_FAILED", message: error instanceof Error ? error.message.slice(0, 1000) : "Quotation upload failed", context: { quotationId, supplierCompanyId: auth.companyId } } }).catch(() => undefined);
+    after(runProductionMonitoringSafely);
     return NextResponse.json({ error: "The PDF could not be stored. Your quotation remains submitted; try the upload again." }, { status: 503 });
   }
 }
