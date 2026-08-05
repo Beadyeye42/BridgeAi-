@@ -16,7 +16,7 @@ export default async function AdminRequestPage({ params }: { params: Promise<{ i
       category: true,
       attachments: { orderBy: { createdAt: "asc" } },
       assignments: {
-        include: { supplierCompany: true, quotation: { include: { successFee: true } } },
+        include: { supplierCompany: true, quotation: true },
       },
       items: { orderBy: [{ displayOrder: "asc" }, { createdAt: "asc" }] },
     },
@@ -50,7 +50,7 @@ export default async function AdminRequestPage({ params }: { params: Promise<{ i
       </section>
       <section className="panel form-section">
         <div className="section-heading"><div><p className="eyebrow">Supplier responses</p><h2>Distribution</h2></div></div>
-        <div className="entity-list">{request.assignments.length ? request.assignments.map((assignment) => <article className="entity-row" key={assignment.id}><div><b>{assignment.supplierCompany.tradingName ?? assignment.supplierCompany.legalName}</b><small>Assigned {assignment.assignedAt.toLocaleString("en-GB")} · responds by {assignment.expiresAt.toLocaleString("en-GB")}</small>{assignment.quotation?.status === "SUBMITTED" && <RecordCustomerSelection quotationId={assignment.quotation.id}/>} {assignment.quotation?.successFee && <small>£25 fee: {assignment.quotation.successFee.status} · due {assignment.quotation.successFee.paymentDueAt.toLocaleString("en-GB")}</small>}</div><span className={`status-pill ${(assignment.quotation?.status ?? assignment.status).toLowerCase()}`}>{assignment.quotation?.status ?? assignment.status}</span></article>) : <div className="empty-state">No suppliers assigned.</div>}</div>
+        <div className="entity-list">{request.assignments.length ? request.assignments.map((assignment) => <article className="entity-row" key={assignment.id}><div><b>{assignment.supplierCompany.tradingName ?? assignment.supplierCompany.legalName}</b><small>Assigned {assignment.assignedAt.toLocaleString("en-GB")} · responds by {assignment.expiresAt.toLocaleString("en-GB")}</small>{assignment.quotation?.status === "SUBMITTED" && <RecordCustomerSelection quotationId={assignment.quotation.id}/>}</div><span className={`status-pill ${(assignment.quotation?.status ?? assignment.status).toLowerCase()}`}>{assignment.quotation?.status ?? assignment.status}</span></article>) : <div className="empty-state">No suppliers assigned.</div>}</div>
       </section>
       <section className="panel form-section">
         <div className="section-heading"><div><p className="eyebrow">Category and delivery matches</p><h2>Assign suppliers</h2></div></div>

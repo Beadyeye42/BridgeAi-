@@ -334,45 +334,46 @@ model AdministratorPermission {
 }
 
 model SupplierCompany {
-  id                String                    @id @default(cuid())
-  legalName         String
-  tradingName       String?
-  companyNumber     String?
-  directorName      String?
-  vatNumber         String?
-  websiteUrl        String?
-  logoUrl           String?
-  summary           String?
-  contactEmail      String
-  contactPhone      String
-  addressLine1      String?
-  addressLine2      String?
-  city              String?
-  county            String?
-  postcode          String?
-  businessHours     Json?
-  status            SupplierStatus            @default(PENDING)
-  approvedAt        DateTime?
-  approvedById      String?                   @db.Uuid
-  suspendedAt       DateTime?
-  suspensionNote    String?
-  createdAt         DateTime                  @default(now())
-  updatedAt         DateTime                  @updatedAt
-  approvedBy        User?                     @relation("SupplierApprover", fields: [approvedById], references: [id], onDelete: SetNull)
-  memberships       SupplierTeamMembership[]
-  invitations       SupplierInvite[]
-  coverageAreas     CoverageArea[]
-  categories        SupplierProductCategory[]
-  assignments       SupplierAssignment[]
-  quotations        SupplierQuotation[]
-  subscription      Subscription?
-  notifications     Notification[]
-  notificationPrefs NotificationPreference[]
-  auditLogs         AuditLog[]
-  attachments       Attachment[]
-  successFees       SupplierSuccessFee[]
-  contactAccess     ContactAccessGrant[]
-  accreditations    SupplierAccreditation[]
+  id                   String                    @id @default(cuid())
+  legalName            String
+  tradingName          String?
+  companyNumber        String?
+  directorName         String?
+  vatNumber            String?
+  websiteUrl           String?
+  logoUrl              String?
+  summary              String?
+  contactEmail         String
+  contactPhone         String
+  addressLine1         String?
+  addressLine2         String?
+  city                 String?
+  county               String?
+  postcode             String?
+  businessHours        Json?
+  status               SupplierStatus            @default(PENDING)
+  foundingMemberNumber Int?                      @unique
+  approvedAt           DateTime?
+  approvedById         String?                   @db.Uuid
+  suspendedAt          DateTime?
+  suspensionNote       String?
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+  approvedBy           User?                     @relation("SupplierApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  memberships          SupplierTeamMembership[]
+  invitations          SupplierInvite[]
+  coverageAreas        CoverageArea[]
+  categories           SupplierProductCategory[]
+  assignments          SupplierAssignment[]
+  quotations           SupplierQuotation[]
+  subscription         Subscription?
+  notifications        Notification[]
+  notificationPrefs    NotificationPreference[]
+  auditLogs            AuditLog[]
+  attachments          Attachment[]
+  successFees          SupplierSuccessFee[]
+  contactAccess        ContactAccessGrant[]
+  accreditations       SupplierAccreditation[]
 
   @@index([status])
   @@index([postcode])
@@ -777,22 +778,22 @@ model SupplierSuccessFee {
 }
 
 model ContactAccessGrant {
-  id                      String             @id @default(cuid())
-  successFeeId            String             @unique
-  quotationId             String             @unique
+  id                      String              @id @default(cuid())
+  successFeeId            String?             @unique
+  quotationId             String              @unique
   customerContactId       String
   supplierCompanyId       String
-  reason                  String             @default("SUCCESS_FEE_PAID")
-  grantedAt               DateTime           @default(now())
+  reason                  String              @default("CUSTOMER_SELECTED")
+  grantedAt               DateTime            @default(now())
   revokedAt               DateTime?
   customerNotifiedAt      DateTime?
   notificationAttemptedAt DateTime?
   notificationFailureCode String?
-  createdAt               DateTime           @default(now())
-  successFee              SupplierSuccessFee @relation(fields: [successFeeId], references: [id], onDelete: Restrict)
-  quotation               SupplierQuotation  @relation(fields: [quotationId], references: [id], onDelete: Restrict)
-  customerContact         CustomerContact    @relation(fields: [customerContactId], references: [id], onDelete: Restrict)
-  supplierCompany         SupplierCompany    @relation(fields: [supplierCompanyId], references: [id], onDelete: Restrict)
+  createdAt               DateTime            @default(now())
+  successFee              SupplierSuccessFee? @relation(fields: [successFeeId], references: [id], onDelete: Restrict)
+  quotation               SupplierQuotation   @relation(fields: [quotationId], references: [id], onDelete: Restrict)
+  customerContact         CustomerContact     @relation(fields: [customerContactId], references: [id], onDelete: Restrict)
+  supplierCompany         SupplierCompany     @relation(fields: [supplierCompanyId], references: [id], onDelete: Restrict)
 
   @@index([supplierCompanyId, grantedAt])
   @@index([customerContactId])
@@ -825,6 +826,7 @@ model Subscription {
   provider               String             @default("stripe")
   providerCustomerId     String?            @unique
   providerSubscriptionId String?            @unique
+  providerScheduleId     String?            @unique
   planCode               String
   status                 SubscriptionStatus
   currentPeriodStart     DateTime?

@@ -53,6 +53,7 @@ export async function findSupplierMatches(
   const where: Prisma.SupplierCompanyWhereInput = {
     id: options.supplierIds ? { in: options.supplierIds } : undefined,
     status: "APPROVED",
+    foundingMemberNumber: { gte: 1, lte: 100 },
     categories: { some: { productCategoryId: request.categoryId } },
     coverageAreas: { some: { active: true } },
     memberships: { some: { role: "OWNER", status: "ACTIVE" } },

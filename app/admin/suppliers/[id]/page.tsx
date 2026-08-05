@@ -46,6 +46,7 @@ export default async function SupplierInspectPage({ params }: { params: Promise<
           <div><dt>Director</dt><dd>{supplier.directorName ?? "—"}</dd></div>
           <div><dt>Address</dt><dd>{[supplier.addressLine1, supplier.city, supplier.county, supplier.postcode].filter(Boolean).join(", ") || "—"}</dd></div>
           <div><dt>Average response</dt><dd>{averageResponse ? `${Math.round(averageResponse / 3600000)} hours` : "No completed responses"}</dd></div>
+          <div><dt>Founding supplier place</dt><dd>{supplier.foundingMemberNumber ? `#${supplier.foundingMemberNumber} of 100` : "Allocated on approval"}</dd></div>
           <div><dt>Subscription</dt><dd>{supplier.subscription ? `${supplier.subscription.planCode} · ${supplier.subscription.status}` : "None"}</dd></div>
         </dl>
         <p className="body-copy">{supplier.summary}</p>

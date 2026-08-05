@@ -14,7 +14,7 @@ export async function getUnlockedCustomerContact(input: { quotationId: string; c
     action: "CONTACT_ACCESS.VIEWED",
     entityType: "CustomerContact",
     entityId: contact.id,
-    summary: "Supplier viewed payment-unlocked customer contact details",
+    summary: "Supplier viewed customer contact details after quotation selection",
     metadata: { quotationId: input.quotationId, grantId: grant.id },
   } });
   return {
