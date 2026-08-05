@@ -242,7 +242,8 @@ describe("security foundation static controls", () => {
     expect(migration).toContain("company.status = 'APPROVED'");
     expect(migration).toContain("ACTIVE_SUBSCRIPTION_REQUIRED");
     expect(migration).toContain("CATEGORY_NOT_MATCHED");
-    expect(migration).toContain("ACCREDITATION_REQUIRED");
+    const simplifiedApproval = read("supabase/migrations/20260805172853_simplify_supplier_company_approval.sql");
+    expect(simplifiedApproval).not.toContain("ACCREDITATION_REQUIRED");
     expect(migration).toContain("COVERAGE_NOT_MATCHED");
     expect(migration).toContain("LEAST(request_row.\"distributionLimit\", 5)");
     expect(migration).toContain("OPPORTUNITY.CLAIMED");
@@ -294,7 +295,7 @@ describe("security foundation static controls", () => {
     expect(requests).toContain("responseDueAt: { gt: now }");
     expect(requests).toContain("expiresAt: { lte: now }");
     const status = read("app/api/admin/suppliers/[id]/status/route.ts");
-    expect(status).toContain("supplierOnboardingReadiness(existing)");
+    expect(status).toContain("supplierApprovalReadiness(existing)");
     expect(status).toContain('action: `ADMIN.SUPPLIER_${parsed.data.status}`');
     expect(status).not.toContain("supplierTeamMembership.updateMany");
     const team = read("app/dashboard/team/page.tsx");
@@ -302,7 +303,7 @@ describe("security foundation static controls", () => {
   });
 
   it("enforces supplier approval readiness and limits administrator recovery actions", () => {
-    const migration = read("supabase/migrations/20260805074006_supplier_approval_and_admin_operations.sql");
+    const migration = read("supabase/migrations/20260805172853_simplify_supplier_company_approval.sql");
     expect(migration).toContain("enforce_supplier_review_state");
     expect(migration).toContain("supplier review state can only be changed by a platform administrator");
     expect(migration).toContain("supplier approval requirements are incomplete");
@@ -316,7 +317,8 @@ describe("security foundation static controls", () => {
     expect(retry).toContain('action: "ADMIN.WHATSAPP_JOB_RETRIED"');
     expect(retry).toContain("processWhatsAppJobs({ limit: 20 })");
     const matching = read("lib/matching/suppliers.ts");
-    expect(matching).toContain("supplierOnboardingReadiness(supplier, now).ready");
+    expect(matching).toContain("supplierOnboardingReadiness(supplier).ready");
+    expect(matching).not.toContain("accreditations:");
   });
 
   it("keeps browser location lookup authenticated and non-persistent", () => {

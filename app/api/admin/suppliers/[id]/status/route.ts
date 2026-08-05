@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { requireAdminApi } from "@/lib/auth/api";
 import { adminSupplierStatusSchema, validationError } from "@/lib/auth/validation";
 import { writeAuditLog } from "@/lib/audit";
-import { supplierOnboardingReadiness } from "@/lib/suppliers/onboarding";
+import { supplierApprovalReadiness } from "@/lib/suppliers/onboarding";
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminApi();
@@ -21,12 +21,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       categories: true,
       coverageAreas: true,
       memberships: true,
-      accreditations: { include: { attachment: true } },
     },
   });
   if (!existing) return NextResponse.json({ error: "Supplier not found" }, { status: 404 });
 
-  const readiness = supplierOnboardingReadiness(existing);
+  const readiness = supplierApprovalReadiness(existing);
   if (parsed.data.status === "APPROVED" && !readiness.ready) {
     return NextResponse.json({
       error: `Supplier is not ready for approval: ${readiness.blockers.join(", ")}.`,

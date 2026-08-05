@@ -59,20 +59,16 @@ const optionalText = (max: number) => z.string().trim().max(max).optional().tran
 
 export const companyProfileSchema = z.object({
   legalName: z.string().trim().min(2).max(160),
-  tradingName: optionalText(160),
-  companyNumber: optionalText(32),
-  vatNumber: optionalText(32),
-  websiteUrl: z.union([z.literal(""), z.string().trim().url().max(300)]).transform((value) => value || null),
-  summary: optionalText(1500),
+  companyNumber: z.string().trim().min(2, "Enter the Companies House number").max(32).transform((value) => value.toUpperCase()),
+  directorName: z.string().trim().min(2, "Enter a director's name").max(160),
   contactEmail: email,
   contactPhone: z.string().trim().min(7).max(32),
-  addressLine1: optionalText(160),
+  addressLine1: z.string().trim().min(2, "Enter the company address").max(160),
   addressLine2: optionalText(160),
-  city: optionalText(100),
+  city: z.string().trim().min(2, "Enter the town or city").max(100),
   county: optionalText(100),
-  postcode: optionalText(16),
+  postcode: z.string().trim().min(3, "Enter the company postcode").max(16).transform((value) => value.toUpperCase()),
   categoryIds: z.array(z.string().cuid().or(z.string().max(64))).max(100).refine((ids) => new Set(ids).size === ids.length, "Select each category only once"),
-  businessHours: z.record(z.string(), z.tuple([z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/), z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/)]).nullable()),
 });
 
 const optionalCoverageLabel = z.string().trim().min(2).max(100).optional();
@@ -96,9 +92,16 @@ export const notificationPreferenceSchema = z.object({
 export const teamInviteSchema = z.object({ email, role: z.enum(["MANAGER", "MEMBER"]) });
 export const adminSupplierStatusSchema = z.object({ status: z.enum(["APPROVED", "SUSPENDED", "REJECTED"]), note: z.string().trim().max(1000).optional() });
 export const adminSupplierEditSchema = z.object({
-  legalName: z.string().trim().min(2).max(160), tradingName: optionalText(160), contactEmail: email,
-  contactPhone: z.string().trim().min(7).max(32), companyNumber: optionalText(32), vatNumber: optionalText(32),
-  postcode: optionalText(16), summary: optionalText(1500),
+  legalName: z.string().trim().min(2).max(160),
+  companyNumber: z.string().trim().min(2).max(32).transform((value) => value.toUpperCase()),
+  directorName: z.string().trim().min(2).max(160),
+  contactEmail: email,
+  contactPhone: z.string().trim().min(7).max(32),
+  addressLine1: z.string().trim().min(2).max(160),
+  addressLine2: optionalText(160),
+  city: z.string().trim().min(2).max(100),
+  county: optionalText(100),
+  postcode: z.string().trim().min(3).max(16).transform((value) => value.toUpperCase()),
 });
 export const adminAssignmentSchema = z.object({
   quoteRequestId: z.string().min(1).max(64),
