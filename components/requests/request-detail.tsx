@@ -13,7 +13,7 @@ export function RequestDetail({ demo = false }: { demo?: boolean }) {
 
   return (
     <div className="portal-shell">
-      <Sidebar companyName={demoDashboard.companyName} initials={demoDashboard.initials} />
+      <Sidebar companyName={demoDashboard.companyName} initials={demoDashboard.initials} companyStatus="APPROVED" activeRequestCount={demoDashboard.stats.newRequests} unreadNotificationCount={demoDashboard.unreadNotificationCount} />
       <header className="mobile-header"><BrandMark compact /><span>{demoRequest.reference}</span></header>
       <main className="portal-main request-page">
         {demo && <div className="demo-banner"><ShieldCheck size={15} /><span><b>Demonstration request</b> — files and actions below use sample data only.</span></div>}

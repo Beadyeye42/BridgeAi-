@@ -129,6 +129,15 @@ export async function POST(request: Request) {
       update: { failedAt: new Date(), failureReason: message, retryCount: { increment: 1 } },
       create: { provider: PROVIDER, externalEventId: event.id, eventType: event.type, payload: { livemode: event.livemode } as Prisma.InputJsonValue, failedAt: new Date(), failureReason: message },
     }).catch(() => undefined);
+    await trustedPrisma.systemEvent.create({
+      data: {
+        severity: "ERROR",
+        source: "STRIPE_WEBHOOK",
+        code: "STRIPE_WEBHOOK_PROCESSING_FAILED",
+        message: "A verified Stripe webhook could not be processed and requires provider redelivery.",
+        context: { externalEventId: event.id, eventType: event.type, failureCode: message },
+      },
+    }).catch(() => undefined);
     return NextResponse.json({ error: "Processing failed" }, { status: 500 });
   }
 }

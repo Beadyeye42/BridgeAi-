@@ -31,7 +31,10 @@ describe("security foundation static controls", () => {
 
   it("re-verifies Supabase identity outside an explicit database scope", () => {
     const source = read("lib/db.ts");
-    expect(source).toContain("supabase.auth.getUser()");
+    const verifiedUser = read("lib/supabase/verified-user.ts");
+    expect(source).toContain("getVerifiedAuthUser()");
+    expect(verifiedUser).toContain("supabase.auth.getUser()");
+    expect(verifiedUser).toContain("cache(async");
     expect(source).not.toContain("enterDatabaseIdentity");
   });
 
@@ -159,6 +162,10 @@ describe("security foundation static controls", () => {
     expect(processor).toContain("quote-summary:${quotation.quoteRequestId}:first");
     expect(processor).toContain("META_QUOTE_TEMPLATE_REQUIRED");
     expect(processor).toContain("META_CONTACT_TEMPLATE_REQUIRED");
+    expect(processor).toContain('type: "SEND_INTAKE_FALLBACK"');
+    expect(processor).toContain("customerConfirmationMessageId");
+    expect(processor).toContain('code: "CUSTOMER_INTAKE_STALLED"');
+    expect(processor).toContain("writeWhatsAppSystemEvent");
     expect(processor).toContain("CONTACT_UNLOCK_NOT_AUTHORISED");
     expect(processor).toContain('action: "WHATSAPP.NEW_QUOTE_STARTED"');
     expect(processor).toContain("message.occurredAt >= refreshed.conversation!.aiSessionStartedAt");
@@ -172,6 +179,16 @@ describe("security foundation static controls", () => {
     expect(ai).toContain("store: false");
     expect(ai).toContain('type: "json_schema"');
     expect(ai).toContain("safety_identifier");
+    expect(ai).toContain("nextQuestionKey");
+    const reliability = read("supabase/migrations/20260805102631_whatsapp_conversation_reliability_constraints.sql");
+    expect(reliability).toContain("conversation_ai_question_key_valid");
+    expect(reliability).toContain('"customerConfirmationMessageId"');
+    expect(reliability).toContain("SEND_INTAKE_FALLBACK");
+    const systemEventWriter = read("supabase/migrations/20260805103603_whatsapp_system_event_writer.sql");
+    expect(systemEventWriter).toContain("session_user <> 'bridge_ai_app'");
+    expect(systemEventWriter).toContain("event_source <> worker_name");
+    expect(systemEventWriter).toContain("SET row_security = 'off'");
+    expect(systemEventWriter).toContain("TO bridge_ai_app");
     const attachmentAi = read("lib/ai/attachment-intake.ts");
     expect(attachmentAi).toContain("store: false");
     expect(attachmentAi).toContain('type: "input_file"');
@@ -209,7 +226,35 @@ describe("security foundation static controls", () => {
     expect(matching).toContain('status: "APPROVED"');
     expect(matching).toContain('status: "ACTIVE"');
     expect(matching).toContain("bestCoverageMatch");
+    expect(matching).toContain("matches.slice(0, options.limit)");
     expect(coverageRoute).toContain('action: "COVERAGE.CREATED"');
+  });
+
+  it("automatically distributes confirmed WhatsApp requests without weakening tenant isolation", () => {
+    const processor = read("lib/whatsapp/processor.ts");
+    const migration = read("supabase/migrations/20260805130054_whatsapp_auto_distribution.sql");
+    expect(processor).toContain("findSupplierMatches(");
+    expect(processor).toContain("Math.min(distributionLimit, 5)");
+    expect(processor).toContain('action: "WHATSAPP.REQUEST_AUTO_ASSIGNED"');
+    expect(processor).toContain("automaticAssignmentCount");
+    expect(processor).toContain("awaiting an eligible supplier match");
+    expect(migration).toContain("enforce_whatsapp_attachment_quote_consistency");
+    expect(migration).toContain('"whatsappMessageId" IS NOT NULL');
+    expect(migration).toContain('"quoteRequestId"');
+    expect(migration).toContain("whatsapp_ai_assignment_insert");
+    expect(migration).toContain("whatsapp_ai_notification_insert");
+    expect(migration).toContain("whatsapp_ai_supplier_category_match_select");
+    expect(migration).toContain("whatsapp_ai_coverage_match_select");
+  });
+
+  it("does not present demonstration counts as live supplier data", () => {
+    const sidebar = read("components/dashboard/sidebar.tsx");
+    const dashboard = read("components/dashboard/supplier-dashboard.tsx");
+    expect(sidebar).not.toContain('badge: "4"');
+    expect(sidebar).toContain("statusLabel(companyStatus)");
+    expect(dashboard).toContain("data.stats.newRequests > 0");
+    expect(dashboard).toContain("data.unreadNotificationCount > 0");
+    expect(dashboard).toContain('demo ? "2 added today"');
   });
 
   it("closes supplier lifecycle and response-window edge cases", () => {
@@ -222,10 +267,29 @@ describe("security foundation static controls", () => {
     expect(requests).toContain("expiresAt: { gt: now }");
     expect(requests).toContain("expiresAt: { lte: now }");
     const status = read("app/api/admin/suppliers/[id]/status/route.ts");
-    expect(status).toContain('existing.status==="SUSPENDED"');
-    expect(status).toContain('data:{status:"ACTIVE"}');
+    expect(status).toContain("supplierOnboardingReadiness(existing)");
+    expect(status).toContain('action: `ADMIN.SUPPLIER_${parsed.data.status}`');
+    expect(status).not.toContain("supplierTeamMembership.updateMany");
     const team = read("app/dashboard/team/page.tsx");
     expect(team).toContain('memberships:{where:{status:"ACTIVE"}');
+  });
+
+  it("enforces supplier approval readiness and limits administrator recovery actions", () => {
+    const migration = read("supabase/migrations/20260805074006_supplier_approval_and_admin_operations.sql");
+    expect(migration).toContain("enforce_supplier_review_state");
+    expect(migration).toContain("supplier review state can only be changed by a platform administrator");
+    expect(migration).toContain("supplier approval requirements are incomplete");
+    expect(migration).toContain("bridge_private.is_platform_admin()");
+    const retry = read("app/api/admin/system/jobs/[id]/retry/route.ts");
+    expect(retry).toContain("await requireAdminApi()");
+    expect(retry).toContain('existing.status !== "FAILED"');
+    expect(retry).toContain('existing.errorCode === "OUTBOUND_DELIVERY_UNCERTAIN"');
+    expect(retry).toContain("whatsAppJob.updateMany");
+    expect(retry).toContain('where: { id, status: "FAILED", errorCode: { not: "OUTBOUND_DELIVERY_UNCERTAIN" } }');
+    expect(retry).toContain('action: "ADMIN.WHATSAPP_JOB_RETRIED"');
+    expect(retry).toContain("processWhatsAppJobs({ limit: 20 })");
+    const matching = read("lib/matching/suppliers.ts");
+    expect(matching).toContain("supplierOnboardingReadiness(supplier, now).ready");
   });
 
   it("keeps browser location lookup authenticated and non-persistent", () => {

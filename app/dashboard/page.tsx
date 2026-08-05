@@ -7,6 +7,7 @@ import {
 } from "@/lib/auth/session";
 import { getSupplierDashboard } from "@/lib/data/supplier-dashboard";
 import { supplierResponseMillisecondsBetween } from "@/lib/quotes/response-clock";
+import { supplierOnboardingReadiness } from "@/lib/suppliers/onboarding";
 
 export const dynamic = "force-dynamic";
 
@@ -17,15 +18,16 @@ export default async function DashboardPage() {
   if (session.user.role === "ADMINISTRATOR") redirect("/admin");
   const companyId = getPrimarySupplierCompanyId(session);
   if (!companyId) redirect("/account-restricted");
-  const dashboard = await getSupplierDashboard(companyId);
+  const dashboard = await getSupplierDashboard(companyId, session.userId);
 
   const data: DashboardData = {
     companyName: dashboard.company.tradingName ?? dashboard.company.legalName,
     contactName: `${session.user.firstName} ${session.user.lastName}`,
     initials: `${session.user.firstName[0] ?? ""}${session.user.lastName[0] ?? ""}`,
+    unreadNotificationCount: dashboard.unreadNotificationCount,
     subscription: {
       plan: dashboard.company.subscription?.planCode ?? "Starter",
-      status: dashboard.company.subscription?.status ?? "Trialing",
+      status: dashboard.company.subscription?.status ?? "Not started",
       renewal:
         dashboard.company.subscription?.currentPeriodEnd?.toLocaleDateString(
           "en-GB",
@@ -36,25 +38,14 @@ export default async function DashboardPage() {
       newRequests: dashboard.assignments.filter(
         (item) => item.status === "PENDING",
       ).length,
-      openQuotes: dashboard.submittedCount,
-      wonThisMonth: dashboard.wonCount,
-      responseRate: dashboard.submittedCount
-        ? Math.round(
-            (dashboard.submittedCount /
-              Math.max(
-                dashboard.assignments.length + dashboard.submittedCount,
-                1,
-              )) *
-              100,
-          )
-        : 0,
+      openQuotes: dashboard.metrics.openQuotes,
+      wonThisMonth: dashboard.metrics.wonThisMonth,
+      responseRate: dashboard.metrics.responseRate,
     },
     performance: {
-      responseTime: "—",
-      winRate: dashboard.submittedCount
-        ? `${Math.round((dashboard.wonCount / dashboard.submittedCount) * 100)}%`
-        : "—",
-      monthValue: "—",
+      responseTime: formatDuration(dashboard.metrics.averageResponseMs),
+      winRate: dashboard.metrics.winRate === null ? "—" : `${dashboard.metrics.winRate}%`,
+      monthValue: new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", maximumFractionDigits: 0 }).format(dashboard.metrics.monthValuePence / 100),
     },
     requests: dashboard.assignments.map((assignment) => ({
       assignmentId: assignment.id,
@@ -81,9 +72,25 @@ export default async function DashboardPage() {
             ? "Viewed"
             : "Accepted",
     })),
-    recent: [],
+    recent: dashboard.recentQuotations.map((quotation) => ({
+      reference: quotation.quoteRequest.reference,
+      title: quotation.quoteRequest.title,
+      value: new Intl.NumberFormat("en-GB", { style: "currency", currency: quotation.currency, maximumFractionDigits: 0 }).format(Number(quotation.price)),
+      status: quotation.status === "ACCEPTED" ? "Won" : quotation.status === "REJECTED" ? "Lost" : "Submitted",
+      date: quotation.submittedAt?.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) ?? "—",
+    })),
   };
-  return <SupplierDashboard data={data} />;
+  return <SupplierDashboard
+    data={data}
+    onboarding={supplierOnboardingReadiness(dashboard.company)}
+    supplierStatus={dashboard.company.status}
+  />;
+}
+
+function formatDuration(milliseconds: number | null) {
+  if (milliseconds === null) return "—";
+  const minutes = Math.max(1, Math.round(milliseconds / 60_000));
+  return minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
 function formatDue(value: Date, now: number) {

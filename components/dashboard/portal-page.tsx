@@ -6,6 +6,7 @@ import { Sidebar } from "@/components/dashboard/sidebar";
 export function PortalPage({
   companyName,
   initials,
+  companyStatus,
   eyebrow,
   title,
   description,
@@ -14,6 +15,7 @@ export function PortalPage({
 }: {
   companyName: string;
   initials: string;
+  companyStatus: string;
   eyebrow: string;
   title: string;
   description: string;
@@ -21,7 +23,7 @@ export function PortalPage({
   children: React.ReactNode;
 }) {
   return <div className="portal-shell">
-    <Sidebar companyName={companyName} initials={initials} />
+    <Sidebar companyName={companyName} initials={initials} companyStatus={companyStatus} />
     <header className="mobile-header"><BrandMark compact /><span>{companyName}</span><Link href="/dashboard/notifications" className="icon-button"><Bell size={18} /></Link></header>
     <main className="portal-main portal-subpage">
       <div className="page-heading"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p>{description}</p></div>{actions && <div className="heading-actions">{actions}</div>}</div>
@@ -31,9 +33,10 @@ export function PortalPage({
   </div>;
 }
 
-export function identity(session: { user: { firstName: string; lastName: string } }, company: { legalName: string; tradingName: string | null }) {
+export function identity(session: { user: { firstName: string; lastName: string } }, company: { legalName: string; tradingName: string | null; status: string }) {
   return {
     companyName: company.tradingName ?? company.legalName,
     initials: `${session.user.firstName[0] ?? ""}${session.user.lastName[0] ?? ""}`,
+    companyStatus: company.status,
   };
 }

@@ -72,7 +72,7 @@ export function AccreditationManager({ accreditations, canManage }: { accreditat
     }
   }
 
-  return <section className="panel form-section">
+  return <section className="panel form-section" id="accreditations">
     <div className="section-heading"><div><p className="eyebrow">Approval evidence</p><h2>Accreditations & insurance</h2></div><ShieldCheck size={20} /></div>
     <p className="body-copy">Upload current insurance, trade memberships and certifications. Files are private and cannot be reviewed or downloaded until their security scan passes.</p>
     <div className="entity-list">

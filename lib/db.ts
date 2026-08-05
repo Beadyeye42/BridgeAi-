@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { Prisma, PrismaClient } from "@prisma/client";
+import { getVerifiedAuthUser } from "@/lib/supabase/verified-user";
 
 const globalForPrisma = globalThis as unknown as { prismaRaw?: PrismaClient };
 const identity = new AsyncLocalStorage<string>();
@@ -23,13 +24,11 @@ async function resolveVerifiedIdentity() {
 
   // React server continuations can resume outside the scope that loaded the
   // session. Re-verify with Supabase rather than trusting a caller-provided ID.
-  const { createClient } = await import("@/lib/supabase/auth-server");
-  const supabase = await createClient();
-  const { data, error } = await supabase.auth.getUser();
-  if (error || !data.user || !data.user.email_confirmed_at) {
+  const authUser = await getVerifiedAuthUser();
+  if (!authUser) {
     throw new Error("A verified Supabase Auth identity is required for database access");
   }
-  return data.user.id;
+  return authUser.id;
 }
 
 const extended = raw.$extends({

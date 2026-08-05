@@ -6,7 +6,7 @@ import {
 } from "@/lib/auth/session";
 import { writeAuditLog } from "@/lib/audit";
 
-export async function requireSupplierPage() {
+export const requireSupplierPage = cache(async function requireSupplierPage() {
   if (!process.env.POSTGRES_PRISMA_URL) redirect("/");
   const session = await getCurrentSession();
   if (!session) redirect("/login");
@@ -19,7 +19,7 @@ export async function requireSupplierPage() {
   if (company && ["SUSPENDED", "REJECTED"].includes(company.status))
     redirect("/account-restricted");
   return { session, companyId };
-}
+});
 
 export const requireAdminPage = cache(async function requireAdminPage() {
   if (!process.env.POSTGRES_PRISMA_URL) redirect("/");

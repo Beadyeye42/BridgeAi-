@@ -1,11 +1,10 @@
+import { cache } from "react";
 import { prisma, runWithDatabaseIdentity } from "@/lib/db";
-import { createClient } from "@/lib/supabase/auth-server";
+import { getVerifiedAuthUser } from "@/lib/supabase/verified-user";
 
-export async function getCurrentSession() {
-  const supabase = await createClient();
-  const { data, error } = await supabase.auth.getUser();
-  const authUser = data.user;
-  if (error || !authUser || !authUser.email_confirmed_at) return null;
+export const getCurrentSession = cache(async () => {
+  const authUser = await getVerifiedAuthUser();
+  if (!authUser) return null;
 
   const profile = await runWithDatabaseIdentity(authUser.id, () =>
     prisma.user.findUnique({
@@ -32,7 +31,7 @@ export async function getCurrentSession() {
       role: isAdministrator ? ("ADMINISTRATOR" as const) : ("SUPPLIER" as const),
     },
   };
-}
+});
 
 export function getPrimarySupplierCompanyId(
   session: NonNullable<Awaited<ReturnType<typeof getCurrentSession>>>,

@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { lookupPostcode, normalizePostcode, PostcodeLookupError } from "../location/postcodes";
 import { bestCoverageMatch, type CoverageMatch, type DeliveryLocation } from "./coverage";
+import { supplierOnboardingReadiness } from "../suppliers/onboarding";
 
 type MatchingClient = Pick<Prisma.TransactionClient, "supplierCompany">;
 
@@ -54,6 +55,14 @@ export async function findSupplierMatches(
     status: "APPROVED",
     categories: { some: { productCategoryId: request.categoryId } },
     coverageAreas: { some: { active: true } },
+    memberships: { some: { role: "OWNER", status: "ACTIVE" } },
+    accreditations: {
+      some: {
+        status: "APPROVED",
+        attachment: { is: { scanStatus: "CLEAN" } },
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+    },
     subscription: {
       is: {
         status: "ACTIVE",
@@ -64,12 +73,18 @@ export async function findSupplierMatches(
   };
   const candidates = await db.supplierCompany.findMany({
     where,
-    include: { coverageAreas: { where: { active: true }, orderBy: { createdAt: "asc" } } },
+    include: {
+      coverageAreas: { where: { active: true }, orderBy: { createdAt: "asc" } },
+      categories: true,
+      memberships: true,
+      accreditations: { include: { attachment: true } },
+    },
     orderBy: { legalName: "asc" },
-    take: options.limit ?? 250,
+    take: 250,
   });
 
-  return candidates.flatMap((supplier) => {
+  const matches = candidates.flatMap((supplier) => {
+    if (!supplierOnboardingReadiness(supplier, now).ready) return [];
     const match = bestCoverageMatch(supplier.coverageAreas, location);
     return match ? [{
       id: supplier.id,
@@ -78,4 +93,15 @@ export async function findSupplierMatches(
       match,
     }] : [];
   });
+  const coveragePriority: Record<CoverageMatch["type"], number> = {
+    DISTANCE: 0,
+    POSTCODE: 1,
+    NATIONWIDE: 2,
+  };
+  matches.sort((left, right) =>
+    coveragePriority[left.match.type] - coveragePriority[right.match.type]
+    || (left.match.distanceMiles ?? Number.POSITIVE_INFINITY) - (right.match.distanceMiles ?? Number.POSITIVE_INFINITY)
+    || left.name.localeCompare(right.name),
+  );
+  return options.limit ? matches.slice(0, options.limit) : matches;
 }

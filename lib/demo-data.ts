@@ -17,6 +17,7 @@ export type DashboardData = {
   companyName: string;
   contactName: string;
   initials: string;
+  unreadNotificationCount: number;
   subscription: { plan: string; status: string; renewal: string };
   stats: { newRequests: number; openQuotes: number; wonThisMonth: number; responseRate: number };
   performance: { responseTime: string; winRate: string; monthValue: string };
@@ -28,6 +29,7 @@ export const demoDashboard: DashboardData = {
   companyName: "Northstar Steel",
   contactName: "Sarah Mitchell",
   initials: "SM",
+  unreadNotificationCount: 2,
   subscription: { plan: "Growth", status: "Active", renewal: "20 Aug 2026" },
   stats: { newRequests: 4, openQuotes: 7, wonThisMonth: 3, responseRate: 94 },
   performance: { responseTime: "1h 42m", winRate: "28%", monthValue: "£42.8k" },

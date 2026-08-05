@@ -92,6 +92,12 @@ Meta media downloads are restricted to HTTPS Meta-owned hosts and an allow-list 
 
 Supplier accreditation records reference company-owned private attachments. Only company owners and managers can add pending evidence or remove pending/rejected evidence. Suppliers have no update policy for review fields. A protected administrator can approve a document only after its attachment is marked `CLEAN`, or reject it with a supplier-visible reason; both paths append an audit record in the same transaction.
 
+## Supplier approval and operational recovery
+
+Supplier onboarding readiness is calculated from the persisted company profile, product categories, active coverage, business hours, active owner membership and current approved clean accreditation. The same checklist is shown to suppliers and administrators. The administrator API repeats the check and a protected database trigger prevents direct or stale approval attempts, so the UI is never the security boundary. Matching repeats the full readiness check and therefore fails closed if a previously approved supplier later loses required evidence or configuration.
+
+The administrator operations centre reads private failure queues through verified administrator RLS. Failed WhatsApp jobs may be reset only while their status is still `FAILED`; the update is conditional to prevent two administrators retrying the same job. Jobs marked `OUTBOUND_DELIVERY_UNCERTAIN` cannot be retried automatically because the message may already have reached the customer. Safe retries and incident resolution are audit logged. Failed Meta and Stripe webhooks are redelivered from their provider dashboards because Bridge AI deliberately does not retain signed payload bodies.
+
 ## Billing and contact release
 
 The recurring supplier membership is £5/month. A quote selected by the customer enters `SELECTED_PENDING_PAYMENT`; it is not called won and no customer contact data is released. The supplier receives two active business hours to pay the fixed £25 success fee. The same Europe/London weekend clock applies, and a protected Vercel cron expires missed windows.

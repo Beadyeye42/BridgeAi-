@@ -8,7 +8,7 @@ import { LogoutButton } from "@/components/auth/logout-button";
 
 const primary = [
   { label: "Overview", icon: LayoutDashboard, href: "/dashboard" },
-  { label: "Quote requests", icon: FileText, href: "/dashboard/requests", badge: "4" },
+  { label: "Quote requests", icon: FileText, href: "/dashboard/requests" },
   { label: "Performance", icon: BarChart3, href: "/dashboard/performance" },
 ];
 const management = [
@@ -18,30 +18,38 @@ const management = [
   { label: "Subscription", icon: CreditCard, href: "/dashboard/subscription" },
 ];
 
-export function Sidebar({ companyName, initials }: { companyName: string; initials: string }) {
+export function Sidebar({ companyName, initials, companyStatus, activeRequestCount = 0, unreadNotificationCount = 0 }: { companyName: string; initials: string; companyStatus: string; activeRequestCount?: number; unreadNotificationCount?: number }) {
   const pathname = usePathname();
   return (
     <aside className="sidebar">
       <div className="sidebar-head"><BrandMark /></div>
       <nav className="sidebar-nav" aria-label="Supplier navigation">
         <p className="nav-label">Workspace</p>
-        {primary.map((item) => <NavItem key={item.label} {...item} active={item.href === "/dashboard" ? pathname === item.href : pathname.startsWith(item.href)} />)}
+        {primary.map((item) => <NavItem key={item.label} {...item} badge={item.href === "/dashboard/requests" && activeRequestCount > 0 ? String(activeRequestCount) : undefined} active={item.href === "/dashboard" ? pathname === item.href : pathname.startsWith(item.href)} />)}
         <p className="nav-label nav-label-spaced">Manage</p>
         {management.map((item) => <NavItem key={item.label} {...item} active={pathname.startsWith(item.href)} />)}
       </nav>
       <div className="sidebar-bottom">
-        <Link href="/dashboard/notifications" className={`sidebar-link${pathname.startsWith("/dashboard/notifications") ? " active" : ""}`}><Bell size={18} />Notifications<span className="nav-dot" /></Link>
+        <Link href="/dashboard/notifications" className={`sidebar-link${pathname.startsWith("/dashboard/notifications") ? " active" : ""}`}><Bell size={18} />Notifications{unreadNotificationCount > 0 && <span className="nav-dot" />}</Link>
         <Link href="/dashboard/settings" className={`sidebar-link${pathname.startsWith("/dashboard/settings") ? " active" : ""}`}><Settings size={18} />Settings</Link>
         <Link href="/help" className="sidebar-link"><HelpCircle size={18} />Help centre</Link>
         <LogoutButton />
         <div className="company-switcher">
           <span className="avatar avatar-small">{initials}</span>
-          <span><b>{companyName}</b><small>Approved supplier</small></span>
+          <span><b>{companyName}</b><small>{statusLabel(companyStatus)}</small></span>
           <ChevronDown size={15} />
         </div>
       </div>
     </aside>
   );
+}
+
+function statusLabel(status: string) {
+  if (status === "APPROVED") return "Approved supplier";
+  if (status === "PENDING") return "Approval pending";
+  if (status === "SUSPENDED") return "Supplier suspended";
+  if (status === "REJECTED") return "Application declined";
+  return "Supplier account";
 }
 
 function NavItem({ label, icon: Icon, href, badge, active }: { label: string; icon: typeof LayoutDashboard; href: string; badge?: string; active?: boolean }) {

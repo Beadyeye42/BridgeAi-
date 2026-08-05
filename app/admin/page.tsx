@@ -11,6 +11,9 @@ export default async function AdminOverview() {
   const openRequests = await prisma.quoteRequest.count({
     where: { status: { in: ["OPEN", "MATCHING"] } },
   });
+  const unassignedRequests = await prisma.quoteRequest.count({
+    where: { status: { in: ["OPEN", "MATCHING"] }, assignments: { none: {} } },
+  });
   const openErrors = await prisma.systemEvent.count({
     where: { status: "OPEN", severity: { in: ["ERROR", "CRITICAL"] } },
   });
@@ -27,6 +30,7 @@ export default async function AdminOverview() {
       Building2,
     ],
     ["Open requests", openRequests, "/admin/requests?status=OPEN", FileText],
+    ["Unassigned requests", unassignedRequests, "/admin/requests", FileText],
     ["Open errors", openErrors, "/admin/system", ShieldAlert],
   ] as const;
   return (

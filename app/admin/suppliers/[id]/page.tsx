@@ -5,6 +5,8 @@ import { requireAdminPage } from "@/lib/auth/guards";
 import { AdminHeading } from "@/components/admin/admin-shell";
 import { AdminSupplierEdit, SupplierStatusControl } from "@/components/admin/admin-actions";
 import { AccreditationReviewActions } from "@/components/admin/accreditation-actions";
+import { OnboardingReadiness } from "@/components/dashboard/onboarding-readiness";
+import { supplierOnboardingReadiness } from "@/lib/suppliers/onboarding";
 
 export default async function SupplierInspectPage({ params }: { params: Promise<{ id: string }> }) {
   await requireAdminPage();
@@ -24,6 +26,7 @@ export default async function SupplierInspectPage({ params }: { params: Promise<
     },
   });
   if (!supplier) notFound();
+  const onboarding = supplierOnboardingReadiness(supplier);
   const averageResponse = supplier.assignments.length
     ? supplier.assignments.reduce((total, assignment) => total + ((assignment.respondedAt?.getTime() ?? assignment.assignedAt.getTime()) - assignment.assignedAt.getTime()), 0) / supplier.assignments.length
     : null;
@@ -32,7 +35,8 @@ export default async function SupplierInspectPage({ params }: { params: Promise<
     : area.type === "NATIONWIDE" ? "All UK postcodes" : `${area.radiusMiles} mile radius from ${area.centrePostcode}`;
 
   return <>
-    <AdminHeading eyebrow={supplier.status} title={supplier.tradingName ?? supplier.legalName} description={`${supplier.contactEmail} · ${supplier.contactPhone}`} actions={<SupplierStatusControl id={id} status={supplier.status} />} />
+    <AdminHeading eyebrow={supplier.status} title={supplier.tradingName ?? supplier.legalName} description={`${supplier.contactEmail} · ${supplier.contactPhone}`} actions={<SupplierStatusControl id={id} status={supplier.status} approvalReady={onboarding.ready} approvalBlockers={onboarding.blockers} />} />
+    <div className="spaced-section"><OnboardingReadiness readiness={onboarding} status={supplier.status} admin /></div>
     <div className="management-grid">
       <section className="panel form-section">
         <div className="section-heading"><div><p className="eyebrow">Company record</p><h2>Profile</h2></div></div>
