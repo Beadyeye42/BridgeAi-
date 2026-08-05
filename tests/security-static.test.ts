@@ -240,6 +240,9 @@ describe("security foundation static controls", () => {
     expect(migration).toContain("supplier_opportunity_approved_read");
     expect(read("supabase/migrations/20260805140640_optimize_supplier_opportunity_policy.sql")).toContain("supplier_opportunity_read");
     expect(migration).toContain("company.status = 'APPROVED'");
+    const pendingBrowse = read("supabase/migrations/20260805175617_allow_pending_supplier_opportunity_browsing.sql");
+    expect(pendingBrowse).toContain("company.status IN ('PENDING', 'APPROVED')");
+    expect(pendingBrowse).not.toContain("'SUSPENDED', 'REJECTED'");
     expect(migration).toContain("ACTIVE_SUBSCRIPTION_REQUIRED");
     expect(migration).toContain("CATEGORY_NOT_MATCHED");
     const simplifiedApproval = read("supabase/migrations/20260805172853_simplify_supplier_company_approval.sql");
@@ -255,6 +258,7 @@ describe("security foundation static controls", () => {
     expect(claimRoute).toContain("claim_supplier_opportunity");
     expect(claimRoute).not.toContain("trustedPrisma");
     expect(listPage).toContain("supplierOpportunity.findMany");
+    expect(read("lib/data/supplier-dashboard.ts")).toContain("tx.supplierOpportunity.findMany");
     expect(detailPage).toContain("The exact postcode, detailed brief, drawings, photos and PDFs remain locked");
   });
 
@@ -304,10 +308,13 @@ describe("security foundation static controls", () => {
 
   it("enforces supplier approval readiness and limits administrator recovery actions", () => {
     const migration = read("supabase/migrations/20260805172853_simplify_supplier_company_approval.sql");
+    const triggerFix = read("supabase/migrations/20260805180031_restore_supplier_review_trigger_security_definer.sql");
     expect(migration).toContain("enforce_supplier_review_state");
     expect(migration).toContain("supplier review state can only be changed by a platform administrator");
     expect(migration).toContain("supplier approval requirements are incomplete");
     expect(migration).toContain("bridge_private.is_platform_admin()");
+    expect(triggerFix).toContain("ALTER FUNCTION bridge_private.enforce_supplier_review_state() SECURITY DEFINER");
+    expect(triggerFix).toContain("FROM PUBLIC, anon, authenticated, service_role");
     const retry = read("app/api/admin/system/jobs/[id]/retry/route.ts");
     expect(retry).toContain("await requireAdminApi()");
     expect(retry).toContain('existing.status !== "FAILED"');

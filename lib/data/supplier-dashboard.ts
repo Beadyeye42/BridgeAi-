@@ -34,6 +34,21 @@ export async function getSupplierDashboard(supplierCompanyId: string, userId: st
       orderBy: { assignedAt: "desc" },
       take: 8,
     });
+    const opportunities = await tx.supplierOpportunity.findMany({
+      where: {
+        status: { in: ["OPEN", "MATCHING", "QUOTED"] },
+        responseDueAt: { gt: now },
+      },
+      include: { category: true },
+      orderBy: { responseDueAt: "asc" },
+      take: 8,
+    });
+    const openOpportunityCount = await tx.supplierOpportunity.count({
+      where: {
+        status: { in: ["OPEN", "MATCHING", "QUOTED"] },
+        responseDueAt: { gt: now },
+      },
+    });
     const recentQuotations = await tx.supplierQuotation.findMany({
       where: {
         supplierCompanyId,
@@ -68,6 +83,8 @@ export async function getSupplierDashboard(supplierCompanyId: string, userId: st
     return {
       company,
       assignments,
+      opportunities,
+      openOpportunityCount,
       unreadNotificationCount,
       generatedAt: now,
       metrics: {

@@ -25,12 +25,12 @@ export function SupplierDashboard({ data, demo = false, onboarding, supplierStat
 
         {data.stats.newRequests > 0 ? <section className="attention-card">
           <div className="attention-icon"><BriefcaseBusiness size={21} /></div>
-          <div><b>{data.stats.newRequests} quote request{data.stats.newRequests === 1 ? " is" : "s are"} waiting for your response</b><p>Respond before each recorded deadline to keep the opportunity active.</p></div>
-          <Link href="/dashboard/requests" className="button button-dark">Review requests <ArrowUpRight size={16} /></Link>
+          <div><b>{data.stats.newRequests} open quote opportunit{data.stats.newRequests === 1 ? "y is" : "ies are"} available</b><p>Review the safe job summaries and claim a supplier place when your account is eligible.</p></div>
+          <Link href="/dashboard/requests" className="button button-dark">View leads <ArrowUpRight size={16} /></Link>
         </section> : null}
 
         <section className="stats-grid" aria-label="Supplier overview">
-          <Stat label="New requests" value={String(data.stats.newRequests).padStart(2, "0")} helper={demo ? "2 added today" : "Awaiting your response"} icon={<FileText size={19} />} tone="amber" />
+          <Stat label="Open leads" value={String(data.stats.newRequests).padStart(2, "0")} helper={demo ? "2 added today" : "Available in the marketplace"} icon={<FileText size={19} />} tone="amber" />
           <Stat label="Quotes in progress" value={String(data.stats.openQuotes).padStart(2, "0")} helper={demo ? "£86.4k total value" : "Submitted and awaiting a decision"} icon={<CircleGauge size={19} />} tone="blue" />
           <Stat label="Won this month" value={String(data.stats.wonThisMonth).padStart(2, "0")} helper={demo ? "£42.8k secured" : data.performance.monthValue === "£0" ? "No wins recorded yet" : `${data.performance.monthValue} secured`} icon={<Target size={19} />} tone="green" />
           <Stat label="Response rate" value={`${data.stats.responseRate}%`} helper={demo ? "Up 6% from July" : "Assigned requests answered in 30 days"} icon={<TrendingUp size={19} />} tone="violet" />
@@ -39,7 +39,7 @@ export function SupplierDashboard({ data, demo = false, onboarding, supplierStat
         <div className="dashboard-grid">
           <div className="dashboard-primary">
             <section className="panel" id="new-requests">
-              <div className="panel-heading"><div><p className="eyebrow">Opportunities</p><h2>New quote requests</h2></div><Link href="/dashboard/requests" className="text-link">View all <ChevronRight size={15} /></Link></div>
+              <div className="panel-heading"><div><p className="eyebrow">Opportunities</p><h2>Open marketplace leads</h2></div><Link href="/dashboard/requests" className="text-link">View all <ChevronRight size={15} /></Link></div>
               <div className="request-list">
                 {data.requests.map((request) => (
                   <article className="request-card" key={request.reference}>

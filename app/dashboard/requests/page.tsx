@@ -46,9 +46,9 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
     }) : [];
     const ownAssignments = new Map(assignments.map((assignment) => [assignment.quoteRequestId, assignment]));
 
-    return <PortalPage {...identity(session, company)} eyebrow="Approved supplier marketplace" title="Quote opportunities" description="Browse open jobs safely. A £5 monthly membership is only needed when you want to claim a place and quote.">
+    return <PortalPage {...identity(session, company)} eyebrow="Supplier marketplace" title="Quote opportunities" description="Browse open jobs safely. Approval and a £5 monthly membership are only needed when you want to claim a place and quote.">
       <nav className="filter-tabs">{views.map((item) => <Link className={item === view ? "active" : ""} href={`/dashboard/requests?view=${item}`} key={item}>{item}</Link>)}</nav>
-      {company.status !== "APPROVED" && <div className="privacy-note opportunity-notice"><PackageCheck size={17}/><div><b>Supplier approval required</b><p>Your company can browse opportunities after Bridge AI approves the account and documents.</p></div></div>}
+      {company.status !== "APPROVED" && <div className="privacy-note opportunity-notice"><PackageCheck size={17}/><div><b>You can browse while approval is pending</b><p>Safe lead summaries are visible now. Bridge AI approval is required before your company can claim a place or view the full quote pack.</p></div></div>}
       {company.status === "APPROVED" && !subscriptionActive && <div className="privacy-note opportunity-notice"><PackageCheck size={17}/><div><b>Browsing is free</b><p>You can inspect safe job summaries now. Subscribe only when you are ready to reserve a place and submit a quotation.</p></div></div>}
       <section className="panel request-browser">
         {opportunities.length ? opportunities.map((opportunity) => {
@@ -61,7 +61,7 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
             <div className="request-browser-meta"><span><MapPin size={14}/>{opportunity.deliveryArea} area</span><span><FileText size={14}/>{opportunity.itemCount} items</span><span><Paperclip size={14}/>{opportunity.attachmentCount}</span><span><UsersRound size={14}/>{available} of {opportunity.distributionLimit} places</span><span><Clock3 size={14}/>{opportunity.responseDueAt.toLocaleString("en-GB")}</span></div>
             <span className={`status-pill ${displayStatus.toLowerCase()}`}>{displayStatus === "MEMBERSHIP" ? "Membership required" : displayStatus}</span>
           </Link>;
-        }) : <div className="empty-state large"><FileText size={28}/><b>{company.status === "APPROVED" ? "No open opportunities" : "Approval is still pending"}</b><p>{company.status === "APPROVED" ? "New customer requests will appear here as soon as they are published." : "Bridge AI will unlock the opportunity marketplace after your supplier review is complete."}</p></div>}
+        }) : <div className="empty-state large"><FileText size={28}/><b>No open opportunities</b><p>New customer requests will appear here as soon as they are published.</p></div>}
       </section>
     </PortalPage>;
   }
