@@ -22,11 +22,11 @@ describe("founding supplier pricing", () => {
     expect(isFoundingSupplier(null)).toBe(false);
   });
 
-  it("uses Stripe Tax and a six-month two-price schedule", () => {
+  it("uses a six-month two-price schedule without VAT collection", () => {
     const checkout = readFileSync("app/api/billing/subscription/checkout/route.ts", "utf8");
     const webhook = readFileSync("app/api/webhooks/stripe/route.ts", "utf8");
-    expect(checkout).toContain('automatic_tax: { enabled: true }');
-    expect(checkout).toContain('tax_id_collection: { enabled: true }');
+    expect(checkout).toContain('automatic_tax: { enabled: false }');
+    expect(checkout).not.toContain("tax_id_collection");
     expect(checkout).toContain("introductoryMembershipPriceId()");
     expect(webhook).toContain("ensureFoundingPriceSchedule");
     expect(webhook).toContain('duration: { interval: "month", interval_count: INTRODUCTORY_MONTHS }');

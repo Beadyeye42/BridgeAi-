@@ -25,7 +25,7 @@ export default function Home() {
     <main className="home-shell">
       <div className="home-offer-bar">
         <span><Sparkles size={14} /> Founding supplier offer</span>
-        <b>£29.99 + VAT per month for six months</b>
+        <b>£29.99 per month for six months</b>
         <span>Only 100 approved places</span>
         <Link href="/register">Claim your place <ArrowRight size={14} /></Link>
       </div>
@@ -155,8 +155,8 @@ export default function Home() {
         </div>
         <div className="home-price-card">
           <span>FIRST SIX MONTHS</span>
-          <div><sup>£</sup><strong>29.99</strong><small>+ VAT<br />per month</small></div>
-          <p>Then £49.99 + VAT per month.</p>
+          <div><sup>£</sup><strong>29.99</strong><small>per month</small></div>
+          <p>Then £49.99 per month. No VAT is currently charged.</p>
           <Link className="button" href="/register">Apply for a founding place <ArrowRight size={15} /></Link>
           <small>Membership is available only after supplier approval.</small>
         </div>

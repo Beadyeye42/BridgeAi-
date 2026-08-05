@@ -41,15 +41,14 @@ export async function POST(request: Request) {
       success_url: `${origin}/dashboard/subscription?checkout=success`,
       cancel_url: `${origin}/dashboard/subscription?checkout=cancelled`,
       allow_promotion_codes: false,
-      automatic_tax: { enabled: true },
+      automatic_tax: { enabled: false },
       billing_address_collection: "required",
       customer_update: { address: "auto", name: "auto" },
-      tax_id_collection: { enabled: true },
       metadata: { kind: "supplier_membership", supplierCompanyId: auth.companyId, planCode: FOUNDING_PLAN_CODE },
       subscription_data: { metadata: { supplierCompanyId: auth.companyId, planCode: FOUNDING_PLAN_CODE, introductoryMonths: "6" } },
     }, { idempotencyKey: `membership-checkout:${auth.companyId}:${new Date().toISOString().slice(0, 13)}` });
     if (!checkout.url) throw new Error("Stripe did not return a checkout URL");
-    await trustedPrisma.auditLog.create({ data: { actorUserId: auth.session.userId, supplierCompanyId: auth.companyId, action: "BILLING.MEMBERSHIP_CHECKOUT_CREATED", entityType: "Subscription", entityId: current?.id, summary: "Founding supplier membership checkout created at £29.99 plus VAT for six months", metadata: { foundingMemberNumber: membership.supplierCompany.foundingMemberNumber, planCode: FOUNDING_PLAN_CODE } } });
+    await trustedPrisma.auditLog.create({ data: { actorUserId: auth.session.userId, supplierCompanyId: auth.companyId, action: "BILLING.MEMBERSHIP_CHECKOUT_CREATED", entityType: "Subscription", entityId: current?.id, summary: "Founding supplier membership checkout created at £29.99 for six months", metadata: { foundingMemberNumber: membership.supplierCompany.foundingMemberNumber, planCode: FOUNDING_PLAN_CODE, vatCharged: false } } });
     return NextResponse.json({ url: checkout.url });
   } catch (error) {
     console.error("Membership checkout failed", error);

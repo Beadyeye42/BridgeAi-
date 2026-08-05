@@ -21,8 +21,8 @@ export default async function SubscriptionPage() {
       <section className="panel subscription-detail">
         <span className="large-icon"><CreditCard size={24}/></span>
         <p className="eyebrow">Founding supplier membership</p>
-        <h2>£29.99 + VAT / month</h2>
-        <p className="body-copy">For your first six billing months, then £49.99 + VAT per month.</p>
+        <h2>£29.99 / month</h2>
+        <p className="body-copy">For your first six billing months, then £49.99 per month. No VAT is currently charged.</p>
         <span className={`status-pill ${sub?.status.toLowerCase() ?? "pending"}`}>{sub?.status ?? "NOT STARTED"}</span>
         <dl>
           <div><dt>Founding place</dt><dd>{company.foundingMemberNumber ? `#${company.foundingMemberNumber} of ${FOUNDING_SUPPLIER_LIMIT}` : company.status === "APPROVED" ? "Not allocated" : "Allocated on approval"}</dd></div>
@@ -34,7 +34,7 @@ export default async function SubscriptionPage() {
       </section>
       <section className="panel form-section">
         <div className="section-heading"><div><p className="eyebrow">Billing controls</p><h2>Managed securely by Stripe</h2></div><ShieldCheck size={20}/></div>
-        <p className="body-copy">Bridge AI never stores card details. Stripe calculates VAT from the billing address and automatically changes the monthly price after the sixth billing month.</p>
+        <p className="body-copy">Bridge AI never stores card details. Stripe securely manages payment details and automatically changes the monthly price after the sixth billing month.</p>
         <div className="honesty-note">Founding membership is strictly limited to the first {FOUNDING_SUPPLIER_LIMIT} approved suppliers.</div>
         {active && sub?.providerCustomerId
           ? <a className="button button-dark" href="/api/billing/portal">Open billing portal</a>
