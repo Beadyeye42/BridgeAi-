@@ -56,13 +56,6 @@ export async function findSupplierMatches(
     categories: { some: { productCategoryId: request.categoryId } },
     coverageAreas: { some: { active: true } },
     memberships: { some: { role: "OWNER", status: "ACTIVE" } },
-    accreditations: {
-      some: {
-        status: "APPROVED",
-        attachment: { is: { scanStatus: "CLEAN" } },
-        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-      },
-    },
     subscription: {
       is: {
         status: "ACTIVE",
@@ -77,14 +70,13 @@ export async function findSupplierMatches(
       coverageAreas: { where: { active: true }, orderBy: { createdAt: "asc" } },
       categories: true,
       memberships: true,
-      accreditations: { include: { attachment: true } },
     },
     orderBy: { legalName: "asc" },
     take: 250,
   });
 
   const matches = candidates.flatMap((supplier) => {
-    if (!supplierOnboardingReadiness(supplier, now).ready) return [];
+    if (!supplierOnboardingReadiness(supplier).ready) return [];
     const match = bestCoverageMatch(supplier.coverageAreas, location);
     return match ? [{
       id: supplier.id,

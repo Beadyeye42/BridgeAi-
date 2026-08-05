@@ -12,7 +12,6 @@ const failures: Array<[string, number, string]> = [
   ["OPPORTUNITY_FULL", 409, "All supplier places for this opportunity have been taken"],
   ["OPPORTUNITY_CLOSED", 410, "The response window for this opportunity has closed"],
   ["CATEGORY_NOT_MATCHED", 403, "Add this product category to your company profile before quoting"],
-  ["ACCREDITATION_REQUIRED", 403, "An approved, in-date accreditation document is required before quoting"],
   ["COVERAGE_NOT_MATCHED", 403, "This delivery area is outside your saved coverage"],
   ["CLAIM_NOT_AUTHORISED", 403, "This supplier account is not allowed to claim the opportunity"],
   ["OPPORTUNITY_NOT_FOUND", 404, "Opportunity not found"],

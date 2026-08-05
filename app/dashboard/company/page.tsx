@@ -5,9 +5,8 @@ import {
   CompanyProfileForm,
   LogoUpload,
 } from "@/components/dashboard/management-forms";
-import { AccreditationManager } from "@/components/dashboard/accreditation-manager";
 import { OnboardingReadiness } from "@/components/dashboard/onboarding-readiness";
-import { supplierOnboardingReadiness } from "@/lib/suppliers/onboarding";
+import { supplierApprovalReadiness } from "@/lib/suppliers/onboarding";
 
 export const dynamic = "force-dynamic";
 export default async function CompanyPage() {
@@ -18,24 +17,16 @@ export default async function CompanyPage() {
       categories: true,
       coverageAreas: true,
       memberships: true,
-      accreditations: {
-        include: { attachment: true },
-        orderBy: { createdAt: "desc" },
-      },
     },
   });
   const categories = await prisma.productCategory.findMany({
     where: { active: true },
     orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
   });
-  const membership = session.user.memberships.find((item) => item.supplierCompanyId === companyId);
   const safeCompany = {
     legalName: company.legalName,
-    tradingName: company.tradingName,
     companyNumber: company.companyNumber,
-    vatNumber: company.vatNumber,
-    websiteUrl: company.websiteUrl,
-    summary: company.summary,
+    directorName: company.directorName,
     contactEmail: company.contactEmail,
     contactPhone: company.contactPhone,
     addressLine1: company.addressLine1,
@@ -43,7 +34,6 @@ export default async function CompanyPage() {
     city: company.city,
     county: company.county,
     postcode: company.postcode,
-    businessHours: company.businessHours,
     status: company.status,
   };
   return (
@@ -51,10 +41,10 @@ export default async function CompanyPage() {
       {...identity(session, company)}
       eyebrow="Supplier workspace"
       title="Company profile"
-      description="Keep your matching information, contact details and working hours accurate."
+      description="Add the company identity, address and contact details Bridge AI needs to review your account."
     >
       <div className="management-form">
-        <OnboardingReadiness readiness={supplierOnboardingReadiness(company)} status={company.status} />
+        <OnboardingReadiness readiness={supplierApprovalReadiness(company)} status={company.status} />
         <LogoUpload hasLogo={Boolean(company.logoUrl)} />
         <CompanyProfileForm
           company={safeCompany}
@@ -66,25 +56,6 @@ export default async function CompanyPage() {
           selectedCategoryIds={company.categories.map(
             (item) => item.productCategoryId,
           )}
-        />
-        <AccreditationManager
-          canManage={Boolean(membership && ["OWNER", "MANAGER"].includes(membership.role))}
-          accreditations={company.accreditations.map((item) => ({
-            id: item.id,
-            type: item.type,
-            displayName: item.displayName,
-            referenceNumber: item.referenceNumber,
-            issuingBody: item.issuingBody,
-            issuedAt: item.issuedAt?.toISOString() ?? null,
-            expiresAt: item.expiresAt?.toISOString() ?? null,
-            status: item.status,
-            reviewNote: item.reviewNote,
-            attachment: {
-              id: item.attachment.id,
-              fileName: item.attachment.fileName,
-              scanStatus: item.attachment.scanStatus,
-            },
-          }))}
         />
       </div>
     </PortalPage>

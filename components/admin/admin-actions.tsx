@@ -11,7 +11,48 @@ export function RecordCustomerSelection({quotationId}:{quotationId:string}){cons
 export function CategoryCreateForm(){const router=useRouter();const[busy,setBusy]=useState(false);const[message,setMessage]=useState("");async function submit(e:React.FormEvent<HTMLFormElement>){e.preventDefault();setBusy(true);const form=e.currentTarget;const d=new FormData(form);try{await call("/api/admin/categories","POST",{name:d.get("name"),slug:d.get("slug"),description:d.get("description"),active:true,parentId:null});form.reset();setMessage("Category created.");router.refresh()}catch(err){setMessage(err instanceof Error?err.message:"Create failed")}finally{setBusy(false)}}return <form className="panel form-section" onSubmit={submit}><div className="section-heading"><div><p className="eyebrow">Catalogue</p><h2>Add category</h2></div><Plus size={20}/></div><div className="form-stack"><label className="form-control"><span>Name</span><input name="name" required/></label><label className="form-control"><span>Slug</span><input name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required/></label><label className="form-control"><span>Description</span><textarea name="description" rows={3}/></label><button className="button button-dark" disabled={busy}>{busy?<LoaderCircle className="spin" size={14}/>:<Plus size={14}/>}Create category</button>{message&&<p className="form-result">{message}</p>}</div></form>}
 export function ResolveEventButton({id}:{id:string}){const router=useRouter();const[busy,setBusy]=useState(false);return <button className="button button-outline" disabled={busy} onClick={async()=>{setBusy(true);try{await call(`/api/admin/system/${id}/resolve`,"POST",{});router.refresh()}finally{setBusy(false)}}}>{busy?<LoaderCircle className="spin" size={14}/>:<Check size={14}/>}Resolve</button>}
 
-export function AdminSupplierEdit({supplier}:{supplier:{id:string;legalName:string;tradingName:string|null;contactEmail:string;contactPhone:string;companyNumber:string|null;vatNumber:string|null;postcode:string|null;summary:string|null}}){const router=useRouter();const[busy,setBusy]=useState(false);const[message,setMessage]=useState("");async function submit(e:React.FormEvent<HTMLFormElement>){e.preventDefault();setBusy(true);const d=new FormData(e.currentTarget);try{await call(`/api/admin/suppliers/${supplier.id}`,"PATCH",Object.fromEntries(["legalName","tradingName","contactEmail","contactPhone","companyNumber","vatNumber","postcode","summary"].map(k=>[k,d.get(k)])));setMessage("Supplier details saved and audit logged.");router.refresh()}catch(error){setMessage(error instanceof Error?error.message:"Save failed")}finally{setBusy(false)}}return <form className="panel form-section" onSubmit={submit}><div className="section-heading"><div><p className="eyebrow">Administrator edit</p><h2>Company details</h2></div></div><div className="form-grid">{[["Legal name","legalName",supplier.legalName],["Trading name","tradingName",supplier.tradingName],["Email","contactEmail",supplier.contactEmail],["Phone","contactPhone",supplier.contactPhone],["Company number","companyNumber",supplier.companyNumber],["VAT number","vatNumber",supplier.vatNumber],["Postcode","postcode",supplier.postcode]].map(([label,name,value])=><label className="form-control" key={name}><span>{label}</span><input name={name!} defaultValue={value??""} required={["legalName","contactEmail","contactPhone"].includes(name!)}/></label>)}<label className="form-control span-2"><span>Summary</span><textarea name="summary" rows={4} defaultValue={supplier.summary??""}/></label></div><div className="form-actions"><p className="form-result">{message}</p><button className="button button-dark" disabled={busy}>{busy?<LoaderCircle className="spin" size={14}/>:<Check size={14}/>}Save supplier</button></div></form>}
+type AdminSupplierRecord = {
+  id: string;
+  legalName: string;
+  companyNumber: string | null;
+  directorName: string | null;
+  contactEmail: string;
+  contactPhone: string;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  county: string | null;
+  postcode: string | null;
+};
+
+export function AdminSupplierEdit({ supplier }: { supplier: AdminSupplierRecord }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const fields: Array<[string, keyof AdminSupplierRecord]> = [
+    ["Legal company name", "legalName"],
+    ["Companies House number", "companyNumber"],
+    ["Director's full name", "directorName"],
+    ["Company email", "contactEmail"],
+    ["Company phone", "contactPhone"],
+    ["Address line 1", "addressLine1"],
+    ["Address line 2 (optional)", "addressLine2"],
+    ["Town or city", "city"],
+    ["County (optional)", "county"],
+    ["Postcode", "postcode"],
+  ];
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true);
+    const data = new FormData(event.currentTarget);
+    try {
+      await call(`/api/admin/suppliers/${supplier.id}`, "PATCH", Object.fromEntries(fields.map(([, name]) => [name, data.get(name)])));
+      setMessage("Supplier details saved and audit logged."); router.refresh();
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Save failed"); }
+    finally { setBusy(false); }
+  }
+  const required = new Set(["legalName", "companyNumber", "directorName", "contactEmail", "contactPhone", "addressLine1", "city", "postcode"]);
+  return <form className="panel form-section" onSubmit={submit}><div className="section-heading"><div><p className="eyebrow">Administrator edit</p><h2>Company details</h2></div></div><div className="form-grid">{fields.map(([label, name]) => <label className="form-control" key={name}><span>{label}</span><input name={name} type={name === "contactEmail" ? "email" : "text"} defaultValue={supplier[name] ?? ""} required={required.has(name)} /></label>)}</div><div className="form-actions"><p className="form-result">{message}</p><button className="button button-dark" disabled={busy}>{busy ? <LoaderCircle className="spin" size={14}/> : <Check size={14}/>}Save supplier</button></div></form>;
+}
 
 export function CoverageStatusButton({id,active}:{id:string;active:boolean}){const router=useRouter();const[busy,setBusy]=useState(false);return <button className="button button-outline" disabled={busy} onClick={async()=>{setBusy(true);try{await call(`/api/admin/coverage/${id}`,"PATCH",{active:!active});router.refresh()}finally{setBusy(false)}}}>{busy?<LoaderCircle className="spin" size={14}/>:null}{active?"Disable":"Enable"}</button>}
 export function CategoryStatusButton({id,active}:{id:string;active:boolean}){const router=useRouter();const[busy,setBusy]=useState(false);return <button className="button button-outline" disabled={busy} onClick={async()=>{setBusy(true);try{await call(`/api/admin/categories/${id}`,"PATCH",{active:!active});router.refresh()}finally{setBusy(false)}}}>{busy?<LoaderCircle className="spin" size={14}/>:null}{active?"Disable":"Enable"}</button>}

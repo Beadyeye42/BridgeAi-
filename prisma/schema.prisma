@@ -329,6 +329,7 @@ model SupplierCompany {
   legalName         String
   tradingName       String?
   companyNumber     String?
+  directorName      String?
   vatNumber         String?
   websiteUrl        String?
   logoUrl           String?

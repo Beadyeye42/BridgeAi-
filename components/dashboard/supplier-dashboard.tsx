@@ -20,7 +20,7 @@ export function SupplierDashboard({ data, demo = false, onboarding, supplierStat
         </div>
 
         {onboarding && (!onboarding.ready || supplierStatus !== "APPROVED")
-          ? <OnboardingReadinessCard readiness={onboarding} status={supplierStatus} />
+          ? <OnboardingReadinessCard readiness={onboarding} status={supplierStatus} purpose="matching" />
           : null}
 
         {data.stats.newRequests > 0 ? <section className="attention-card">

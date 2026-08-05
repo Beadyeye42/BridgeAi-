@@ -36,9 +36,11 @@ describe("supplier portal validation", () => {
     expect(quotation.validUntil?.toISOString()).toBe("2099-12-31T23:59:59.999Z");
   });
 
-  it("rejects malformed business hours", () => {
-    const result = companyProfileSchema.safeParse({ legalName: "Northstar Steel Ltd", tradingName: "", companyNumber: "", vatNumber: "", websiteUrl: "", summary: "", contactEmail: "quotes@example.com", contactPhone: "+441215550184", addressLine1: "", addressLine2: "", city: "", county: "", postcode: "", categoryIds: [], businessHours: { monday: ["8am", "5pm"] } });
-    expect(result.success).toBe(false);
+  it("requires the simplified company identity, address and contact details", () => {
+    const complete = { legalName: "Northstar Steel Ltd", companyNumber: "01234567", directorName: "Alex Morgan", contactEmail: "quotes@example.com", contactPhone: "+441215550184", addressLine1: "1 Trade Park", addressLine2: "", city: "Birmingham", county: "", postcode: "b1 1aa", categoryIds: [] };
+    expect(companyProfileSchema.parse(complete).postcode).toBe("B1 1AA");
+    expect(companyProfileSchema.safeParse({ ...complete, directorName: "" }).success).toBe(false);
+    expect(companyProfileSchema.safeParse({ ...complete, addressLine1: "" }).success).toBe(false);
   });
 
   it("validates accreditation dates and review reasons", () => {
