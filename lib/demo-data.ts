@@ -1,5 +1,5 @@
 export type DashboardRequest = {
-  assignmentId: string;
+  assignmentId?: string;
   reference: string;
   title: string;
   category: string;
@@ -10,7 +10,7 @@ export type DashboardRequest = {
   urgency: "urgent" | "normal";
   itemCount: number;
   attachmentCount: number;
-  status: "New" | "Viewed" | "Accepted";
+  status: "Available" | "New" | "Viewed" | "Accepted";
 };
 
 export type DashboardData = {
