@@ -644,6 +644,9 @@ BEGIN
   IF visible_count <> 1 THEN RAISE EXCEPTION 'Selected supplier could not read its contact grant'; END IF;
   SELECT count(*) INTO visible_count FROM bridge_ai."CustomerContact" WHERE id='security_customer';
   IF visible_count <> 0 THEN RAISE EXCEPTION 'Contact grant exposed encrypted customer row through the Data API'; END IF;
+  IF has_function_privilege('authenticated','bridge_private.get_unlocked_customer_contact(text,text)','EXECUTE') THEN
+    RAISE EXCEPTION 'Authenticated clients can execute the server-only customer contact reader';
+  END IF;
   PERFORM set_config('request.jwt.claim.sub', user_b::text, true);
   SELECT count(*) INTO visible_count FROM bridge_ai."ContactAccessGrant" WHERE id='security_grant';
   IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier B read Supplier A contact grant'; END IF;

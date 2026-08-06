@@ -19,6 +19,8 @@ export default async function DashboardPage() {
   const companyId = getPrimarySupplierCompanyId(session);
   if (!companyId) redirect("/account-restricted");
   const dashboard = await getSupplierDashboard(companyId, session.userId);
+  const latestWonQuotation = dashboard.latestWonQuotation;
+  const formatQuoteValue = (price: { toString(): string }, currency: string) => new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 0 }).format(Number(price));
   const data: DashboardData = {
     companyName: dashboard.company.tradingName ?? dashboard.company.legalName,
     contactName: `${session.user.firstName} ${session.user.lastName}`,
@@ -44,6 +46,11 @@ export default async function DashboardPage() {
       winRate: dashboard.metrics.winRate === null ? "—" : `${dashboard.metrics.winRate}%`,
       monthValue: new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", maximumFractionDigits: 0 }).format(dashboard.metrics.monthValuePence / 100),
     },
+    latestWin: latestWonQuotation ? {
+      reference: latestWonQuotation.quoteRequest.reference,
+      title: latestWonQuotation.quoteRequest.title,
+      value: formatQuoteValue(latestWonQuotation.price, latestWonQuotation.currency),
+    } : undefined,
     requests: dashboard.assignments.map((assignment) => {
       const quoteRequest = assignment.quoteRequest;
       return {
@@ -75,7 +82,7 @@ export default async function DashboardPage() {
     recent: dashboard.recentQuotations.map((quotation) => ({
       reference: quotation.quoteRequest.reference,
       title: quotation.quoteRequest.title,
-      value: new Intl.NumberFormat("en-GB", { style: "currency", currency: quotation.currency, maximumFractionDigits: 0 }).format(Number(quotation.price)),
+      value: formatQuoteValue(quotation.price, quotation.currency),
       status: quotation.status === "ACCEPTED" ? "Won" : quotation.status === "REJECTED" ? "Lost" : "Submitted",
       date: quotation.submittedAt?.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) ?? "—",
     })),

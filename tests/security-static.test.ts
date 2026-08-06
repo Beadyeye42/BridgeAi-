@@ -435,7 +435,16 @@ describe("security foundation static controls", () => {
     expect(selection).toContain('action: "CONTACT_ACCESS.GRANTED"');
     expect(selection.indexOf("contactAccessGrant.create")).toBeLessThan(selection.indexOf('status: "ACCEPTED"'));
     const contact = read("lib/contacts/access.ts");
-    expect(contact.indexOf("prisma.contactAccessGrant.findFirst")).toBeLessThan(contact.indexOf("trustedPrisma.customerContact.findUniqueOrThrow"));
+    expect(contact).toContain("bridge_private.get_unlocked_customer_contact");
+    expect(contact).toContain("runWithDatabaseIdentity");
+    expect(contact).not.toContain("trustedPrisma");
     expect(contact).toContain('action: "CONTACT_ACCESS.VIEWED"');
+    const contactRead = read("supabase/migrations/20260806221000_secure_supplier_contact_unlock.sql");
+    expect(contactRead).toContain("SECURITY DEFINER");
+    expect(contactRead).toContain("bridge_private.has_company_membership(target_company_id)");
+    expect(contactRead).toContain("quotation.status = 'ACCEPTED'");
+    expect(contactRead).toContain("grant_row.\"revokedAt\" IS NULL");
+    expect(contactRead).toContain("REVOKE ALL ON FUNCTION bridge_private.get_unlocked_customer_contact(text, text)");
+    expect(contactRead).toContain("TO bridge_ai_app");
   });
 });
