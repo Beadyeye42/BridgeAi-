@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { accreditationReviewSchema, accreditationUploadSchema, adminAssignmentSchema, companyProfileSchema, coverageAreaSchema, notificationPreferenceSchema, quotationSchema, recordIdSchema } from "../lib/auth/validation";
+import { accreditationReviewSchema, accreditationUploadSchema, adminAssignmentSchema, companyProfileSchema, coverageAreaSchema, notificationPreferenceSchema, quotationSchema, recordIdSchema, supplierCapabilityActivationSchema } from "../lib/auth/validation";
 
 describe("supplier portal validation", () => {
   it("normalises postcode coverage prefixes", () => {
@@ -15,6 +15,11 @@ describe("supplier portal validation", () => {
     expect(coverageAreaSchema.safeParse({ type: "DISTANCE", centrePostcode: "B1 1AA", radiusMiles: 40 }).success).toBe(true);
     expect(coverageAreaSchema.safeParse({ type: "DISTANCE", centrePostcode: "B1 1AA", radiusMiles: 100 }).success).toBe(true);
     expect(coverageAreaSchema.parse({ type: "NATIONWIDE" })).toEqual({ type: "NATIONWIDE" });
+  });
+
+  it("validates one-click product activation without accepting extra control fields", () => {
+    expect(supplierCapabilityActivationSchema.parse({ productCategoryId: "upvc-windows", active: false })).toEqual({ productCategoryId: "upvc-windows" });
+    expect(supplierCapabilityActivationSchema.safeParse({ productCategoryId: "" }).success).toBe(false);
   });
 
   it("requires at least one supplier assignment target", () => {
