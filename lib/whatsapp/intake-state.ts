@@ -4,6 +4,7 @@ export const intakeQuestionKeys = [
   "PRODUCT",
   "DELIVERY_POSTCODE",
   "CATEGORY",
+  "COMPOSITE_STYLE",
   "SPECIFICATION",
   "REQUIREMENTS",
   "NONE",
@@ -24,6 +25,11 @@ type TradeDraft = {
   items: Array<{ description: string; specification?: string | null }>;
 };
 
+type IntakeConversationMessage = {
+  direction: "INBOUND" | "OUTBOUND";
+  text: string;
+};
+
 export const MAX_UNPRODUCTIVE_TURNS = 2;
 
 const recognisedIndustryColourPattern = /\b(?:white|black|anthracite(?: gr[ae]y)?|anthercite(?: gr[ae]y)?|antracite(?: gr[ae]y)?|slate gr[ae]y|agate gr[ae]y|chartwell(?: green)?|cream|irish oak|rosewood(?: brown)?)\b/i;
@@ -31,6 +37,28 @@ const colourMentionPattern = /\b(?:white|black|anthracite(?: gr[ae]y)?|anthercit
 
 export function isRecognisedIndustryColour(value: string | null | undefined) {
   return Boolean(value && recognisedIndustryColourPattern.test(value));
+}
+
+export function compositeDoorStylePhotoPrompt() {
+  return "To match the exact composite door and make supplier pricing easier, please send a photo or screenshot of the style you want. A brochure image is perfect. If you don’t have one, reply NO PHOTO and briefly describe the style instead.";
+}
+
+export function compositeDoorPhotoDecision(draft: TradeDraft, messages: IntakeConversationMessage[]) {
+  const draftEvidence = [
+    draft.categorySlug,
+    draft.title,
+    draft.summary,
+    ...draft.items.flatMap((item) => [item.description, item.specification]),
+  ].filter((value): value is string => Boolean(value)).join(" ");
+  const isCompositeDoor = /\bcomposite[-\s]+doors?\b/i.test(draftEvidence);
+  const hasStyleFile = messages.some((message) => message.direction === "INBOUND"
+    && /^\[Customer (?:attachment|uploaded)\b/i.test(message.text));
+  const alreadyAsked = messages.some((message) => message.direction === "OUTBOUND"
+    && message.text.includes("photo or screenshot of the style you want"));
+  const customerHasNoPhoto = messages.some((message) => message.direction === "INBOUND"
+    && /\b(?:no photo|no picture|no image|don['’]?t have (?:a )?(?:photo|picture|image)|do not have (?:a )?(?:photo|picture|image)|can['’]?t (?:send|provide) (?:a )?(?:photo|picture|image)|cannot (?:send|provide) (?:a )?(?:photo|picture|image))\b/i.test(message.text));
+  const handled = hasStyleFile || alreadyAsked || customerHasNoPhoto;
+  return { isCompositeDoor, hasStyleFile, alreadyAsked, customerHasNoPhoto, handled, shouldAsk: isCompositeDoor && !handled };
 }
 
 function latestColourMention(value: string) {
@@ -145,6 +173,7 @@ export function repeatClarification(questionKey: IntakeQuestionKey) {
     PRODUCT: "I want to match this to the right suppliers. What product do you need and roughly how many? A photo, drawing or PDF is welcome too.",
     DELIVERY_POSTCODE: "What is the full UK delivery postcode? For example, GL52 6TD.",
     CATEGORY: "Which product is this for — for example uPVC windows, aluminium bifolds, a composite door or a roof lantern?",
+    COMPOSITE_STYLE: compositeDoorStylePhotoPrompt(),
     SPECIFICATION: "What important detail should suppliers price — for example size, material, colour or opening style?",
     REQUIREMENTS: "What would you like the supplier to include in this quote?",
   };

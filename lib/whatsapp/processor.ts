@@ -31,6 +31,8 @@ import {
   wasReplyRecentlySent,
 } from "@/lib/whatsapp/policy";
 import {
+  compositeDoorPhotoDecision,
+  compositeDoorStylePhotoPrompt,
   conversationProgress,
   enforceTradeClarification,
   quoteDraftFingerprint,
@@ -1068,7 +1070,13 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     await sendReply(job, refreshed.conversation, "I can’t safely complete this request automatically. A Bridge AI administrator will need to review it.");
     return telemetry;
   }
-  const questionKey = requiredQuestionKey(result.draft, result.nextQuestionKey, result.tradeClarification);
+  const compositeDoorPhoto = compositeDoorPhotoDecision(result.draft, messages);
+  if (compositeDoorPhoto.handled && result.nextQuestionKey === "COMPOSITE_STYLE") {
+    result.nextQuestionKey = "NONE";
+  }
+  const questionKey = compositeDoorPhoto.shouldAsk
+    ? "COMPOSITE_STYLE"
+    : requiredQuestionKey(result.draft, result.nextQuestionKey, result.tradeClarification);
   const ready = result.readyForConfirmation && questionKey === "NONE" && draftIsComplete(result.draft);
   const fingerprint = quoteDraftFingerprint(result.draft);
   const progress = conversationProgress({
@@ -1153,7 +1161,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     : null;
   const reply = ready && category
       ? formatConfirmation(result.draft, category.name, attachmentCount)
-      : `${mediaAcknowledgement ? `${mediaAcknowledgement}\n\n` : ""}${tradeClarification ?? repeatedClarification ?? enforcedClarification ?? result.reply}${rejectedMedia ? "\n\nOne uploaded file could not be accepted. Please send a genuine JPG, PNG or PDF within the size limit." : ""}`;
+      : `${mediaAcknowledgement ? `${mediaAcknowledgement}\n\n` : ""}${compositeDoorPhoto.shouldAsk ? compositeDoorStylePhotoPrompt() : tradeClarification ?? repeatedClarification ?? enforcedClarification ?? result.reply}${rejectedMedia ? "\n\nOne uploaded file could not be accepted. Please send a genuine JPG, PNG or PDF within the size limit." : ""}`;
   await sendReply(job, refreshed.conversation, reply);
   return telemetry;
 }

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  compositeDoorPhotoDecision,
+  compositeDoorStylePhotoPrompt,
   conversationProgress,
   enforceTradeClarification,
   isRecognisedIndustryColour,
@@ -85,6 +87,47 @@ describe("WhatsApp intake conversation state", () => {
       ["Six uPVC windows in moss green"],
     );
     expect(clarification.colourNeeded).toBe(true);
+  });
+
+  it("asks once for a composite-door style image before finalising the enquiry", () => {
+    const decision = compositeDoorPhotoDecision({
+      ...completeDraft,
+      categorySlug: "composite-doors",
+      title: "Composite front door",
+      summary: "Supply one black composite front door",
+      items: [{ description: "Composite front door" }],
+    }, []);
+    expect(decision).toMatchObject({ isCompositeDoor: true, handled: false, shouldAsk: true });
+    expect(compositeDoorStylePhotoPrompt()).toContain("photo or screenshot");
+    expect(compositeDoorStylePhotoPrompt()).toContain("NO PHOTO");
+  });
+
+  it("does not ask for a composite-door image when the customer already uploaded one", () => {
+    const decision = compositeDoorPhotoDecision({
+      ...completeDraft,
+      categorySlug: "composite-doors",
+      title: "Composite front door",
+      summary: "Supply one black composite front door",
+      items: [{ description: "Composite front door" }],
+    }, [{ direction: "INBOUND", text: "[Customer attachment \"door.jpg\": black cottage-style composite door]" }]);
+    expect(decision).toMatchObject({ hasStyleFile: true, handled: true, shouldAsk: false });
+  });
+
+  it("does not repeat the composite-door photo request or block a customer with no image", () => {
+    const draft = {
+      ...completeDraft,
+      categorySlug: "composite-doors",
+      title: "Composite front door",
+      summary: "Supply one black composite front door",
+      items: [{ description: "Composite front door" }],
+    };
+    expect(compositeDoorPhotoDecision(draft, [
+      { direction: "OUTBOUND", text: compositeDoorStylePhotoPrompt() },
+      { direction: "INBOUND", text: "Traditional style please" },
+    ])).toMatchObject({ alreadyAsked: true, shouldAsk: false });
+    expect(compositeDoorPhotoDecision(draft, [
+      { direction: "INBOUND", text: "I don't have a photo, but it is a cottage style" },
+    ])).toMatchObject({ customerHasNoPhoto: true, shouldAsk: false });
   });
 
   it("asks one compact material and industry-colour clarification", () => {
