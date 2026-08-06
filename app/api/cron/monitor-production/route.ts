@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { runProductionMonitoring } from "@/lib/monitoring/operational-alerts";
+import { processWhatsAppJobs } from "@/lib/whatsapp/processor";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,7 +11,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
-    return NextResponse.json({ ok: true, ...(await runProductionMonitoring()) });
+    const processedWhatsAppJobs = await processWhatsAppJobs({ limit: 50 });
+    return NextResponse.json({ ok: true, processedWhatsAppJobs, ...(await runProductionMonitoring()) });
   } catch (error) {
     console.error("Production monitoring cron failed", error);
     return NextResponse.json({ error: "Production monitoring failed" }, { status: 500 });

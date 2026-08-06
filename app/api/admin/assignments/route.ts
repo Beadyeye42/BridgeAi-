@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   try {
     const created = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM bridge_ai."QuoteRequest" WHERE id = ${parsed.data.quoteRequestId} FOR UPDATE`;
-      const quote = await tx.quoteRequest.findUnique({ where: { id: parsed.data.quoteRequestId } });
+      const quote = await tx.quoteRequest.findUnique({ where: { id: parsed.data.quoteRequestId }, include: { items: true } });
       if (!quote) throw new Error("REQUEST_NOT_FOUND");
       if (quote.deliveryPostcode !== preflight.deliveryPostcode) throw new Error("REQUEST_CHANGED");
       if (!["OPEN", "MATCHING"].includes(quote.status)) throw new Error("REQUEST_NOT_OPEN");
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
 
       const current = await tx.supplierAssignment.count({ where: { quoteRequestId: quote.id, status: { notIn: ["WITHDRAWN"] } } });
       const unique = [...new Set(parsed.data.supplierCompanyIds)];
-      if (current + unique.length > quote.distributionLimit || current + unique.length > 5) throw new Error("DISTRIBUTION_LIMIT");
+      if (current + unique.length > quote.distributionLimit || current + unique.length > 3) throw new Error("DISTRIBUTION_LIMIT");
 
       const matches = await findSupplierMatches(tx, quote, resolution.location, { supplierIds: unique, limit: 5 });
       if (matches.length !== unique.length) throw new Error("INELIGIBLE_SUPPLIER");
@@ -42,6 +42,28 @@ export async function POST(request: Request) {
         })),
         skipDuplicates: true,
       });
+      for (const match of matches) {
+        await tx.supplierMatchDecision.upsert({
+          where: { quoteRequestId_supplierCompanyId: { quoteRequestId: quote.id, supplierCompanyId: match.id } },
+          create: {
+            quoteRequestId: quote.id,
+            supplierCompanyId: match.id,
+            outcome: "MATCHED",
+            score: match.score,
+            selected: true,
+            reasons: match.reasons,
+            capabilitySnapshot: match.capabilitySnapshot,
+          },
+          update: {
+            outcome: "MATCHED",
+            score: match.score,
+            selected: true,
+            reasons: match.reasons,
+            capabilitySnapshot: match.capabilitySnapshot,
+            decidedAt: new Date(),
+          },
+        });
+      }
       await tx.quoteRequest.update({ where: { id: quote.id }, data: { status: "MATCHING" } });
       await writeAuditLog({
         actorUserId: auth.session.userId,
@@ -51,7 +73,7 @@ export async function POST(request: Request) {
         summary: `Request assigned to ${result.count} supplier(s)`,
         metadata: {
           supplierCompanyIds: unique,
-          coverageMatches: matches.map((match) => ({ supplierCompanyId: match.id, type: match.match.type, label: match.match.label })),
+          capabilityMatches: matches.map((match) => ({ supplierCompanyId: match.id, score: match.score, reasons: match.reasons })),
           distributionLimit: quote.distributionLimit,
           responseDueAt: quote.responseDueAt.toISOString(),
         },
@@ -67,8 +89,8 @@ export async function POST(request: Request) {
       REQUEST_CHANGED: ["The delivery details changed while matching. Retry the assignment.", 409],
       REQUEST_NOT_OPEN: ["Only open requests can be assigned", 409],
       RESPONSE_WINDOW_CLOSED: ["The supplier response window has closed", 409],
-      DISTRIBUTION_LIMIT: ["This assignment would exceed the five-supplier request limit", 409],
-      INELIGIBLE_SUPPLIER: ["Every selected supplier must be approved, subscribed, match the category and cover the delivery location", 400],
+      DISTRIBUTION_LIMIT: ["This assignment would exceed the three-supplier request limit", 409],
+      INELIGIBLE_SUPPLIER: ["Every selected supplier must pass the current capability, capacity, subscription, category and coverage checks", 400],
     };
     const known = messages[code];
     if (known) return NextResponse.json({ error: known[0] }, { status: known[1] });

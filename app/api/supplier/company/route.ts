@@ -28,7 +28,23 @@ export async function PATCH(request: Request) {
         productCategoryId: { in: selectableIds, notIn: categoryIds },
       },
     });
+    await tx.supplierCapability.deleteMany({
+      where: {
+        supplierCompanyId: auth.companyId,
+        productCategoryId: { in: selectableIds, notIn: categoryIds },
+      },
+    });
     await tx.supplierProductCategory.createMany({ data: categoryIds.map((productCategoryId) => ({ supplierCompanyId: auth.companyId, productCategoryId })), skipDuplicates: true });
+    await tx.supplierCapability.createMany({
+      data: categoryIds.map((productCategoryId) => ({
+        supplierCompanyId: auth.companyId,
+        productCategoryId,
+        standardLeadTimeDays: 14,
+        capacityStatus: "PAUSED" as const,
+        active: false,
+      })),
+      skipDuplicates: true,
+    });
     await writeAuditLog({ actorUserId: auth.session.userId, supplierCompanyId: auth.companyId, action: "SUPPLIER.PROFILE_UPDATED", entityType: "SupplierCompany", entityId: auth.companyId, summary: "Supplier company profile updated", request }, tx);
     return saved;
   });

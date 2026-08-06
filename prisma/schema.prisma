@@ -177,6 +177,23 @@ enum CoverageType {
   @@schema("bridge_ai")
 }
 
+enum SupplierCapacityStatus {
+  AVAILABLE
+  LIMITED
+  URGENT_ONLY
+  FULL
+  PAUSED
+
+  @@schema("bridge_ai")
+}
+
+enum SupplierMatchOutcome {
+  MATCHED
+  REJECTED
+
+  @@schema("bridge_ai")
+}
+
 enum SubscriptionStatus {
   TRIALING
   ACTIVE
@@ -373,6 +390,8 @@ model SupplierCompany {
   invitations          SupplierInvite[]
   coverageAreas        CoverageArea[]
   categories           SupplierProductCategory[]
+  capabilities         SupplierCapability[]
+  matchDecisions       SupplierMatchDecision[]
   assignments          SupplierAssignment[]
   quotations           SupplierQuotation[]
   subscription         Subscription?
@@ -428,21 +447,21 @@ model SupplierInvite {
 }
 
 model CustomerContact {
-  id                           String               @id @default(cuid())
-  displayNameEncrypted         Bytes?
-  preferredFirstNameEncrypted  Bytes?
-  preferredNameAskedAt         DateTime?
-  phoneEncrypted               Bytes
-  phoneHash                    String               @unique
-  emailEncrypted               Bytes?
-  emailHash                    String?
-  consentRecordedAt            DateTime?
-  marketingConsentAt           DateTime?
-  createdAt                    DateTime             @default(now())
-  updatedAt                    DateTime             @updatedAt
-  conversations                Conversation[]
-  quoteRequests                QuoteRequest[]
-  contactAccess                ContactAccessGrant[]
+  id                          String               @id @default(cuid())
+  displayNameEncrypted        Bytes?
+  preferredFirstNameEncrypted Bytes?
+  preferredNameAskedAt        DateTime?
+  phoneEncrypted              Bytes
+  phoneHash                   String               @unique
+  emailEncrypted              Bytes?
+  emailHash                   String?
+  consentRecordedAt           DateTime?
+  marketingConsentAt          DateTime?
+  createdAt                   DateTime             @default(now())
+  updatedAt                   DateTime             @updatedAt
+  conversations               Conversation[]
+  quoteRequests               QuoteRequest[]
+  contactAccess               ContactAccessGrant[]
 
   @@index([emailHash])
   @@schema("bridge_ai")
@@ -579,6 +598,7 @@ model ProductCategory {
   suppliers     SupplierProductCategory[]
   quoteRequests QuoteRequest[]
   opportunities SupplierOpportunity[]
+  capabilities  SupplierCapability[]
 
   @@unique([parentId, name])
   @@index([active, displayOrder])
@@ -597,30 +617,66 @@ model SupplierProductCategory {
   @@schema("bridge_ai")
 }
 
+model SupplierCapability {
+  id                   String                 @id @default(cuid())
+  supplierCompanyId    String
+  productCategoryId    String
+  manufacturerNames    String[]               @default([])
+  systemNames          String[]               @default([])
+  colourNames          String[]               @default([])
+  finishNames          String[]               @default([])
+  minimumOrderValue    Decimal?               @db.Decimal(12, 2)
+  minimumOrderQuantity Int?
+  standardLeadTimeDays Int
+  urgentLeadTimeDays   Int?
+  collectionAvailable  Boolean                @default(false)
+  deliveryDays         Int[]                  @default([])
+  capacityStatus       SupplierCapacityStatus @default(AVAILABLE)
+  shortageNote         String?
+  shortageUntil        DateTime?
+  active               Boolean                @default(true)
+  lastConfirmedAt      DateTime               @default(now())
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  supplierCompany      SupplierCompany        @relation(fields: [supplierCompanyId], references: [id], onDelete: Cascade)
+  productCategory      ProductCategory        @relation(fields: [productCategoryId], references: [id], onDelete: Cascade)
+
+  @@unique([supplierCompanyId, productCategoryId])
+  @@index([productCategoryId, active, capacityStatus])
+  @@index([supplierCompanyId, lastConfirmedAt])
+  @@schema("bridge_ai")
+}
+
 model QuoteRequest {
-  id                            String               @id @default(cuid())
-  reference                     String               @unique
+  id                            String                  @id @default(cuid())
+  reference                     String                  @unique
   conversationId                String?
-  customerConfirmationMessageId String?              @unique
+  customerConfirmationMessageId String?                 @unique
   customerContactId             String
   categoryId                    String
   title                         String
   summary                       String
   deliveryPostcode              String
-  deliveryLatitude              Decimal?             @db.Decimal(9, 6)
-  deliveryLongitude             Decimal?             @db.Decimal(9, 6)
-  customerBudget                Decimal?             @db.Decimal(12, 2)
-  currency                      String               @default("GBP") @db.VarChar(3)
-  status                        QuoteRequestStatus   @default(DRAFT)
-  distributionLimit             Int                  @default(3)
+  deliveryLatitude              Decimal?                @db.Decimal(9, 6)
+  deliveryLongitude             Decimal?                @db.Decimal(9, 6)
+  customerBudget                Decimal?                @db.Decimal(12, 2)
+  requiredManufacturer          String?
+  requiredSystem                String?
+  requiredColour                String?
+  requiredFinish                String?
+  requiredBy                    DateTime?
+  collectionRequired            Boolean                 @default(false)
+  currency                      String                  @default("GBP") @db.VarChar(3)
+  status                        QuoteRequestStatus      @default(DRAFT)
+  distributionLimit             Int                     @default(3)
   responseDueAt                 DateTime
   publishedAt                   DateTime?
   closedAt                      DateTime?
-  createdAt                     DateTime             @default(now())
-  updatedAt                     DateTime             @updatedAt
-  conversation                  Conversation?        @relation(fields: [conversationId], references: [id], onDelete: SetNull)
-  customerContact               CustomerContact      @relation(fields: [customerContactId], references: [id], onDelete: Restrict)
-  category                      ProductCategory      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  createdAt                     DateTime                @default(now())
+  updatedAt                     DateTime                @updatedAt
+  conversation                  Conversation?           @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  customerContact               CustomerContact         @relation(fields: [customerContactId], references: [id], onDelete: Restrict)
+  category                      ProductCategory         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   items                         QuoteRequestItem[]
   attachments                   Attachment[]
   assignments                   SupplierAssignment[]
@@ -628,11 +684,31 @@ model QuoteRequest {
   successFees                   SupplierSuccessFee[]
   whatsappJobs                  WhatsAppJob[]
   opportunity                   SupplierOpportunity?
+  matchDecisions                SupplierMatchDecision[]
 
   @@index([status, responseDueAt])
   @@index([categoryId, deliveryPostcode])
   @@index([customerContactId])
   @@index([conversationId])
+  @@schema("bridge_ai")
+}
+
+model SupplierMatchDecision {
+  id                 String               @id @default(cuid())
+  quoteRequestId     String
+  supplierCompanyId  String
+  outcome            SupplierMatchOutcome
+  score              Int                  @default(0)
+  selected           Boolean              @default(false)
+  reasons            Json
+  capabilitySnapshot Json?
+  decidedAt          DateTime             @default(now())
+  quoteRequest       QuoteRequest         @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
+  supplierCompany    SupplierCompany      @relation(fields: [supplierCompanyId], references: [id], onDelete: Cascade)
+
+  @@unique([quoteRequestId, supplierCompanyId])
+  @@index([quoteRequestId, outcome, score])
+  @@index([supplierCompanyId, decidedAt])
   @@schema("bridge_ai")
 }
 

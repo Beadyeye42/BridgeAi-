@@ -34,19 +34,11 @@ export async function getSupplierDashboard(supplierCompanyId: string, userId: st
       orderBy: { assignedAt: "desc" },
       take: 8,
     });
-    const opportunities = await tx.supplierOpportunity.findMany({
+    const openAssignmentCount = await tx.supplierAssignment.count({
       where: {
-        status: { in: ["OPEN", "MATCHING", "QUOTED"] },
-        responseDueAt: { gt: now },
-      },
-      include: { category: true },
-      orderBy: { responseDueAt: "asc" },
-      take: 8,
-    });
-    const openOpportunityCount = await tx.supplierOpportunity.count({
-      where: {
-        status: { in: ["OPEN", "MATCHING", "QUOTED"] },
-        responseDueAt: { gt: now },
+        supplierCompanyId,
+        status: { in: ["PENDING", "VIEWED", "ACCEPTED"] },
+        expiresAt: { gt: now },
       },
     });
     const recentQuotations = await tx.supplierQuotation.findMany({
@@ -83,8 +75,7 @@ export async function getSupplierDashboard(supplierCompanyId: string, userId: st
     return {
       company,
       assignments,
-      opportunities,
-      openOpportunityCount,
+      openAssignmentCount,
       unreadNotificationCount,
       generatedAt: now,
       metrics: {
@@ -112,12 +103,5 @@ export async function getSupplierRequest(
       },
       quotation: { include: { attachments: true, contactAccess: true } },
     },
-  });
-}
-
-export async function getSupplierOpportunity(reference: string) {
-  return prisma.supplierOpportunity.findUnique({
-    where: { reference },
-    include: { category: { include: { parent: { select: { slug: true } } } } },
   });
 }

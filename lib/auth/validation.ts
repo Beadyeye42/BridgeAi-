@@ -82,6 +82,41 @@ export const companyProfileSchema = z.object({
   categoryIds: z.array(z.string().cuid().or(z.string().max(64))).max(100).refine((ids) => new Set(ids).size === ids.length, "Select each category only once"),
 });
 
+const capabilityNameList = z.array(z.string().trim().min(1).max(100)).max(50)
+  .transform((values) => [...new Set(values.map((value) => value.replace(/\s+/g, " ")))]);
+
+export const supplierCapabilitySchema = z.object({
+  productCategoryId: z.string().min(1).max(64),
+  manufacturerNames: capabilityNameList,
+  systemNames: capabilityNameList,
+  colourNames: capabilityNameList,
+  finishNames: capabilityNameList,
+  minimumOrderValue: z.number().nonnegative().max(10_000_000).nullable(),
+  minimumOrderQuantity: z.number().int().min(1).max(1_000_000).nullable(),
+  standardLeadTimeDays: z.number().int().min(1).max(730),
+  urgentLeadTimeDays: z.number().int().min(1).max(730).nullable(),
+  collectionAvailable: z.boolean(),
+  deliveryDays: z.array(z.number().int().min(1).max(7)).max(7).transform((days) => [...new Set(days)].sort()),
+  capacityStatus: z.enum(["AVAILABLE", "LIMITED", "URGENT_ONLY", "FULL", "PAUSED"]),
+  shortageNote: z.string().trim().max(500).nullable(),
+  shortageUntil: z.string().datetime().nullable(),
+  active: z.boolean(),
+}).superRefine((value, context) => {
+  if (value.urgentLeadTimeDays !== null && value.urgentLeadTimeDays > value.standardLeadTimeDays) {
+    context.addIssue({ code: "custom", path: ["urgentLeadTimeDays"], message: "Urgent lead time must not exceed the standard lead time" });
+  }
+  if (value.shortageNote && !value.shortageUntil) {
+    context.addIssue({ code: "custom", path: ["shortageUntil"], message: "Add an end date for the temporary shortage" });
+  }
+});
+
+export const supplierCapabilitiesSchema = z.object({
+  capabilities: z.array(supplierCapabilitySchema).max(100).refine(
+    (items) => new Set(items.map((item) => item.productCategoryId)).size === items.length,
+    "Save only one capability record for each product category",
+  ),
+});
+
 const optionalCoverageLabel = z.string().trim().min(2).max(100).optional();
 export const coverageAreaSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("POSTCODE"), label: optionalCoverageLabel, postcodePrefix: z.string().trim().min(1).max(8).regex(/^[A-Za-z][A-Za-z0-9 ]{0,7}$/, "Enter a UK postcode or postcode area, such as GL52 6TD, B or CV").transform((v) => v.toUpperCase()) }),
@@ -127,7 +162,7 @@ export const adminSupplierEditSchema = z.object({
 });
 export const adminAssignmentSchema = z.object({
   quoteRequestId: z.string().min(1).max(64),
-  supplierCompanyIds: z.array(z.string().min(1).max(64)).min(1).max(5),
+  supplierCompanyIds: z.array(z.string().min(1).max(64)).min(1).max(3),
 });
 export const productCategorySchema = z.object({ name: z.string().trim().min(2).max(100), slug: z.string().trim().min(2).max(100).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/), description: optionalText(500), active: z.boolean().default(true), parentId: z.string().nullable().optional() });
 

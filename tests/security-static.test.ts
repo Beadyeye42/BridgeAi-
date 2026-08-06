@@ -283,12 +283,12 @@ describe("security foundation static controls", () => {
     expect(unlockWorker).toContain("SEND_CONTACT_UNLOCK");
   });
 
-  it("uses the shared request deadline and never accepts more than five suppliers", () => {
+  it("uses the shared request deadline and selects no more than three suppliers", () => {
     const validation = read("lib/auth/validation.ts");
     const assignmentRoute = read("app/api/admin/assignments/route.ts");
     const migration = read("supabase/migrations/20260803182630_enforce_supplier_response_rules.sql");
     expect(validation).toContain("supplierCompanyIds: z.array");
-    expect(validation).toContain(".max(5)");
+    expect(validation).toContain(".max(3)");
     expect(assignmentRoute).toMatch(/expiresAt:\s*quote\.responseDueAt/);
     expect(assignmentRoute).not.toContain("parsed.data.expiresAt");
     expect(migration).toContain('"distributionLimit" BETWEEN 1 AND 5');
@@ -314,7 +314,7 @@ describe("security foundation static controls", () => {
     const supplierRoute = read("app/api/supplier/company/route.ts");
     const adminRoute = read("app/api/admin/categories/[id]/route.ts");
     const processor = read("lib/whatsapp/processor.ts");
-    const migration = read("supabase/migrations/20260806161549_stage_future_product_catalogues.sql");
+    const migration = read("supabase/migrations/20260806163139_stage_future_product_catalogues.sql");
     expect(supplierRoute).toContain("launchedSupplierCategoryWhere()");
     expect(supplierRoute).toContain("productCategoryId: { in: selectableIds, notIn: categoryIds }");
     expect(adminRoute).toContain('"ADMIN.CATEGORY_GROUP_LAUNCHED"');
@@ -329,43 +329,28 @@ describe("security foundation static controls", () => {
     expect(migration).toContain("'audit_future_product_catalogues_staged_v1'");
   });
 
-  it("allows approved suppliers to browse only a safe opportunity projection and gates claims on membership", () => {
-    const migration = read("supabase/migrations/20260805135021_supplier_opportunity_marketplace.sql");
+  it("retires network-wide opportunity claiming and scopes leads to selected suppliers", () => {
+    const migration = read("supabase/migrations/20260806180233_supplier_capability_matching_v1.sql");
     const claimRoute = read("app/api/opportunities/[reference]/claim/route.ts");
     const listPage = read("app/dashboard/requests/page.tsx");
     const detailPage = read("app/dashboard/requests/[reference]/page.tsx");
-    expect(migration).toContain('SupplierOpportunity" FORCE ROW LEVEL SECURITY');
-    expect(migration).toContain("supplier_opportunity_approved_read");
-    expect(read("supabase/migrations/20260805140640_optimize_supplier_opportunity_policy.sql")).toContain("supplier_opportunity_read");
-    expect(migration).toContain("company.status = 'APPROVED'");
-    const pendingBrowse = read("supabase/migrations/20260805175617_allow_pending_supplier_opportunity_browsing.sql");
-    expect(pendingBrowse).toContain("company.status IN ('PENDING', 'APPROVED')");
-    expect(pendingBrowse).not.toContain("'SUSPENDED', 'REJECTED'");
-    expect(migration).toContain("ACTIVE_SUBSCRIPTION_REQUIRED");
-    expect(read("supabase/migrations/20260805215057_founding_supplier_pricing.sql")).toContain("ACTIVE_FOUNDING_SUBSCRIPTION_REQUIRED");
-    expect(migration).toContain("CATEGORY_NOT_MATCHED");
-    const simplifiedApproval = read("supabase/migrations/20260805172853_simplify_supplier_company_approval.sql");
-    expect(simplifiedApproval).not.toContain("ACCREDITATION_REQUIRED");
-    expect(migration).toContain("COVERAGE_NOT_MATCHED");
-    expect(migration).toContain("LEAST(request_row.\"distributionLimit\", 5)");
-    expect(migration).toContain("OPPORTUNITY.CLAIMED");
-    expect(migration).toContain("TO bridge_ai_app");
-    expect(migration).not.toMatch(/CREATE POLICY[^;]+SupplierOpportunity[^;]+FOR (INSERT|UPDATE|DELETE)/i);
-    const projection = migration.slice(migration.indexOf('CREATE TABLE bridge_ai."SupplierOpportunity"'), migration.indexOf("CREATE INDEX"));
-    expect(projection).not.toMatch(/customerContactId|conversationId|summary|deliveryPostcode|customerBudget/);
-    expect(claimRoute).toContain("requireSupplierApi()");
-    expect(claimRoute).toContain("claim_supplier_opportunity");
-    expect(claimRoute).not.toContain("trustedPrisma");
-    expect(listPage).toContain("supplierOpportunity.findMany");
-    expect(read("lib/data/supplier-dashboard.ts")).toContain("tx.supplierOpportunity.findMany");
-    expect(detailPage).toContain("The exact postcode, detailed brief, drawings, photos and PDFs remain locked");
+    expect(migration).toContain('SupplierCapability" FORCE ROW LEVEL SECURITY');
+    expect(migration).toContain('SupplierMatchDecision" FORCE ROW LEVEL SECURITY');
+    expect(migration).toContain("supplier_opportunity_scoped_read");
+    expect(migration).toContain('SupplierAssignment" assignment');
+    expect(claimRoute).toContain("Open opportunity claiming has been retired");
+    expect(claimRoute).not.toContain("claim_supplier_opportunity");
+    expect(listPage).not.toContain("supplierOpportunity.findMany");
+    expect(read("lib/data/supplier-dashboard.ts")).not.toContain("supplierOpportunity.findMany");
+    expect(detailPage).not.toContain("ClaimOpportunity");
   });
 
   it("automatically distributes confirmed WhatsApp requests without weakening tenant isolation", () => {
     const processor = read("lib/whatsapp/processor.ts");
     const migration = read("supabase/migrations/20260805130054_whatsapp_auto_distribution.sql");
-    expect(processor).toContain("findSupplierMatches(");
-    expect(processor).toContain("Math.min(distributionLimit, 5)");
+    expect(processor).toContain("evaluateSupplierMatches(");
+    expect(processor).toContain("Math.min(distributionLimit, 3)");
+    expect(processor).toContain("supplierMatchDecision.upsert");
     expect(processor).toContain('action: "WHATSAPP.REQUEST_AUTO_ASSIGNED"');
     expect(processor).toContain("automaticAssignmentCount");
     expect(processor).toContain("awaiting an eligible supplier match");
@@ -395,7 +380,7 @@ describe("security foundation static controls", () => {
     expect(viewed).toContain('action: "ASSIGNMENT.VIEWED"');
     expect(viewed).toContain('supplierCompanyId: auth.companyId');
     const requests = read("app/dashboard/requests/page.tsx");
-    expect(requests).toContain("responseDueAt: { gt: now }");
+    expect(requests).toContain("expiresAt: { gt: now }");
     expect(requests).toContain("expiresAt: { lte: now }");
     const status = read("app/api/admin/suppliers/[id]/status/route.ts");
     expect(status).toContain("supplierApprovalReadiness(existing)");
