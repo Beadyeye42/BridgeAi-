@@ -26,7 +26,7 @@ describe("Stripe billing database isolation", () => {
     expect(migration).toContain("is_trusted_worker('stripe_billing')");
     const alertsMigration = read("supabase/migrations/20260806185620_stripe_checkout_failure_alerts.sql");
     expect(alertsMigration).toContain("source IN ('STRIPE_WEBHOOK', 'STRIPE_CHECKOUT')");
-    const returningMigration = read("supabase/migrations/20260806201500_stripe_worker_returning_policies.sql");
+    const returningMigration = read("supabase/migrations/20260806191329_stripe_worker_returning_policies.sql");
     expect(returningMigration).toContain("stripe_billing_audit_select");
     expect(returningMigration).toContain("action LIKE 'BILLING.%'");
     expect(returningMigration).toContain("stripe_billing_system_event_select");
