@@ -31,6 +31,7 @@ import {
   quoteDraftFingerprint,
   repeatClarification,
   requiredQuestionKey,
+  tradeSpecificationClarification,
 } from "@/lib/whatsapp/intake-state";
 
 const MAX_ATTEMPTS = 3;
@@ -513,7 +514,9 @@ export function isConfirmation(value: string) {
 }
 
 export function formatConfirmation(draft: QuoteDraft, categoryName: string, attachmentCount = 0) {
-  const items = draft.items.map((item, index) => `${index + 1}. ${item.quantity} ${item.unit} — ${item.description}`).join("\n");
+  const items = draft.items.map((item, index) => (
+    `${index + 1}. ${item.quantity} ${item.unit} — ${item.description}${item.specification ? ` — ${item.specification}` : ""}`
+  )).join("\n");
   return [
     "Great — here’s the job I’ll send to suitable approved suppliers:",
     `Project: ${draft.title}`,
@@ -1053,7 +1056,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     await sendReply(job, refreshed.conversation, "I can’t safely complete this request automatically. A Bridge AI administrator will need to review it.");
     return telemetry;
   }
-  const questionKey = requiredQuestionKey(result.draft, result.nextQuestionKey);
+  const questionKey = requiredQuestionKey(result.draft, result.nextQuestionKey, result.tradeClarification);
   const ready = result.readyForConfirmation && questionKey === "NONE" && draftIsComplete(result.draft);
   const fingerprint = quoteDraftFingerprint(result.draft);
   const progress = conversationProgress({
@@ -1129,9 +1132,15 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   const repeatedClarification = !ready && progress.repeatedQuestion && !progress.progressed
     ? repeatClarification(questionKey)
     : null;
+  const tradeClarification = !ready && questionKey === "SPECIFICATION"
+    ? tradeSpecificationClarification(result.tradeClarification, result.draft.items[0]?.description)
+    : null;
+  const enforcedClarification = !ready && questionKey !== result.nextQuestionKey
+    ? repeatClarification(questionKey)
+    : null;
   const reply = ready && category
       ? formatConfirmation(result.draft, category.name, attachmentCount)
-      : `${repeatedClarification ?? result.reply}${mediaAcknowledgement}${rejectedMedia ? "\n\nOne uploaded file could not be accepted. Please send a genuine JPG, PNG or PDF within the size limit." : ""}`;
+      : `${tradeClarification ?? repeatedClarification ?? enforcedClarification ?? result.reply}${mediaAcknowledgement}${rejectedMedia ? "\n\nOne uploaded file could not be accepted. Please send a genuine JPG, PNG or PDF within the size limit." : ""}`;
   await sendReply(job, refreshed.conversation, reply);
   return telemetry;
 }

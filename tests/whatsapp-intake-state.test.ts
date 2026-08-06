@@ -4,6 +4,7 @@ import {
   quoteDraftFingerprint,
   repeatClarification,
   requiredQuestionKey,
+  tradeSpecificationClarification,
 } from "../lib/whatsapp/intake-state";
 
 const completeDraft = {
@@ -23,6 +24,33 @@ describe("WhatsApp intake conversation state", () => {
     expect(requiredQuestionKey({ ...completeDraft, items: [] }, "NONE")).toBe("PRODUCT");
     expect(requiredQuestionKey({ ...completeDraft, deliveryPostcode: null }, "NONE")).toBe("DELIVERY_POSTCODE");
     expect(requiredQuestionKey(completeDraft, "NONE")).toBe("NONE");
+  });
+
+  it("does not allow unresolved trade material or colour to reach confirmation", () => {
+    const clarification = { materialNeeded: true, colourNeeded: true, colourTerm: "olive" };
+    expect(requiredQuestionKey({ ...completeDraft, deliveryPostcode: null }, "NONE", clarification)).toBe("DELIVERY_POSTCODE");
+    expect(requiredQuestionKey(completeDraft, "NONE", clarification)).toBe("SPECIFICATION");
+  });
+
+  it("asks one compact material and industry-colour clarification", () => {
+    const reply = tradeSpecificationClarification(
+      { materialNeeded: true, colourNeeded: true, colourTerm: "olive" },
+      "Windows",
+    );
+    expect(reply).toContain("what material");
+    expect(reply).toContain("olive");
+    expect(reply).toContain("RAL or manufacturer colour reference");
+    expect(reply).toContain("closest available match");
+    expect(reply?.match(/\?/g)).toHaveLength(1);
+  });
+
+  it("sanitises customer colour wording before using it in a reply", () => {
+    const reply = tradeSpecificationClarification(
+      { materialNeeded: false, colourNeeded: true, colourTerm: `olive\n${"x".repeat(200)}` },
+      null,
+    );
+    expect(reply).not.toContain("\n");
+    expect(reply?.length).toBeLessThan(240);
   });
 
   it("escalates after two repeated turns with no draft progress", () => {

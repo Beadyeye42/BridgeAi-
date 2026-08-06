@@ -11,6 +11,12 @@ export const intakeQuestionKeys = [
 
 export type IntakeQuestionKey = (typeof intakeQuestionKeys)[number];
 
+export type TradeClarification = {
+  materialNeeded: boolean;
+  colourNeeded: boolean;
+  colourTerm: string | null;
+};
+
 export const MAX_UNPRODUCTIVE_TURNS = 2;
 
 function canonicalJson(value: unknown): string {
@@ -57,12 +63,37 @@ export function requiredQuestionKey(
     items: unknown[];
   },
   proposed: IntakeQuestionKey,
+  tradeClarification: TradeClarification = {
+    materialNeeded: false,
+    colourNeeded: false,
+    colourTerm: null,
+  },
 ): IntakeQuestionKey {
   if (!draft.items.length) return "PRODUCT";
   if (!draft.deliveryPostcode) return "DELIVERY_POSTCODE";
   if (!draft.categorySlug) return "CATEGORY";
+  if (tradeClarification.materialNeeded || tradeClarification.colourNeeded) return "SPECIFICATION";
   if (!draft.title || !draft.summary) return "REQUIREMENTS";
   return proposed;
+}
+
+function safeClarificationTerm(value: string | null | undefined) {
+  return value?.replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) || null;
+}
+
+export function tradeSpecificationClarification(input: TradeClarification, productDescription?: string | null) {
+  const product = safeClarificationTerm(productDescription)?.toLowerCase() || "product";
+  const colour = safeClarificationTerm(input.colourTerm);
+  if (input.materialNeeded && input.colourNeeded) {
+    return `For the ${product}, what material should suppliers price, and for “${colour ?? "that colour"}” do you have a RAL or manufacturer colour reference—or should they offer their closest available match?`;
+  }
+  if (input.materialNeeded) {
+    return `What material should suppliers price for the ${product}—for example uPVC, aluminium or timber?`;
+  }
+  if (input.colourNeeded) {
+    return `When you say “${colour ?? "that colour"}”, do you have a RAL or manufacturer colour reference—or should suppliers offer their closest available match?`;
+  }
+  return null;
 }
 
 export function repeatClarification(questionKey: IntakeQuestionKey) {

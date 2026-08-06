@@ -182,6 +182,8 @@ describe("security foundation static controls", () => {
     expect(processor).toContain('type: "SEND_INTAKE_FALLBACK"');
     expect(processor).toContain("customerConfirmationMessageId");
     expect(processor).toContain('code: "CUSTOMER_INTAKE_STALLED"');
+    expect(processor).toContain("tradeSpecificationClarification");
+    expect(processor).toContain("item.specification");
     expect(processor).toContain("writeWhatsAppSystemEvent");
     expect(processor).toContain("CONTACT_UNLOCK_NOT_AUTHORISED");
     expect(processor).toContain('action: "WHATSAPP.NEW_QUOTE_STARTED"');
@@ -197,6 +199,9 @@ describe("security foundation static controls", () => {
     expect(ai).toContain('type: "json_schema"');
     expect(ai).toContain("safety_identifier");
     expect(ai).toContain("nextQuestionKey");
+    expect(ai).toContain("tradeClarification");
+    expect(ai).toContain("For olive");
+    expect(ai).toContain("RAL/BS code");
     const reliability = read("supabase/migrations/20260805102631_whatsapp_conversation_reliability_constraints.sql");
     expect(reliability).toContain("conversation_ai_question_key_valid");
     expect(reliability).toContain('"customerConfirmationMessageId"');
