@@ -25,9 +25,17 @@ type Capability = {
   lastConfirmedAt: string | null;
 };
 
+type RematchResult = { checked?: number; matched?: number; blocked?: number; blockingReasons?: string[] };
+
 const dayOptions = [[1, "Mon"], [2, "Tue"], [3, "Wed"], [4, "Thu"], [5, "Fri"], [6, "Sat"], [7, "Sun"]] as const;
 const splitList = (value: FormDataEntryValue | null) => String(value ?? "").split(",").map((item) => item.trim()).filter(Boolean);
 const nullableNumber = (value: FormDataEntryValue | null) => String(value ?? "").trim() ? Number(value) : null;
+const friendlyBlockingReason = (reason: string) => {
+  const missingDetail = reason.match(/^Does not confirm (manufacturer|system|colour|finish) (.+)$/i);
+  if (!missingDetail) return reason;
+  const [, field, value] = missingDetail;
+  return `add ${value} to your saved ${field} details if you supply it`;
+};
 
 export function CapabilityManager({ capabilities }: { capabilities: Capability[] }) {
   const [busy, setBusy] = useState(false);
@@ -53,7 +61,14 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
       setActiveByCategory((current) => ({ ...current, [capability.productCategoryId]: true }));
       setCapacityByCategory((current) => ({ ...current, [capability.productCategoryId]: "AVAILABLE" }));
       setConfirmedByCategory((current) => ({ ...current, [capability.productCategoryId]: result.capability?.lastConfirmedAt ?? new Date().toISOString() }));
-      setMessage(`${capability.categoryName} is active and ready for general quote matching.`);
+      const rematch = (result.rematch ?? {}) as RematchResult;
+      if (rematch.matched) {
+        setMessage(`${capability.categoryName} is active. ${rematch.matched} current quote request${rematch.matched === 1 ? " has" : "s have"} been matched to your company.`);
+      } else if (rematch.blocked && rematch.blockingReasons?.length) {
+        setMessage(`${capability.categoryName} is active. A current request needs more detail before it can match: ${friendlyBlockingReason(rematch.blockingReasons[0])}. Open Advanced matching below and save.`);
+      } else {
+        setMessage(`${capability.categoryName} is active and ready for general quote matching.`);
+      }
     } catch (caught) {
       setError(true);
       setMessage(caught instanceof Error ? caught.message : `${capability.categoryName} could not be activated`);
@@ -92,7 +107,14 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
       if (!response.ok) throw new Error(result.error ?? "Capabilities could not be saved");
       const confirmedAt = result.confirmedAt ?? new Date().toISOString();
       setConfirmedByCategory(Object.fromEntries(capabilities.map((item) => [item.productCategoryId, confirmedAt])));
-      setMessage("Advanced matching details and current capacity saved.");
+      const rematch = (result.rematch ?? {}) as RematchResult;
+      if (rematch.matched) {
+        setMessage(`Advanced details saved. ${rematch.matched} current quote request${rematch.matched === 1 ? " is" : "s are"} now available on your dashboard.`);
+      } else if (rematch.blocked && rematch.blockingReasons?.length) {
+        setMessage(`Advanced details saved. A current request is still blocked: ${friendlyBlockingReason(rematch.blockingReasons[0])}.`);
+      } else {
+        setMessage("Advanced matching details and current capacity saved. Open requests were re-checked.");
+      }
     } catch (caught) {
       setError(true); setMessage(caught instanceof Error ? caught.message : "Capabilities could not be saved");
     } finally { setBusy(false); }
@@ -116,7 +138,7 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
             <span className="capability-quick-icon">{active ? <CheckCircle2 size={18}/> : <Sparkles size={18}/>}</span>
             <div><b>{capability.categoryName}</b><small>{active ? "Active for quote matching" : "Not receiving matching enquiries"}</small></div>
             {active
-              ? <span className="status-pill active">Active</span>
+              ? <div className="inline-actions"><span className="status-pill active">Active</span><button className="button button-secondary capability-recheck-button" type="button" disabled={Boolean(activatingId) || busy} onClick={() => activate(capability)}>{isActivating ? <LoaderCircle className="spin" size={14}/> : null}{isActivating ? "Checking…" : "Re-check quotes"}</button></div>
               : <button className="button capability-activate-button" type="button" disabled={Boolean(activatingId) || busy} onClick={() => activate(capability)}>{isActivating ? <LoaderCircle className="spin" size={14}/> : null}{isActivating ? "Activating…" : "Activate for quotes"}</button>}
           </article>;
         })}
