@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CalendarClock, Clock3, FileText, LockKeyhole, Mail, MapPin, MessageSquareText, Paperclip, Phone, ShieldCheck, UserRound } from "lucide-react";
+import { ArrowLeft, CalendarClock, Clock3, FileText, LockKeyhole, Mail, MapPin, MessageSquareText, Paperclip, Phone, ShieldCheck, Trophy, UserRound } from "lucide-react";
 import { requireSupplierPage } from "@/lib/auth/guards";
 import { getSupplierRequest } from "@/lib/data/supplier-dashboard";
 import { getUnlockedCustomerContact } from "@/lib/contacts/access";
@@ -21,12 +21,14 @@ export default async function ConnectedRequestPage({ params }: { params: Promise
   const request = assignment.quoteRequest;
   const quotation = assignment.quotation;
   const responsibilityNotice = categoryResponsibilityNotice(request.category.slug, request.category.parent?.slug);
+  const isWon = quotation?.status === "ACCEPTED";
   const contact = quotation?.contactAccess
     ? await getUnlockedCustomerContact({ quotationId: quotation.id, companyId, actorUserId: session.userId })
     : null;
   return <PortalPage {...identity(session, company)} eyebrow={request.reference} title={request.title} description={request.category.name}>
     <AssignmentViewTracker assignmentId={assignment.id} status={assignment.status} />
     <Link href="/dashboard/requests" className="back-link request-back"><ArrowLeft size={14}/>Back to requests</Link>
+    {isWon && <section className="won-job-banner" role="status"><span><Trophy size={24}/></span><div><p className="eyebrow">Quotation accepted</p><h2>You won this job</h2><p>The customer selected your quotation. Their verified contact details are unlocked below so you can arrange the order.</p></div></section>}
     <div className="request-title-row"><div><div className="request-ref"><span className="status-dot urgent"/>{request.reference}<span className={`tag ${assignment.status.toLowerCase()}`}>{assignment.status}</span></div></div><div className="deadline-box"><Clock3 size={18}/><span>Response deadline<b>{assignment.expiresAt.toLocaleString("en-GB")}</b></span></div></div>
     <div className="request-layout"><div className="request-content">
       <section className="panel request-section"><div className="section-title"><MessageSquareText size={18}/><div><p className="eyebrow">Customer brief</p><h2>Requirements</h2></div></div><p className="request-summary">{request.summary}</p>{responsibilityNotice && <div className="honesty-note">{responsibilityNotice}</div>}{contact ? <div className="privacy-note"><ShieldCheck size={17}/><div><b>Customer contact unlocked</b><p>The customer selected your quotation. Use these details only to fulfil this enquiry.</p></div></div> : <div className="privacy-note"><LockKeyhole size={17}/><div><b>Customer identity protected</b><p>Contact details stay with Bridge AI until the customer selects a quotation.</p></div></div>}</section>

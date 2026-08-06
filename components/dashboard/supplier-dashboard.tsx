@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowUpRight, Bell, BriefcaseBusiness, CheckCircle2, ChevronRight, CircleGauge, Clock3, FileCheck2, FileText, HelpCircle, MapPin, MoreHorizontal, Paperclip, Plus, Search, Sparkles, Target, TrendingUp } from "lucide-react";
+import { ArrowUpRight, Bell, BriefcaseBusiness, CheckCircle2, ChevronRight, CircleGauge, Clock3, FileCheck2, FileText, HelpCircle, MapPin, MoreHorizontal, Paperclip, Plus, Search, Sparkles, Target, TrendingUp, Trophy } from "lucide-react";
 import type { DashboardData } from "@/lib/demo-data";
 import { Sidebar } from "./sidebar";
 import { BrandMark } from "@/components/brand-mark";
@@ -24,6 +24,12 @@ export function SupplierDashboard({ data, demo = false, onboarding, supplierStat
           ? <OnboardingReadinessCard readiness={onboarding} status={supplierStatus} purpose="matching" />
           : null}
 
+        {data.latestWin ? <section className="win-alert" role="status">
+          <div className="win-alert-icon"><Trophy size={25} /></div>
+          <div><p className="eyebrow">Customer selected your quotation</p><h2>You won {data.latestWin.title}</h2><p>Your {data.latestWin.value} quotation was accepted. The customer’s contact details are now ready inside the job.</p></div>
+          <div className="win-alert-actions"><Link href={`/dashboard/requests/${data.latestWin.reference}`} className="button win-alert-primary">Open won job <ArrowUpRight size={16} /></Link><Link href="/dashboard/requests?view=won" className="win-alert-link">View all won jobs</Link></div>
+        </section> : null}
+
         {data.stats.newRequests > 0 ? <section className="attention-card">
           <div className="attention-icon"><BriefcaseBusiness size={21} /></div>
           <div><b>{data.stats.newRequests} matched quote request{data.stats.newRequests === 1 ? " is" : "s are"} waiting</b><p>These requests were selected for your company from its confirmed capabilities, coverage and current capacity.</p></div>
@@ -33,7 +39,7 @@ export function SupplierDashboard({ data, demo = false, onboarding, supplierStat
         <section className="stats-grid" aria-label="Supplier overview">
           <Stat label="Matched leads" value={String(data.stats.newRequests).padStart(2, "0")} helper={demo ? "2 added today" : "Assigned to your company"} icon={<FileText size={19} />} tone="amber" />
           <Stat label="Quotes in progress" value={String(data.stats.openQuotes).padStart(2, "0")} helper={demo ? "£86.4k total value" : "Submitted and awaiting a decision"} icon={<CircleGauge size={19} />} tone="blue" />
-          <Stat label="Won this month" value={String(data.stats.wonThisMonth).padStart(2, "0")} helper={demo ? "£42.8k secured" : data.performance.monthValue === "£0" ? "No wins recorded yet" : `${data.performance.monthValue} secured`} icon={<Target size={19} />} tone="green" />
+          <Stat label="Won this month" value={String(data.stats.wonThisMonth).padStart(2, "0")} helper={demo ? "£42.8k secured" : data.performance.monthValue === "£0" ? "No wins recorded yet" : `${data.performance.monthValue} secured`} icon={<Target size={19} />} tone="green" href="/dashboard/requests?view=won" featured={data.stats.wonThisMonth > 0} />
           <Stat label="Response rate" value={`${data.stats.responseRate}%`} helper={demo ? "Up 6% from July" : "Assigned requests answered in 30 days"} icon={<TrendingUp size={19} />} tone="violet" />
         </section>
 
@@ -88,6 +94,7 @@ function scoreLabel(score: number) {
   return "Needs attention";
 }
 
-function Stat({ label, value, helper, icon, tone }: { label: string; value: string; helper: string; icon: React.ReactNode; tone: string }) {
-  return <article className="stat-card"><div className={`stat-icon ${tone}`}>{icon}</div><div><p>{label}</p><b>{value}</b><span>{helper}</span></div></article>;
+function Stat({ label, value, helper, icon, tone, href, featured = false }: { label: string; value: string; helper: string; icon: React.ReactNode; tone: string; href?: string; featured?: boolean }) {
+  const card = <article className={`stat-card${featured ? " is-won" : ""}`}><div className={`stat-icon ${tone}`}>{icon}</div><div><p>{label}</p><b>{value}</b><span>{helper}</span></div>{href && <ChevronRight className="stat-card-arrow" size={17} />}</article>;
+  return href ? <Link href={href} aria-label={`${label}: ${value}`}>{card}</Link> : card;
 }

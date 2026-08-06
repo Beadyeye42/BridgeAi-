@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Clock3, FileText, MapPin, Paperclip } from "lucide-react";
+import { Clock3, FileText, MapPin, Paperclip, Trophy } from "lucide-react";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireSupplierPage } from "@/lib/auth/guards";
@@ -43,12 +43,13 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
     <nav className="filter-tabs">{views.map((item) => <Link className={item === view ? "active" : ""} href={`/dashboard/requests?view=${item}`} key={item}>{item}</Link>)}</nav>
     <section className="panel request-browser">
       {assignments.length ? assignments.map((assignment) => {
-        const displayStatus = assignment.quotation?.status ?? (assignment.expiresAt <= now ? "EXPIRED" : assignment.status);
-        return <Link href={`/dashboard/requests/${assignment.quoteRequest.reference}`} className="request-browser-row" key={assignment.id}>
-          <span className="status-dot" />
+        const isWon = assignment.quotation?.status === "ACCEPTED";
+        const displayStatus = isWon ? "YOU WON" : assignment.quotation?.status ?? (assignment.expiresAt <= now ? "EXPIRED" : assignment.status);
+        return <Link href={`/dashboard/requests/${assignment.quoteRequest.reference}`} className={`request-browser-row${isWon ? " is-won" : ""}`} key={assignment.id}>
+          {isWon ? <span className="won-row-icon"><Trophy size={17}/></span> : <span className="status-dot" />}
           <div className="request-browser-main"><span className="request-ref">{assignment.quoteRequest.reference}</span><b>{assignment.quoteRequest.title}</b><small>{assignment.quoteRequest.category.name}</small></div>
           <div className="request-browser-meta"><span><MapPin size={14}/>{assignment.quoteRequest.deliveryPostcode}</span><span><Paperclip size={14}/>{assignment.quoteRequest.attachments.length}</span><span><Clock3 size={14}/>{assignment.expiresAt.toLocaleDateString("en-GB")}</span></div>
-          <span className={`status-pill ${displayStatus.toLowerCase()}`}>{displayStatus}</span>
+          <span className={`status-pill ${isWon ? "won" : displayStatus.toLowerCase()}`}>{displayStatus}</span>
         </Link>;
       }) : <div className="empty-state large"><FileText size={28}/><b>No requests in this view</b><p>New work appears after Bridge AI records a suitable capability and capacity match for your company.</p></div>}
     </section>

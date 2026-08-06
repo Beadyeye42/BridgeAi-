@@ -51,6 +51,11 @@ export async function getSupplierDashboard(supplierCompanyId: string, userId: st
       orderBy: { submittedAt: "desc" },
       take: 100,
     });
+    const latestWonQuotation = await tx.supplierQuotation.findFirst({
+      where: { supplierCompanyId, status: "ACCEPTED" },
+      include: { quoteRequest: { select: { reference: true, title: true } } },
+      orderBy: { decidedAt: "desc" },
+    });
     const recentAssignments = await tx.supplierAssignment.findMany({
       where: { supplierCompanyId, assignedAt: { gte: last30Days } },
       select: { assignedAt: true, respondedAt: true },
@@ -86,6 +91,7 @@ export async function getSupplierDashboard(supplierCompanyId: string, userId: st
         winRate: decided.length ? Math.round((decided.filter((item) => item.status === "ACCEPTED").length / decided.length) * 100) : null,
         monthValuePence,
       },
+      latestWonQuotation,
       recentQuotations: recentQuotations.slice(0, 5),
     };
   }));
