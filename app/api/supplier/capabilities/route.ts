@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireSupplierApi } from "@/lib/auth/api";
 import { supplierCapabilitiesSchema, supplierCapabilityActivationSchema, validationError } from "@/lib/auth/validation";
 import { writeAuditLog } from "@/lib/audit";
+import { rematchOpenRequestsForSupplier } from "@/lib/matching/rematch";
 
 export const runtime = "nodejs";
 
@@ -77,7 +78,13 @@ export async function PATCH(request: Request) {
     return saved;
   });
 
-  return NextResponse.json({ ok: true, capability });
+  const rematch = await rematchOpenRequestsForSupplier({
+    supplierCompanyId: auth.companyId,
+    categoryIds: [parsed.data.productCategoryId],
+    actorUserId: auth.session.userId,
+  });
+
+  return NextResponse.json({ ok: true, capability, rematch });
 }
 
 export async function PUT(request: Request) {
@@ -132,5 +139,10 @@ export async function PUT(request: Request) {
       request,
     }, tx);
   });
-  return NextResponse.json({ ok: true, confirmedAt: confirmedAt.toISOString() });
+  const rematch = await rematchOpenRequestsForSupplier({
+    supplierCompanyId: auth.companyId,
+    categoryIds: parsed.data.capabilities.filter((item) => item.active).map((item) => item.productCategoryId),
+    actorUserId: auth.session.userId,
+  });
+  return NextResponse.json({ ok: true, confirmedAt: confirmedAt.toISOString(), rematch });
 }
