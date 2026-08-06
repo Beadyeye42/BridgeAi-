@@ -36,6 +36,7 @@ import {
   isQuoteHistoryRequest,
   isQuoteRefresh,
   isServiceWindowOpen,
+  quoteSelectionIntent,
   quoteMenu,
   wasReplyRecentlySent,
 } from "@/lib/whatsapp/policy";
@@ -1013,6 +1014,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   let preferredFirstName: string | null = null;
   let nameCapturedThisTurn = false;
   const text = inbound.bodyEncrypted ? decryptPrivateValue(inbound.bodyEncrypted) : "";
+  const selectionIntent = quoteSelectionIntent(text);
 
   const controlMessage = isConversationOptOut(text)
     || isConsent(text)
@@ -1023,7 +1025,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     || isNewQuoteRequest(text)
     || isQuoteHistoryRequest(text)
     || isMenuRequest(text)
-    || /^accept\s+[1-5]$/i.test(text.trim());
+    || selectionIntent !== null;
   if (!controlMessage && await hasNewerInboundJob(job)) {
     return undefined;
   }
@@ -1108,7 +1110,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     return undefined;
   }
 
-  if (isNewQuoteRequest(text)) {
+  if (conversation.aiStage !== "AWAITING_SELECTION" && isNewQuoteRequest(text)) {
     const includesJobDetails = newQuoteDetails(text) !== null || Boolean(inbound.mediaIdEncrypted);
     conversation = await startNewQuote(job, conversation, inbound, !includesJobDetails);
     if (!includesJobDetails) return undefined;
@@ -1222,19 +1224,33 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   }
 
   if (stage === "AWAITING_SELECTION") {
-    const match = /^accept\s+([1-5])$/i.exec(text.trim());
-    if (!match) {
-      await sendReply(job, refreshed.conversation, "To choose a quote, reply ACCEPT followed by its number, for example ACCEPT 1.");
-      return undefined;
-    }
     const request = await runAsDatabaseWorker("whatsapp_ai", (tx) => tx.quoteRequest.findFirst({
       where: { conversationId: refreshed.conversation!.id, status: { in: ["OPEN", "MATCHING", "QUOTED"] } },
       orderBy: { createdAt: "desc" },
       include: { quotations: { where: { status: "SUBMITTED" }, orderBy: [{ submittedAt: "asc" }, { id: "asc" }], take: 5 } },
     }));
-    const selected = request?.quotations[Number(match[1]) - 1];
+    if (!request || !request.quotations.length) {
+      await sendReply(job, refreshed.conversation, "That quote is no longer available. Reply QUOTES and I’ll show the latest prices and lead times.");
+      return undefined;
+    }
+    if (!selectionIntent) {
+      await sendReply(job, refreshed.conversation, request.quotations.length === 1
+        ? "There is one quote available. Reply YES or ACCEPT and I’ll confirm it for you."
+        : `Which quote would you like? Reply with just its number, from 1 to ${request.quotations.length}.`);
+      return undefined;
+    }
+    if (selectionIntent.kind === "REFERENCE" && selectionIntent.reference !== request.reference.toUpperCase()) {
+      await sendReply(job, refreshed.conversation, `That reference is not the quote list currently open. Reply QUOTES to see the latest prices for ${request.reference}.`);
+      return undefined;
+    }
+    if (selectionIntent.kind !== "POSITION" && request.quotations.length > 1) {
+      await sendReply(job, refreshed.conversation, `There are ${request.quotations.length} quotes available. Reply with just the quote number you want, from 1 to ${request.quotations.length}.`);
+      return undefined;
+    }
+    const displayedPosition = selectionIntent.kind === "POSITION" ? selectionIntent.position : 1;
+    const selected = request.quotations[displayedPosition - 1];
     if (!selected) {
-      await sendReply(job, refreshed.conversation, "That quote number is not available. Please choose one of the numbers in the latest quote list.");
+      await sendReply(job, refreshed.conversation, `That number is not available. Reply with a number from 1 to ${request.quotations.length}.`);
       return undefined;
     }
     const grant = await selectQuotationForCustomer({ quotationId: selected.id, evidence: `WhatsApp message ${inbound.externalMessageId}` });
@@ -1246,10 +1262,10 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
         entityType: "SupplierQuotation",
         entityId: selected.id,
         summary: "Customer selected an anonymised quote through WhatsApp",
-        metadata: { messageId: inbound.id, quoteRequestId: request!.id, displayedPosition: Number(match[1]) },
+        metadata: { messageId: inbound.id, quoteRequestId: request.id, displayedPosition },
       });
     });
-    await sendReply(job, refreshed.conversation, "Great choice — it’s confirmed. There is no introduction fee or winning fee. I’m sharing the selected supplier’s business contact details securely now.");
+    await sendReply(job, refreshed.conversation, `Great choice — quote ${displayedPosition} is confirmed. There is no introduction fee or winning fee. I’m sharing the selected supplier’s business contact details securely now.`);
     return undefined;
   }
 
@@ -1454,7 +1470,9 @@ async function currentQuoteSummary(conversationId: string) {
     body: [
       `Current prices for ${request.reference}. Supplier identities remain private:`,
       lines.join("\n"),
-      "Reply ACCEPT followed by the quote number, for example ACCEPT 1. There are no introduction or winning fees.",
+      quotes.length === 1
+        ? "To accept this quote, simply reply YES or ACCEPT. There are no introduction or winning fees."
+        : `To choose, reply with just the quote number (1 to ${quotes.length}). There are no introduction or winning fees.`,
     ].join("\n\n"),
   };
 }

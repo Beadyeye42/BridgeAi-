@@ -1,6 +1,18 @@
 import "server-only";
 import { Prisma } from "@prisma/client";
-import { trustedPrisma } from "@/lib/db";
+import { prisma, runAsDatabaseWorker, runWithDatabaseIdentity } from "@/lib/db";
+
+async function writeSelectionAudit(
+  tx: Prisma.TransactionClient,
+  input: { action: string; entityType: string; entityId: string; summary: string; metadata: Prisma.InputJsonValue },
+) {
+  await tx.$queryRaw`
+    SELECT bridge_private.write_whatsapp_audit(
+      ${input.action}, ${input.entityType}, ${input.entityId}, ${input.summary},
+      ${JSON.stringify(input.metadata)}::jsonb
+    )
+  `;
+}
 
 export async function selectQuotationForCustomer(input: {
   quotationId: string;
@@ -8,7 +20,7 @@ export async function selectQuotationForCustomer(input: {
   evidence: string;
 }) {
   const selectedAt = new Date();
-  return trustedPrisma.$transaction(async (tx) => {
+  const selectInTransaction = async (tx: Prisma.TransactionClient) => {
     await tx.$queryRaw`SELECT id FROM bridge_ai."SupplierQuotation" WHERE id = ${input.quotationId} FOR UPDATE`;
     const quotation = await tx.supplierQuotation.findUnique({
       where: { id: input.quotationId },
@@ -57,28 +69,43 @@ export async function selectQuotationForCustomer(input: {
         })),
       });
     }
-    await tx.auditLog.create({
-      data: {
-        actorUserId: input.actorUserId,
-        supplierCompanyId: quotation.supplierCompanyId,
-        action: "QUOTATION.CUSTOMER_SELECTED",
+    if (input.actorUserId) {
+      await tx.auditLog.createMany({
+        data: [{
+          actorUserId: input.actorUserId,
+          supplierCompanyId: quotation.supplierCompanyId,
+          action: "QUOTATION.CUSTOMER_SELECTED",
+          entityType: "SupplierQuotation",
+          entityId: quotation.id,
+          summary: "Customer selection recorded and contact access granted without a winning fee",
+          metadata: { evidence: input.evidence.slice(0, 250), contactAccessGrantId: grant.id },
+        }, {
+          actorUserId: input.actorUserId,
+          supplierCompanyId: quotation.supplierCompanyId,
+          action: "CONTACT_ACCESS.GRANTED",
+          entityType: "ContactAccessGrant",
+          entityId: grant.id,
+          summary: "Customer selection unlocked contact details with no introduction or winning fee",
+          metadata: { quotationId: quotation.id, quoteRequestId: quotation.quoteRequestId },
+        }],
+      });
+    } else {
+      await writeSelectionAudit(tx, {
+        action: "WHATSAPP.CUSTOMER_SELECTION_RECORDED",
         entityType: "SupplierQuotation",
         entityId: quotation.id,
         summary: "Customer selection recorded and contact access granted without a winning fee",
-        metadata: { evidence: input.evidence.slice(0, 250), contactAccessGrantId: grant.id },
-      },
-    });
-    await tx.auditLog.create({
-      data: {
-        actorUserId: input.actorUserId,
-        supplierCompanyId: quotation.supplierCompanyId,
-        action: "CONTACT_ACCESS.GRANTED",
-        entityType: "ContactAccessGrant",
-        entityId: grant.id,
-        summary: "Customer selection unlocked contact details with no introduction or winning fee",
-        metadata: { quotationId: quotation.id, quoteRequestId: quotation.quoteRequestId },
-      },
-    });
+        metadata: { evidence: input.evidence.slice(0, 250), contactAccessGrantId: grant.id, quoteRequestId: quotation.quoteRequestId },
+      });
+    }
     return grant;
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 10000 });
+  };
+
+  if (!input.actorUserId) {
+    return runAsDatabaseWorker("whatsapp_ai", selectInTransaction);
+  }
+  return runWithDatabaseIdentity(input.actorUserId, () => prisma.$transaction(
+    selectInTransaction,
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5000, timeout: 10000 },
+  ));
 }

@@ -79,6 +79,25 @@ export function isQuoteRefresh(value: string) {
   return /^(quotes?|update|status)$/i.test(value.trim());
 }
 
+export type QuoteSelectionIntent =
+  | { kind: "CURRENT" }
+  | { kind: "POSITION"; position: number }
+  | { kind: "REFERENCE"; reference: string };
+
+export function quoteSelectionIntent(value: string): QuoteSelectionIntent | null {
+  const trimmed = value.trim();
+  const position = /^(?:(?:accept|choose|select|take)(?:\s+(?:quote|option))?|quote|option)?\s*([1-5])$/i.exec(trimmed);
+  if (position) return { kind: "POSITION", position: Number(position[1]) };
+
+  const reference = /^(?:accept|choose|select|take)(?:\s+(?:quote|option))?\s+(BA-\d{4}-[A-Z0-9]+)$/i.exec(trimmed);
+  if (reference) return { kind: "REFERENCE", reference: reference[1].toUpperCase() };
+
+  if (/^(?:accept|accept (?:it|quote)|yes|yes please|choose it|select it|take it|go (?:with|for) it)$/i.test(trimmed)) {
+    return { kind: "CURRENT" };
+  }
+  return null;
+}
+
 export function isConversationOptOut(value: string) {
   return /^(stop|end|unsubscribe|close conversation)$/i.test(value.trim());
 }

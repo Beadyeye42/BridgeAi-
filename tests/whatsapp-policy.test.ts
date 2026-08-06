@@ -15,6 +15,7 @@ import {
   isServiceWindowOpen,
   RECENT_REPLY_DEDUPE_MS,
   quoteMenu,
+  quoteSelectionIntent,
   wasReplyRecentlySent,
   WHATSAPP_SERVICE_WINDOW_MS,
 } from "../lib/whatsapp/policy";
@@ -55,6 +56,19 @@ describe("WhatsApp messaging policy", () => {
   it("recognises concise customer requests for the latest quote list", () => {
     expect(["quote", "QUOTES", " update ", "status"].every(isQuoteRefresh)).toBe(true);
     expect(isQuoteRefresh("accept 1")).toBe(false);
+  });
+
+  it("accepts a quote naturally without requiring capital letters", () => {
+    expect(quoteSelectionIntent("accept")).toEqual({ kind: "CURRENT" });
+    expect(quoteSelectionIntent("Yes please")).toEqual({ kind: "CURRENT" });
+    expect(quoteSelectionIntent("accept 1")).toEqual({ kind: "POSITION", position: 1 });
+    expect(quoteSelectionIntent("choose quote 2")).toEqual({ kind: "POSITION", position: 2 });
+    expect(quoteSelectionIntent("3")).toEqual({ kind: "POSITION", position: 3 });
+    expect(quoteSelectionIntent("accept BA-2026-951A09F8")).toEqual({
+      kind: "REFERENCE",
+      reference: "BA-2026-951A09F8",
+    });
+    expect(quoteSelectionIntent("maybe quote 1")).toBeNull();
   });
 
   it("separates menu, new quote and quote history commands", () => {

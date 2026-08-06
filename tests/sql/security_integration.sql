@@ -646,6 +646,19 @@ BEGIN
   IF visible_count <> 8 THEN
     RAISE EXCEPTION 'trusted WhatsApp matching policies are incomplete';
   END IF;
+  SELECT count(*) INTO visible_count
+  FROM pg_policies
+  WHERE schemaname='bridge_ai'
+    AND policyname IN (
+      'whatsapp_ai_quotation_selection_update',
+      'whatsapp_ai_contact_grant_selection_insert',
+      'whatsapp_ai_selection_notification_insert'
+    )
+    AND roles @> ARRAY['authenticated']::name[]
+    AND coalesce(with_check, qual) LIKE '%is_trusted_worker%whatsapp_ai%';
+  IF visible_count <> 3 THEN
+    RAISE EXCEPTION 'trusted WhatsApp customer-selection policies are incomplete';
+  END IF;
 END
 $test$;
 
