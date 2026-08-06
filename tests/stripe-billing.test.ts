@@ -17,14 +17,14 @@ describe("Stripe billing database isolation", () => {
   });
 
   it("defines narrow forced-RLS policies for billing writes", () => {
-    const migration = read("supabase/migrations/20260806195200_stripe_billing_worker_rls.sql");
+    const migration = read("supabase/migrations/20260806185317_stripe_billing_worker_rls.sql");
     expect(migration).toContain("stripe_billing_subscription_insert");
     expect(migration).toContain("stripe_billing_subscription_update");
     expect(migration).toContain("stripe_billing_webhook_event_insert");
     expect(migration).toContain("stripe_billing_audit_insert");
     expect(migration).toContain("source = 'STRIPE_WEBHOOK'");
     expect(migration).toContain("is_trusted_worker('stripe_billing')");
-    const alertsMigration = read("supabase/migrations/20260806195800_stripe_checkout_failure_alerts.sql");
+    const alertsMigration = read("supabase/migrations/20260806185620_stripe_checkout_failure_alerts.sql");
     expect(alertsMigration).toContain("source IN ('STRIPE_WEBHOOK', 'STRIPE_CHECKOUT')");
   });
 
