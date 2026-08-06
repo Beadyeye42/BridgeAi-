@@ -6,6 +6,7 @@ import { AdminHeading } from "@/components/admin/admin-shell";
 import { AssignmentForm, RecordCustomerSelection } from "@/components/admin/admin-actions";
 import { findSupplierMatches, resolveDeliveryLocation } from "@/lib/matching/suppliers";
 import { AttachmentList } from "@/components/attachments/attachment-list";
+import { categoryResponsibilityNotice } from "@/lib/categories/catalogue";
 
 export default async function AdminRequestPage({ params }: { params: Promise<{ id: string }> }) {
   await requireAdminPage();
@@ -13,7 +14,7 @@ export default async function AdminRequestPage({ params }: { params: Promise<{ i
   const request = await prisma.quoteRequest.findUnique({
     where: { id },
     include: {
-      category: true,
+      category: { include: { parent: { select: { slug: true } } } },
       attachments: { orderBy: { createdAt: "asc" } },
       assignments: {
         include: { supplierCompany: true, quotation: true },
@@ -22,6 +23,7 @@ export default async function AdminRequestPage({ params }: { params: Promise<{ i
     },
   });
   if (!request) notFound();
+  const responsibilityNotice = categoryResponsibilityNotice(request.category.slug, request.category.parent?.slug);
   const resolution = await resolveDeliveryLocation(request);
   const suppliers = await findSupplierMatches(prisma, request, resolution.location);
   return <>
@@ -34,6 +36,7 @@ export default async function AdminRequestPage({ params }: { params: Promise<{ i
       <section className="panel request-section">
         <div className="section-title"><MessageSquareText size={18}/><div><p className="eyebrow">{request.customerConfirmationMessageId ? "Confirmed through WhatsApp" : "Portal request"}</p><h2>Customer brief</h2></div></div>
         <p className="request-summary">{request.summary}</p>
+        {responsibilityNotice && <div className="honesty-note">{responsibilityNotice}</div>}
         <div className="detail-list">
           <div><dt>Budget</dt><dd>{request.customerBudget === null ? "Not supplied" : new Intl.NumberFormat("en-GB", { style: "currency", currency: request.currency }).format(Number(request.customerBudget))}</dd></div>
           <div><dt>Published</dt><dd>{request.publishedAt?.toLocaleString("en-GB") ?? "Not published"}</dd></div>

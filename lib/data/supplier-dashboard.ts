@@ -108,7 +108,7 @@ export async function getSupplierRequest(
     where: { supplierCompanyId, quoteRequest: { reference } },
     include: {
       quoteRequest: {
-        include: { category: true, items: true, attachments: true },
+        include: { category: { include: { parent: { select: { slug: true } } } }, items: true, attachments: true },
       },
       quotation: { include: { attachments: true, contactAccess: true } },
     },
@@ -118,6 +118,6 @@ export async function getSupplierRequest(
 export async function getSupplierOpportunity(reference: string) {
   return prisma.supplierOpportunity.findUnique({
     where: { reference },
-    include: { category: true },
+    include: { category: { include: { parent: { select: { slug: true } } } } },
   });
 }

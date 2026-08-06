@@ -7,7 +7,7 @@ import {
 } from "@/components/dashboard/management-forms";
 import { OnboardingReadiness } from "@/components/dashboard/onboarding-readiness";
 import { supplierApprovalReadiness } from "@/lib/suppliers/onboarding";
-import { launchCategoryRootId } from "@/lib/categories/catalogue";
+import { launchedSupplierCategoryWhere } from "@/lib/categories/catalogue";
 
 export const dynamic = "force-dynamic";
 export default async function CompanyPage() {
@@ -21,7 +21,7 @@ export default async function CompanyPage() {
     },
   });
   const categories = await prisma.productCategory.findMany({
-    where: { active: true, parentId: launchCategoryRootId },
+    where: launchedSupplierCategoryWhere(),
     include: { parent: { select: { name: true } } },
     orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
   });

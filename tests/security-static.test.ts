@@ -310,6 +310,25 @@ describe("security foundation static controls", () => {
     expect(coverageRoute).toContain('action: "COVERAGE.CREATED"');
   });
 
+  it("keeps staged catalogue groups out of supplier and WhatsApp intake until an audited admin launch", () => {
+    const supplierRoute = read("app/api/supplier/company/route.ts");
+    const adminRoute = read("app/api/admin/categories/[id]/route.ts");
+    const processor = read("lib/whatsapp/processor.ts");
+    const migration = read("supabase/migrations/20260806161549_stage_future_product_catalogues.sql");
+    expect(supplierRoute).toContain("launchedSupplierCategoryWhere()");
+    expect(supplierRoute).toContain("productCategoryId: { in: selectableIds, notIn: categoryIds }");
+    expect(adminRoute).toContain('"ADMIN.CATEGORY_GROUP_LAUNCHED"');
+    expect(adminRoute).toContain('"ADMIN.CATEGORY_GROUP_TAKEN_OFFLINE"');
+    expect(adminRoute).toContain('category.slug === "fire-doors"');
+    expect(adminRoute).toContain("writeAuditLog");
+    expect(processor).toContain("launchedIntakeCategoryWhere()");
+    expect(processor).toContain('action: "WHATSAPP.UNLAUNCHED_CATEGORY_BLOCKED"');
+    expect(migration).toContain("'bespoke-metal-fabrication'");
+    expect(migration).toContain("'garage-industrial-specialist-doors'");
+    expect(migration).toContain("'fire-doors'");
+    expect(migration).toContain("'audit_future_product_catalogues_staged_v1'");
+  });
+
   it("allows approved suppliers to browse only a safe opportunity projection and gates claims on membership", () => {
     const migration = read("supabase/migrations/20260805135021_supplier_opportunity_marketplace.sql");
     const claimRoute = read("app/api/opportunities/[reference]/claim/route.ts");

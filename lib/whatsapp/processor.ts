@@ -2,7 +2,12 @@ import "server-only";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { Prisma, type Attachment, type WhatsAppJob } from "@prisma/client";
 import { applicationOrigin, metaContactTemplate, metaQuoteTemplate, whatsappConciergeConfig, whatsappMessagingPolicy } from "@/lib/config";
-import { launchCategoryRootId, normalizeLaunchCategorySlug } from "@/lib/categories/catalogue";
+import {
+  categoryResponsibilityNotice,
+  launchedIntakeCategoryWhere,
+  normalizeLaunchCategorySlug,
+  unavailableCatalogueForConversation,
+} from "@/lib/categories/catalogue";
 import { runAsDatabaseWorker } from "@/lib/db";
 import { analyzeQuoteAttachment, quoteAttachmentAnalysisSchema, type QuoteAttachmentAnalysis } from "@/lib/ai/attachment-intake";
 import { extractQuoteIntake, quoteDraftSchema, type QuoteDraft } from "@/lib/ai/quote-intake";
@@ -519,7 +524,7 @@ export function isConsent(value: string) {
   return /^(continue|i agree|agree)$/i.test(value.trim());
 }
 
-export function formatConfirmation(draft: QuoteDraft, categoryName: string, attachmentCount = 0, firstName: string | null = null) {
+export function formatConfirmation(draft: QuoteDraft, categoryName: string, attachmentCount = 0, firstName: string | null = null, responsibilityNotice: string | null = null) {
   const items = draft.items.map((item, index) => (
     `${index + 1}. ${item.quantity} ${item.unit} — ${item.description}${item.specification ? ` — ${item.specification}` : ""}`
   )).join("\n");
@@ -536,6 +541,7 @@ export function formatConfirmation(draft: QuoteDraft, categoryName: string, atta
       ? `Files: ${attachmentCount} received securely and added to this job`
       : "For the most accurate pricing, send a photo, drawing or PDF now if you have one. You can still continue without a file.",
     draft.customerBudget === null ? null : `Budget: £${draft.customerBudget.toLocaleString("en-GB", { maximumFractionDigits: 2 })}`,
+    responsibilityNotice,
     "Reply YES or CONFIRM to send it, or tell me what to change.",
   ].filter(Boolean).join("\n\n");
 }
@@ -675,9 +681,10 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
   const confirmationMessage = loaded.whatsappMessage;
   if (!confirmationMessage) throw new Error("CONFIRMATION_MESSAGE_NOT_FOUND");
   const category = await runAsDatabaseWorker("whatsapp_ai", (tx) => tx.productCategory.findUnique({
-    where: { slug: draft.categorySlug ?? "" }, select: { id: true, name: true, active: true },
+    where: { slug: draft.categorySlug ?? "" },
+    select: { id: true, name: true, active: true, parent: { select: { active: true } } },
   }));
-  if (!category?.active || !draftIsComplete(draft)) throw new Error("QUOTE_DRAFT_INCOMPLETE");
+  if (!category?.active || category.parent?.active === false || !draftIsComplete(draft)) throw new Error("QUOTE_DRAFT_INCOMPLETE");
   const delivery = await lookupPostcode(draft.deliveryPostcode!);
   const now = new Date();
   const { quoteResponseHours, distributionLimit } = whatsappConciergeConfig();
@@ -1281,11 +1288,10 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   }
 
   const categories = await runAsDatabaseWorker("whatsapp_ai", (tx) => tx.productCategory.findMany({
-    where: {
-      active: true,
-      OR: [{ id: launchCategoryRootId }, { parentId: launchCategoryRootId }],
-    }, orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
-    select: { slug: true, name: true, description: true }, take: 100,
+    where: launchedIntakeCategoryWhere(),
+    orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
+    select: { slug: true, name: true, description: true, parent: { select: { slug: true } } },
+    take: 100,
   }));
   if (!categories.length) throw new Error("NO_PRODUCT_CATEGORIES");
   const messages = refreshed.conversation.messages
@@ -1318,6 +1324,21 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
       }
       return parts;
     });
+  const unavailableCatalogue = unavailableCatalogueForConversation(
+    messages.filter((message) => message.direction === "INBOUND").map((message) => message.text).join("\n"),
+    categories.map((category) => category.slug),
+  );
+  if (unavailableCatalogue) {
+    await runAsDatabaseWorker("whatsapp_ai", (tx) => writeWhatsAppAudit(tx, {
+      action: "WHATSAPP.UNLAUNCHED_CATEGORY_BLOCKED",
+      entityType: "Conversation",
+      entityId: refreshed.conversation!.id,
+      summary: "Customer request for an unlaunched product catalogue was not routed",
+      metadata: { jobId: job.id, code: unavailableCatalogue.code },
+    }));
+    await sendReply(job, refreshed.conversation, unavailableCatalogue.reply);
+    return undefined;
+  }
   const { result, telemetry } = await extractQuoteIntake({
     messages,
     currentDraft: draft,
@@ -1445,7 +1466,13 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     ? repeatClarification(questionKey)
     : null;
   const reply = ready && category
-      ? formatConfirmation(result.draft, category.name, attachmentCount, preferredFirstName)
+      ? formatConfirmation(
+        result.draft,
+        category.name,
+        attachmentCount,
+        preferredFirstName,
+        categoryResponsibilityNotice(category.slug, category.parent?.slug),
+      )
       : `${mediaAcknowledgement ? `${mediaAcknowledgement}\n\n` : ""}${compositeDoorPhoto.shouldAsk ? compositeDoorStylePhotoPrompt() : roofGlazingSpecification.shouldAsk ? roofGlazingSpecificationPrompt(roofGlazingSpecification) : tradeClarification ?? repeatedClarification ?? enforcedClarification ?? result.reply}${rejectedMedia ? "\n\nOne uploaded file could not be accepted. Please send a genuine JPG, PNG or PDF within the size limit." : ""}`;
   await sendReply(
     job,
