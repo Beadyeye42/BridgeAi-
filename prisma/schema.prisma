@@ -428,19 +428,21 @@ model SupplierInvite {
 }
 
 model CustomerContact {
-  id                   String               @id @default(cuid())
-  displayNameEncrypted Bytes?
-  phoneEncrypted       Bytes
-  phoneHash            String               @unique
-  emailEncrypted       Bytes?
-  emailHash            String?
-  consentRecordedAt    DateTime?
-  marketingConsentAt   DateTime?
-  createdAt            DateTime             @default(now())
-  updatedAt            DateTime             @updatedAt
-  conversations        Conversation[]
-  quoteRequests        QuoteRequest[]
-  contactAccess        ContactAccessGrant[]
+  id                           String               @id @default(cuid())
+  displayNameEncrypted         Bytes?
+  preferredFirstNameEncrypted  Bytes?
+  preferredNameAskedAt         DateTime?
+  phoneEncrypted               Bytes
+  phoneHash                    String               @unique
+  emailEncrypted               Bytes?
+  emailHash                    String?
+  consentRecordedAt            DateTime?
+  marketingConsentAt           DateTime?
+  createdAt                    DateTime             @default(now())
+  updatedAt                    DateTime             @updatedAt
+  conversations                Conversation[]
+  quoteRequests                QuoteRequest[]
+  contactAccess                ContactAccessGrant[]
 
   @@index([emailHash])
   @@schema("bridge_ai")

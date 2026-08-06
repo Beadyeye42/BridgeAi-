@@ -178,8 +178,22 @@ describe("security foundation static controls", () => {
   it("keeps customer display names encrypted in the application schema", () => {
     const schema = read("prisma/schema.prisma");
     const customer = schema.slice(schema.indexOf("model CustomerContact"), schema.indexOf("model Conversation"));
-    expect(customer).toContain("displayNameEncrypted Bytes?");
+    expect(customer).toMatch(/displayNameEncrypted\s+Bytes\?/);
+    expect(customer).toMatch(/preferredFirstNameEncrypted\s+Bytes\?/);
+    expect(customer).toMatch(/preferredNameAskedAt\s+DateTime\?/);
     expect(customer).not.toMatch(/\n\s+displayName\s+String/);
+    expect(customer).not.toMatch(/\n\s+preferredFirstName\s+String/);
+
+    const migration = read("supabase/migrations/20260806150303_whatsapp_preferred_first_names.sql");
+    expect(migration).toContain('ADD COLUMN "preferredFirstNameEncrypted" bytea');
+    expect(migration).toContain("'PREFERRED_NAME'");
+    const processor = read("lib/whatsapp/processor.ts");
+    expect(processor).toContain("encryptPrivateValue(firstName)");
+    expect(processor).toContain('action = existing ? "WHATSAPP.PREFERRED_FIRST_NAME_UPDATED" : "WHATSAPP.PREFERRED_FIRST_NAME_SAVED"');
+    expect(processor).toContain('action: "WHATSAPP.PREFERRED_FIRST_NAME_REQUESTED"');
+    expect(processor).not.toContain("metadata: { messageId: inbound.id, source, firstName");
+    expect(processor).toContain("isPreferredNameMessage");
+    expect(read("lib/ai/quote-intake.ts")).toContain("always leave draft.customerName null");
   });
 
   it("cancels only encrypted WhatsApp drafts and preserves confirmed quote requests", () => {

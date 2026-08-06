@@ -14,6 +14,12 @@ import { decryptPrivateValue, encryptPrivateValue } from "@/lib/security/encrypt
 import { sanitizeCustomerImage } from "@/lib/security/customer-image";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { PRIVATE_BUCKET } from "@/lib/storage";
+import {
+  explicitPreferredFirstName,
+  personaliseOpening,
+  preferredFirstNameReply,
+  profileFirstName,
+} from "@/lib/whatsapp/customer-name";
 import { downloadMetaMedia, sendMetaTemplate, sendMetaText } from "@/lib/whatsapp/meta-client";
 import { writeWhatsAppSystemEvent } from "@/lib/whatsapp/system-events";
 import {
@@ -511,12 +517,14 @@ export function isConsent(value: string) {
   return /^(continue|i agree|agree)$/i.test(value.trim());
 }
 
-export function formatConfirmation(draft: QuoteDraft, categoryName: string, attachmentCount = 0) {
+export function formatConfirmation(draft: QuoteDraft, categoryName: string, attachmentCount = 0, firstName: string | null = null) {
   const items = draft.items.map((item, index) => (
     `${index + 1}. ${item.quantity} ${item.unit} — ${item.description}${item.specification ? ` — ${item.specification}` : ""}`
   )).join("\n");
   return [
-    "Great — here’s the job I’ll send to suitable approved suppliers:",
+    firstName
+      ? `Great, ${firstName} — here’s the job I’ll send to suitable approved suppliers:`
+      : "Great — here’s the job I’ll send to suitable approved suppliers:",
     `Project: ${draft.title}`,
     `Category: ${categoryName}`,
     `Delivery: ${draft.deliveryPostcode}`,
@@ -528,6 +536,132 @@ export function formatConfirmation(draft: QuoteDraft, categoryName: string, atta
     draft.customerBudget === null ? null : `Budget: £${draft.customerBudget.toLocaleString("en-GB", { maximumFractionDigits: 2 })}`,
     "Reply YES or CONFIRM to send it, or tell me what to change.",
   ].filter(Boolean).join("\n\n");
+}
+
+function encryptedPreferredFirstName(conversation: NonNullable<LoadedJob["conversation"]>) {
+  const encrypted = conversation.customerContact.preferredFirstNameEncrypted;
+  return encrypted ? decryptPrivateValue(encrypted) : null;
+}
+
+function explicitNameFromRecentMessages(
+  conversation: NonNullable<LoadedJob["conversation"]>,
+) {
+  const candidates = conversation.messages
+    .filter((message) => message.direction === "INBOUND" && message.bodyEncrypted)
+    .map((message) => decryptPrivateValue(message.bodyEncrypted!));
+  for (const candidate of candidates) {
+    const firstName = explicitPreferredFirstName(candidate);
+    if (firstName) return firstName;
+  }
+  return null;
+}
+
+async function resolvePreferredFirstName(
+  conversation: NonNullable<LoadedJob["conversation"]>,
+  inbound: NonNullable<LoadedJob["whatsappMessage"]>,
+  text: string,
+  allowAsk: boolean,
+) {
+  const existing = encryptedPreferredFirstName(conversation);
+  const currentExplicit = explicitPreferredFirstName(text);
+  const askedReply = conversation.aiLastQuestionKey === "PREFERRED_NAME"
+    ? preferredFirstNameReply(text)
+    : null;
+  const historicalExplicit = !currentExplicit && !askedReply
+    ? explicitNameFromRecentMessages(conversation)
+    : null;
+  const explicit = currentExplicit ?? historicalExplicit;
+  const profile = !existing && !explicit && !askedReply && conversation.customerContact.displayNameEncrypted
+    ? profileFirstName(decryptPrivateValue(conversation.customerContact.displayNameEncrypted))
+    : null;
+  const firstName = explicit ?? askedReply ?? existing ?? profile;
+  const source = explicit ? "explicit" : askedReply ? "asked_reply" : profile ? "whatsapp_profile" : null;
+
+  if (firstName && (!existing || firstName !== existing)) {
+    const action = existing ? "WHATSAPP.PREFERRED_FIRST_NAME_UPDATED" : "WHATSAPP.PREFERRED_FIRST_NAME_SAVED";
+    const updated = await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
+      await tx.customerContact.update({
+        where: { id: conversation.customerContactId },
+        data: { preferredFirstNameEncrypted: encryptPrivateValue(firstName) },
+      });
+      const next = await tx.conversation.update({
+        where: { id: conversation.id },
+        data: conversation.aiLastQuestionKey === "PREFERRED_NAME" ? { aiLastQuestionKey: null } : {},
+        include: {
+          customerContact: true,
+          messages: {
+            orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+            take: 30,
+            include: { attachments: true },
+          },
+        },
+      });
+      await writeWhatsAppAudit(tx, {
+        action,
+        entityType: "CustomerContact",
+        entityId: conversation.customerContactId,
+        summary: existing
+          ? "Customer updated their encrypted preferred first name"
+          : "Encrypted customer preferred first name recorded",
+        metadata: { messageId: inbound.id, source },
+      });
+      return next;
+    });
+    return { conversation: updated, firstName, capturedThisTurn: true, shouldAsk: false };
+  }
+
+  if (firstName) {
+    return { conversation, firstName, capturedThisTurn: false, shouldAsk: false };
+  }
+
+  if (allowAsk && !conversation.customerContact.preferredNameAskedAt) {
+    const askedAt = new Date();
+    const updated = await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
+      await tx.customerContact.update({
+        where: { id: conversation.customerContactId },
+        data: { preferredNameAskedAt: askedAt },
+      });
+      const next = await tx.conversation.update({
+        where: { id: conversation.id },
+        data: { aiLastQuestionKey: "PREFERRED_NAME" },
+        include: {
+          customerContact: true,
+          messages: {
+            orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+            take: 30,
+            include: { attachments: true },
+          },
+        },
+      });
+      await writeWhatsAppAudit(tx, {
+        action: "WHATSAPP.PREFERRED_FIRST_NAME_REQUESTED",
+        entityType: "CustomerContact",
+        entityId: conversation.customerContactId,
+        summary: "Customer was asked once for a preferred first name",
+        metadata: { messageId: inbound.id },
+      });
+      return next;
+    });
+    return { conversation: updated, firstName: null, capturedThisTurn: false, shouldAsk: true };
+  }
+
+  if (conversation.aiLastQuestionKey === "PREFERRED_NAME") {
+    const updated = await runAsDatabaseWorker("whatsapp_ai", (tx) => tx.conversation.update({
+      where: { id: conversation.id },
+      data: { aiLastQuestionKey: null },
+      include: {
+        customerContact: true,
+        messages: {
+          orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+          take: 30,
+          include: { attachments: true },
+        },
+      },
+    }));
+    return { conversation: updated, firstName: null, capturedThisTurn: false, shouldAsk: false };
+  }
+
+  return { conversation, firstName: null, capturedThisTurn: false, shouldAsk: false };
 }
 
 export function draftIsComplete(draft: QuoteDraft) {
@@ -876,6 +1010,8 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   if (!initialConversation || !inbound || inbound.direction !== "INBOUND") throw new Error("INBOUND_JOB_INVALID");
   let conversation: NonNullable<LoadedJob["conversation"]> = initialConversation;
   let justConsented = false;
+  let preferredFirstName: string | null = null;
+  let nameCapturedThisTurn = false;
   const text = inbound.bodyEncrypted ? decryptPrivateValue(inbound.bodyEncrypted) : "";
 
   const controlMessage = isConversationOptOut(text)
@@ -951,6 +1087,20 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     });
     conversation = consentedConversation;
     justConsented = true;
+  }
+
+  const preferredName = await resolvePreferredFirstName(
+    conversation,
+    inbound,
+    text,
+    justConsented || (!controlMessage && conversation.aiStage === "COLLECTING"),
+  );
+  conversation = preferredName.conversation;
+  preferredFirstName = preferredName.firstName;
+  nameCapturedThisTurn = preferredName.capturedThisTurn;
+  if (preferredName.shouldAsk) {
+    await sendReply(job, conversation, "Before we start, what should I call you? Just your first name is fine.");
+    return undefined;
   }
 
   if (isCancelAllDraftsRequest(text) || isCancelDraftRequest(text)) {
@@ -1052,7 +1202,11 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     const distributionMessage = request.assignmentCount > 0
       ? `It has been sent to ${request.assignmentCount} approved supplier${request.assignmentCount === 1 ? "" : "s"}.`
       : "It is safely recorded and awaiting an eligible supplier match. A Bridge AI administrator can review the distribution.";
-    await sendReply(job, refreshed.conversation, `Perfect — request ${request.request.reference} is live. ${distributionMessage} I’ll bring the available prices and lead times back here while keeping identities private. Reply QUOTES for an update, or NEW QUOTE whenever you have another job to price.`);
+    await sendReply(job, refreshed.conversation, personaliseOpening(
+      `Perfect — request ${request.request.reference} is live. ${distributionMessage} I’ll bring the available prices and lead times back here while keeping identities private. Reply QUOTES for an update, or NEW QUOTE whenever you have another job to price.`,
+      preferredFirstName,
+      true,
+    ));
     return undefined;
   }
 
@@ -1120,9 +1274,15 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
       const parts: Array<{ direction: "INBOUND" | "OUTBOUND"; text: string }> = [];
       if (message.bodyEncrypted) {
         const body = decryptPrivateValue(message.bodyEncrypted);
+        const isPreferredNameOnly = preferredFirstName !== null
+          && preferredFirstNameReply(body)?.toLocaleLowerCase("en-GB") === preferredFirstName.toLocaleLowerCase("en-GB");
+        const isPreferredNameMessage = explicitPreferredFirstName(body) !== null
+          || isPreferredNameOnly
+          || body === "Before we start, what should I call you? Just your first name is fine.";
         if (!(justConsented && message.id === inbound.id && isConsent(body))
           && !isCancelAllDraftsRequest(body)
-          && !isCancelDraftRequest(body)) {
+          && !isCancelDraftRequest(body)
+          && !isPreferredNameMessage) {
           parts.push({ direction: message.direction, text: body });
         }
       }
@@ -1262,9 +1422,13 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     ? repeatClarification(questionKey)
     : null;
   const reply = ready && category
-      ? formatConfirmation(result.draft, category.name, attachmentCount)
+      ? formatConfirmation(result.draft, category.name, attachmentCount, preferredFirstName)
       : `${mediaAcknowledgement ? `${mediaAcknowledgement}\n\n` : ""}${compositeDoorPhoto.shouldAsk ? compositeDoorStylePhotoPrompt() : roofGlazingSpecification.shouldAsk ? roofGlazingSpecificationPrompt(roofGlazingSpecification) : tradeClarification ?? repeatedClarification ?? enforcedClarification ?? result.reply}${rejectedMedia ? "\n\nOne uploaded file could not be accepted. Please send a genuine JPG, PNG or PDF within the size limit." : ""}`;
-  await sendReply(job, refreshed.conversation, reply);
+  await sendReply(
+    job,
+    refreshed.conversation,
+    personaliseOpening(reply, preferredFirstName, !ready && (justConsented || nameCapturedThisTurn)),
+  );
   return telemetry;
 }
 

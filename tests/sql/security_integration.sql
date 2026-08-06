@@ -267,8 +267,11 @@ BEGIN
   EXCEPTION WHEN unique_violation THEN NULL;
   END;
 
-  INSERT INTO bridge_ai."CustomerContact" (id,"displayNameEncrypted","phoneEncrypted","phoneHash","createdAt","updatedAt")
-  VALUES ('security_customer',decode('00','hex'),decode('00','hex'),'security-phone-hash',now(),now());
+  INSERT INTO bridge_ai."CustomerContact" (
+    id,"displayNameEncrypted","preferredFirstNameEncrypted","preferredNameAskedAt","phoneEncrypted","phoneHash","createdAt","updatedAt"
+  ) VALUES (
+    'security_customer',decode('00','hex'),decode('01','hex'),now(),decode('00','hex'),'security-phone-hash',now(),now()
+  );
   INSERT INTO bridge_ai."Conversation" (id,"customerContactId",channel,"externalConversationId","createdAt","updatedAt")
   VALUES ('security_conversation','security_customer','WHATSAPP','wa:security-phone-hash',now(),now());
   INSERT INTO bridge_ai."WhatsAppMessage" (
@@ -291,6 +294,12 @@ BEGIN
     RAISE EXCEPTION 'invalid WhatsApp AI question state accepted';
   EXCEPTION WHEN check_violation THEN NULL;
   END;
+  UPDATE bridge_ai."Conversation" SET "aiLastQuestionKey"='PREFERRED_NAME' WHERE id='security_conversation';
+  IF NOT EXISTS (
+    SELECT 1 FROM bridge_ai."Conversation"
+    WHERE id='security_conversation' AND "aiLastQuestionKey"='PREFERRED_NAME'
+  ) THEN RAISE EXCEPTION 'preferred-name question state was not retained'; END IF;
+  UPDATE bridge_ai."Conversation" SET "aiLastQuestionKey"=NULL WHERE id='security_conversation';
   BEGIN
     UPDATE bridge_ai."Conversation" SET "aiUnproductiveTurns"=-1 WHERE id='security_conversation';
     RAISE EXCEPTION 'negative WhatsApp AI loop count accepted';
