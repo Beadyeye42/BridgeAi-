@@ -1,7 +1,7 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Check, ImageIcon, LoaderCircle, Plus, RotateCcw, Send, ShieldAlert } from "lucide-react";
+import { Check, Gift, ImageIcon, LoaderCircle, Plus, RotateCcw, Send, ShieldAlert, XCircle } from "lucide-react";
 async function call(url:string,method:string,body:unknown){const r=await fetch(url,{method,headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error??"Action failed");return j}
 export function SupplierStatusControl({id,status,approvalReady=true,approvalBlockers=[]}:{id:string;status:string;approvalReady?:boolean;approvalBlockers?:string[]}){const router=useRouter();const[busy,setBusy]=useState(false);const[message,setMessage]=useState("");async function update(next:string){const note=next==="SUSPENDED"?window.prompt("Suspension reason (required for audit context)")??"":undefined;if(next==="SUSPENDED"&&!note)return;setBusy(true);setMessage("");try{await call(`/api/admin/suppliers/${id}/status`,"PATCH",{status:next,note});router.refresh()}catch(e){setMessage(e instanceof Error?e.message:"Action failed")}finally{setBusy(false)}}return <div className="status-control"><div className="inline-actions">{status!=="APPROVED"&&<button className="button button-dark" disabled={busy||!approvalReady} title={!approvalReady?`Incomplete: ${approvalBlockers.join(", ")}`:undefined} onClick={()=>update("APPROVED")}><Check size={14}/>Approve</button>}{status!=="SUSPENDED"&&<button className="button button-outline danger" disabled={busy} onClick={()=>update("SUSPENDED")}><ShieldAlert size={14}/>Suspend</button>}{busy&&<LoaderCircle className="spin" size={16}/>}</div>{!approvalReady&&status!=="APPROVED"&&<small className="approval-blocked">Complete {approvalBlockers.join(", ")} before approval.</small>}{message&&<small className="error-text">{message}</small>}</div>}
 
@@ -12,6 +12,53 @@ export function RecordCustomerSelection({quotationId}:{quotationId:string}){cons
 export function CategoryCreateForm(){const router=useRouter();const[busy,setBusy]=useState(false);const[message,setMessage]=useState("");async function submit(e:React.FormEvent<HTMLFormElement>){e.preventDefault();setBusy(true);const form=e.currentTarget;const d=new FormData(form);try{await call("/api/admin/categories","POST",{name:d.get("name"),slug:d.get("slug"),description:d.get("description"),active:true,parentId:null});form.reset();setMessage("Category created.");router.refresh()}catch(err){setMessage(err instanceof Error?err.message:"Create failed")}finally{setBusy(false)}}return <form className="panel form-section" onSubmit={submit}><div className="section-heading"><div><p className="eyebrow">Catalogue</p><h2>Add category</h2></div><Plus size={20}/></div><div className="form-stack"><label className="form-control"><span>Name</span><input name="name" required/></label><label className="form-control"><span>Slug</span><input name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required/></label><label className="form-control"><span>Description</span><textarea name="description" rows={3}/></label><button className="button button-dark" disabled={busy}>{busy?<LoaderCircle className="spin" size={14}/>:<Plus size={14}/>}Create category</button>{message&&<p className="form-result">{message}</p>}</div></form>}
 export function ResolveEventButton({id}:{id:string}){const router=useRouter();const[busy,setBusy]=useState(false);return <button className="button button-outline" disabled={busy} onClick={async()=>{setBusy(true);try{await call(`/api/admin/system/${id}/resolve`,"POST",{});router.refresh()}finally{setBusy(false)}}}>{busy?<LoaderCircle className="spin" size={14}/>:<Check size={14}/>}Resolve</button>}
 export function RunProductionMonitoringButton(){const router=useRouter();const[busy,setBusy]=useState(false);const[message,setMessage]=useState("");return <div className="status-control"><button className="button button-dark" disabled={busy} onClick={async()=>{setBusy(true);setMessage("");try{const result=await call("/api/admin/system/monitor","POST",{});setMessage(result.configured?`${result.sent} alert${result.sent===1?"":"s"} sent; ${result.queued} newly queued.`:`Alerts queued, but email delivery needs configuration.`);router.refresh()}catch(error){setMessage(error instanceof Error?error.message:"Monitoring check failed")}finally{setBusy(false)}}}>{busy?<LoaderCircle className="spin" size={14}/>:<Send size={14}/>}Run monitoring check</button>{message&&<small className="form-result">{message}</small>}</div>}
+
+type AdminSubscriptionSummary = {
+  accessSource: string;
+  status: string;
+  currentPeriodEnd: string | null;
+  complimentaryReason: string | null;
+} | null;
+
+export function ComplimentaryMembershipControl({ id, approved, subscription }: { id: string; approved: boolean; subscription: AdminSubscriptionSummary }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const activeComplimentary = subscription?.accessSource === "COMPLIMENTARY"
+    && subscription.status === "ACTIVE"
+    && (!subscription.currentPeriodEnd || new Date(subscription.currentPeriodEnd) > new Date());
+  const paidMembershipInProgress = subscription?.accessSource === "STRIPE"
+    && !["CANCELLED", "EXPIRED"].includes(subscription.status);
+
+  async function submit(event: React.FormEvent<HTMLFormElement>, action: "GRANT" | "REVOKE") {
+    event.preventDefault(); setBusy(true); setMessage("");
+    const data = new FormData(event.currentTarget);
+    try {
+      await call(`/api/admin/suppliers/${id}/membership`, "PATCH", action === "GRANT"
+        ? { action, durationDays: data.get("durationDays"), reason: data.get("reason") }
+        : { action, reason: data.get("revokeReason") });
+      setMessage(action === "GRANT" ? "Complimentary membership granted and audit logged." : "Complimentary membership revoked and audit logged.");
+      router.refresh();
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Membership update failed"); }
+    finally { setBusy(false); }
+  }
+
+  return <section className="panel form-section spaced-section">
+    <div className="section-heading"><div><p className="eyebrow">Promotional access</p><h2>Complimentary membership</h2></div><Gift size={20}/></div>
+    {activeComplimentary ? <>
+      <div className="honesty-note">Active until {new Date(subscription.currentPeriodEnd!).toLocaleDateString("en-GB")}. Reason: {subscription.complimentaryReason}</div>
+      <form className="form-stack" onSubmit={(event) => submit(event, "REVOKE")}>
+        <label className="form-control"><span>Reason for revoking access</span><input name="revokeReason" minLength={3} maxLength={500} required /></label>
+        <button className="button button-outline danger" disabled={busy}>{busy ? <LoaderCircle className="spin" size={14}/> : <XCircle size={14}/>}Revoke free membership</button>
+      </form>
+    </> : paidMembershipInProgress ? <div className="honesty-note">This company has a live or unresolved Stripe membership. Complimentary access cannot replace paid billing.</div> : !approved ? <div className="honesty-note">Approve the supplier before granting promotional or testing access.</div> : <form className="form-stack" onSubmit={(event) => submit(event, "GRANT")}>
+      <label className="form-control"><span>Access duration</span><select name="durationDays" defaultValue="30"><option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option><option value="183">6 months</option><option value="366">12 months</option></select></label>
+      <label className="form-control"><span>Promotional or testing reason</span><textarea name="reason" rows={3} minLength={3} maxLength={500} required placeholder="For example: launch partner testing" /></label>
+      <button className="button button-dark" disabled={busy}>{busy ? <LoaderCircle className="spin" size={14}/> : <Gift size={14}/>}Grant free membership</button>
+    </form>}
+    {message && <p className="form-result">{message}</p>}
+  </section>;
+}
 
 type AdminSupplierRecord = {
   id: string;

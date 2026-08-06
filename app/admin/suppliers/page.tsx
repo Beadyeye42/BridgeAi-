@@ -27,7 +27,7 @@ export default async function AdminSuppliers({ searchParams }: { searchParams: P
           <td>{supplier.foundingMemberNumber ? `#${supplier.foundingMemberNumber} / 100` : "—"}</td>
           <td>{supplier._count.memberships}</td>
           <td>{supplier._count.assignments}</td>
-          <td>{supplier.subscription ? <span className={`status-pill ${supplier.subscription.status.toLowerCase()}`}>{supplier.subscription.planCode} · {supplier.subscription.status}</span> : "—"}</td>
+          <td>{supplier.subscription ? <span className={`status-pill ${supplier.subscription.status.toLowerCase()}`}>{supplier.subscription.accessSource === "COMPLIMENTARY" ? "Complimentary" : supplier.subscription.planCode} · {supplier.subscription.status}</span> : "—"}</td>
           <td><Link className="button button-outline" href={`/admin/suppliers/${supplier.id}`}>Review <ArrowUpRight size={14} /></Link></td>
         </tr>)}</tbody>
       </table>

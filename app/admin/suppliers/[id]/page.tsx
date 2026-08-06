@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireAdminPage } from "@/lib/auth/guards";
 import { AdminHeading } from "@/components/admin/admin-shell";
-import { AdminSupplierEdit, SupplierStatusControl } from "@/components/admin/admin-actions";
+import { AdminSupplierEdit, ComplimentaryMembershipControl, SupplierStatusControl } from "@/components/admin/admin-actions";
 import { AccreditationReviewActions } from "@/components/admin/accreditation-actions";
 import { OnboardingReadiness } from "@/components/dashboard/onboarding-readiness";
 import { supplierApprovalReadiness } from "@/lib/suppliers/onboarding";
@@ -47,7 +47,7 @@ export default async function SupplierInspectPage({ params }: { params: Promise<
           <div><dt>Address</dt><dd>{[supplier.addressLine1, supplier.city, supplier.county, supplier.postcode].filter(Boolean).join(", ") || "—"}</dd></div>
           <div><dt>Average response</dt><dd>{averageResponse ? `${Math.round(averageResponse / 3600000)} hours` : "No completed responses"}</dd></div>
           <div><dt>Founding supplier place</dt><dd>{supplier.foundingMemberNumber ? `#${supplier.foundingMemberNumber} of 100` : "Allocated on approval"}</dd></div>
-          <div><dt>Subscription</dt><dd>{supplier.subscription ? `${supplier.subscription.planCode} · ${supplier.subscription.status}` : "None"}</dd></div>
+          <div><dt>Subscription</dt><dd>{supplier.subscription ? `${supplier.subscription.accessSource === "COMPLIMENTARY" ? "Complimentary" : supplier.subscription.planCode} · ${supplier.subscription.status}` : "None"}</dd></div>
         </dl>
         <p className="body-copy">{supplier.summary}</p>
       </section>
@@ -59,6 +59,7 @@ export default async function SupplierInspectPage({ params }: { params: Promise<
         <div className="entity-list">{supplier.memberships.map((membership) => <article className="entity-row" key={membership.id}><div><b>{membership.user.firstName} {membership.user.lastName}</b><small>{membership.user.email}</small></div><span className="status-pill">{membership.role}</span></article>)}</div>
       </section>
     </div>
+    <ComplimentaryMembershipControl id={id} approved={supplier.status === "APPROVED" && Boolean(supplier.foundingMemberNumber)} subscription={supplier.subscription ? { accessSource: supplier.subscription.accessSource, status: supplier.subscription.status, currentPeriodEnd: supplier.subscription.currentPeriodEnd?.toISOString() ?? null, complimentaryReason: supplier.subscription.complimentaryReason } : null} />
     <section className="panel form-section spaced-section">
       <div className="section-heading"><div><p className="eyebrow">Optional documents</p><h2>Accreditations & insurance</h2></div><FileBadge2 size={20} /></div>
       <div className="entity-list">

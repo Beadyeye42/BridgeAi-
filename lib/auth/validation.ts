@@ -91,6 +91,17 @@ export const notificationPreferenceSchema = z.object({
 
 export const teamInviteSchema = z.object({ email, role: z.enum(["MANAGER", "MEMBER"]) });
 export const adminSupplierStatusSchema = z.object({ status: z.enum(["APPROVED", "SUSPENDED", "REJECTED"]), note: z.string().trim().max(1000).optional() });
+export const adminComplimentaryMembershipSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("GRANT"),
+    durationDays: z.coerce.number().int().min(1, "Choose at least one day").max(366, "Complimentary access cannot exceed 366 days"),
+    reason: z.string().trim().min(3, "Enter a promotional or testing reason").max(500),
+  }),
+  z.object({
+    action: z.literal("REVOKE"),
+    reason: z.string().trim().min(3, "Enter a revocation reason").max(500),
+  }),
+]);
 export const adminSupplierEditSchema = z.object({
   legalName: z.string().trim().min(2).max(160),
   companyNumber: z.string().trim().min(2).max(32).transform((value) => value.toUpperCase()),

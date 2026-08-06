@@ -95,6 +95,15 @@ BEGIN
   GET DIAGNOSTICS affected_count = ROW_COUNT;
   IF affected_count <> 0 THEN RAISE EXCEPTION 'Supplier A updated Supplier B company'; END IF;
 
+  UPDATE bridge_ai."Subscription"
+  SET "accessSource"='COMPLIMENTARY',
+      "planCode"='bridge-ai-complimentary',
+      "complimentaryReason"='forbidden self grant',
+      "complimentaryGrantedAt"=now()
+  WHERE "supplierCompanyId"='security_company_a';
+  GET DIAGNOSTICS affected_count = ROW_COUNT;
+  IF affected_count <> 0 THEN RAISE EXCEPTION 'Supplier granted its own complimentary membership'; END IF;
+
   BEGIN
     UPDATE bridge_ai.supplier_companies SET status='SUSPENDED' WHERE id='security_company_a';
     RAISE EXCEPTION 'Supplier changed its own protected review state';

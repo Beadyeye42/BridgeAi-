@@ -188,6 +188,13 @@ enum SubscriptionStatus {
   @@schema("bridge_ai")
 }
 
+enum SubscriptionAccessSource {
+  STRIPE
+  COMPLIMENTARY
+
+  @@schema("bridge_ai")
+}
+
 enum NotificationType {
   NEW_QUOTE_REQUEST
   REQUEST_EXPIRING
@@ -293,6 +300,8 @@ model User {
   systemEventsResolved     SystemEvent[]             @relation("SystemEventResolver")
   accreditationsCreated    SupplierAccreditation[]   @relation("AccreditationCreator")
   accreditationsReviewed   SupplierAccreditation[]   @relation("AccreditationReviewer")
+  complimentaryGranted     Subscription[]            @relation("ComplimentaryMembershipGrantor")
+  complimentaryRevoked     Subscription[]            @relation("ComplimentaryMembershipRevoker")
 
   @@index([status])
   @@map("portal_profiles")
@@ -821,23 +830,35 @@ model CoverageArea {
 }
 
 model Subscription {
-  id                     String             @id @default(cuid())
-  supplierCompanyId      String             @unique
-  provider               String             @default("stripe")
-  providerCustomerId     String?            @unique
-  providerSubscriptionId String?            @unique
-  providerScheduleId     String?            @unique
-  planCode               String
-  status                 SubscriptionStatus
-  currentPeriodStart     DateTime?
-  currentPeriodEnd       DateTime?
-  trialEndsAt            DateTime?
-  cancelAtPeriodEnd      Boolean            @default(false)
-  createdAt              DateTime           @default(now())
-  updatedAt              DateTime           @updatedAt
-  supplierCompany        SupplierCompany    @relation(fields: [supplierCompanyId], references: [id], onDelete: Cascade)
+  id                            String                   @id @default(cuid())
+  supplierCompanyId             String                   @unique
+  provider                      String                   @default("stripe")
+  providerCustomerId            String?                  @unique
+  providerSubscriptionId        String?                  @unique
+  providerScheduleId            String?                  @unique
+  planCode                      String
+  status                        SubscriptionStatus
+  accessSource                  SubscriptionAccessSource @default(STRIPE)
+  currentPeriodStart            DateTime?
+  currentPeriodEnd              DateTime?
+  trialEndsAt                   DateTime?
+  cancelAtPeriodEnd             Boolean                  @default(false)
+  complimentaryReason           String?
+  complimentaryGrantedAt        DateTime?
+  complimentaryGrantedById      String?                  @db.Uuid
+  complimentaryRevokedAt        DateTime?
+  complimentaryRevokedById      String?                  @db.Uuid
+  complimentaryRevocationReason String?
+  createdAt                     DateTime                 @default(now())
+  updatedAt                     DateTime                 @updatedAt
+  supplierCompany               SupplierCompany          @relation(fields: [supplierCompanyId], references: [id], onDelete: Cascade)
+  complimentaryGrantedBy        User?                    @relation("ComplimentaryMembershipGrantor", fields: [complimentaryGrantedById], references: [id], onDelete: SetNull)
+  complimentaryRevokedBy        User?                    @relation("ComplimentaryMembershipRevoker", fields: [complimentaryRevokedById], references: [id], onDelete: SetNull)
 
   @@index([status, currentPeriodEnd])
+  @@index([accessSource, status, currentPeriodEnd])
+  @@index([complimentaryGrantedById])
+  @@index([complimentaryRevokedById])
   @@schema("bridge_ai")
 }
 

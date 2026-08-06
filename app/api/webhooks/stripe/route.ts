@@ -22,25 +22,50 @@ async function syncSubscription(subscription: Stripe.Subscription) {
   const companyId = subscription.metadata.supplierCompanyId;
   if (!companyId) throw new Error("STRIPE_SUBSCRIPTION_COMPANY_MISSING");
   const item = subscription.items.data[0];
+  const current = await trustedPrisma.subscription.findUnique({ where: { supplierCompanyId: companyId } });
+  const complimentaryActive = current?.accessSource === "COMPLIMENTARY"
+    && current.status === "ACTIVE"
+    && Boolean(current.currentPeriodEnd && current.currentPeriodEnd > new Date());
+  if (complimentaryActive) {
+    await trustedPrisma.auditLog.create({ data: {
+      supplierCompanyId: companyId,
+      action: "BILLING.STRIPE_SYNC_DEFERRED",
+      entityType: "Subscription",
+      entityId: subscription.id,
+      summary: "Stripe membership update did not replace an active administrator-granted complimentary period",
+      metadata: { stripeStatus: subscription.status, complimentaryExpiresAt: current.currentPeriodEnd?.toISOString() },
+    } });
+    return;
+  }
   await trustedPrisma.subscription.upsert({
     where: { supplierCompanyId: companyId },
     update: {
+      provider: "stripe",
       providerCustomerId: typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id,
       providerSubscriptionId: subscription.id,
       providerScheduleId: typeof subscription.schedule === "string" ? subscription.schedule : subscription.schedule?.id ?? null,
       planCode: subscription.metadata.planCode || FOUNDING_PLAN_CODE,
       status: localSubscriptionStatus(subscription.status),
+      accessSource: "STRIPE",
       currentPeriodStart: item?.current_period_start ? new Date(item.current_period_start * 1000) : null,
       currentPeriodEnd: item?.current_period_end ? new Date(item.current_period_end * 1000) : null,
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
+      complimentaryReason: null,
+      complimentaryGrantedAt: null,
+      complimentaryGrantedById: null,
+      complimentaryRevokedAt: null,
+      complimentaryRevokedById: null,
+      complimentaryRevocationReason: null,
     },
     create: {
       supplierCompanyId: companyId,
+      provider: "stripe",
       providerCustomerId: typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id,
       providerSubscriptionId: subscription.id,
       providerScheduleId: typeof subscription.schedule === "string" ? subscription.schedule : subscription.schedule?.id ?? null,
       planCode: subscription.metadata.planCode || FOUNDING_PLAN_CODE,
       status: localSubscriptionStatus(subscription.status),
+      accessSource: "STRIPE",
       currentPeriodStart: item?.current_period_start ? new Date(item.current_period_start * 1000) : null,
       currentPeriodEnd: item?.current_period_end ? new Date(item.current_period_end * 1000) : null,
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
