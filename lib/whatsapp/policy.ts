@@ -100,7 +100,8 @@ export function isQuoteHistoryRequest(value: string) {
 }
 
 export function isCancelAllDraftsRequest(value: string) {
-  return /^(?:cancel|clear|delete|discard|remove)\s+all\s+(?:current\s+)?(?:(?:quote|job)\s+)?drafts?$/i.test(value.trim())
+  return /^(?:cancel|clear|delete|discard|remove)\s+(?:(?:all|my)\s+)*(?:current\s+)?(?:(?:quote|job)\s+)?drafts$/i.test(value.trim())
+    || /^(?:cancel|clear|delete|discard|remove)\s+all\s+(?:current\s+)?(?:(?:quote|job)\s+)?draft$/i.test(value.trim())
     || /^(?:cancel|clear|delete|discard|remove)\s+all\s+(?:current\s+)?(?:quotes?|jobs?)$/i.test(value.trim());
 }
 

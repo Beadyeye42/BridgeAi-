@@ -67,7 +67,14 @@ describe("WhatsApp messaging policy", () => {
 
   it("separates draft cancellation from closing the WhatsApp conversation", () => {
     expect(["3", "cancel", "CANCEL DRAFT", "cancel current quote", "start again", "reset job"].every(isCancelDraftRequest)).toBe(true);
-    expect(["CANCEL ALL DRAFTS", "clear all quote drafts", "delete all current jobs"].every(isCancelAllDraftsRequest)).toBe(true);
+    expect([
+      "CANCEL DRAFTS",
+      "CANCEL ALL DRAFTS",
+      "cancel my drafts",
+      "clear quote drafts",
+      "clear all quote drafts",
+      "delete all current jobs",
+    ].every(isCancelAllDraftsRequest)).toBe(true);
     expect(["STOP", "unsubscribe", "close conversation"].every(isConversationOptOut)).toBe(true);
     expect(isConversationOptOut("cancel")).toBe(false);
     expect(isCancelDraftRequest("cancel all drafts")).toBe(false);
