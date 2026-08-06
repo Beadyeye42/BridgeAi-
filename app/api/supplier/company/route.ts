@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireSupplierApi } from "@/lib/auth/api";
 import { companyProfileSchema, validationError } from "@/lib/auth/validation";
 import { writeAuditLog } from "@/lib/audit";
+import { launchCategoryRootId } from "@/lib/categories/catalogue";
 
 export const runtime = "nodejs";
 
@@ -12,7 +13,9 @@ export async function PATCH(request: Request) {
   const parsed = companyProfileSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: validationError(parsed.error) }, { status: 400 });
   const { categoryIds, ...profile } = parsed.data;
-  const categoryCount = await prisma.productCategory.count({ where: { id: { in: categoryIds }, active: true } });
+  const categoryCount = await prisma.productCategory.count({
+    where: { id: { in: categoryIds }, active: true, parentId: launchCategoryRootId },
+  });
   if (categoryCount !== categoryIds.length) return NextResponse.json({ error: "One or more product categories are unavailable" }, { status: 400 });
   const company = await prisma.$transaction(async (tx) => {
     const saved = await tx.supplierCompany.update({ where: { id: auth.companyId }, data: profile });

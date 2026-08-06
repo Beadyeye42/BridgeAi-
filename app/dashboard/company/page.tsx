@@ -7,6 +7,7 @@ import {
 } from "@/components/dashboard/management-forms";
 import { OnboardingReadiness } from "@/components/dashboard/onboarding-readiness";
 import { supplierApprovalReadiness } from "@/lib/suppliers/onboarding";
+import { launchCategoryRootId } from "@/lib/categories/catalogue";
 
 export const dynamic = "force-dynamic";
 export default async function CompanyPage() {
@@ -20,7 +21,8 @@ export default async function CompanyPage() {
     },
   });
   const categories = await prisma.productCategory.findMany({
-    where: { active: true },
+    where: { active: true, parentId: launchCategoryRootId },
+    include: { parent: { select: { name: true } } },
     orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
   });
   const safeCompany = {
@@ -48,10 +50,11 @@ export default async function CompanyPage() {
         <LogoUpload hasLogo={Boolean(company.logoUrl)} />
         <CompanyProfileForm
           company={safeCompany}
-          categories={categories.map(({ id, name, description }) => ({
+          categories={categories.map(({ id, name, description, parent }) => ({
             id,
             name,
             description,
+            groupName: parent?.name ?? "Products",
           }))}
           selectedCategoryIds={company.categories.map(
             (item) => item.productCategoryId,

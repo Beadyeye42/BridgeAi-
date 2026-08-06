@@ -54,7 +54,11 @@ export async function findSupplierMatches(
     id: options.supplierIds ? { in: options.supplierIds } : undefined,
     status: "APPROVED",
     foundingMemberNumber: { gte: 1, lte: 100 },
-    categories: { some: { productCategoryId: request.categoryId } },
+    OR: [
+      { categories: { some: { productCategoryId: request.categoryId } } },
+      { categories: { some: { productCategory: { parentId: request.categoryId } } } },
+      { categories: { some: { productCategory: { children: { some: { id: request.categoryId } } } } } },
+    ],
     coverageAreas: { some: { active: true } },
     memberships: { some: { role: "OWNER", status: "ACTIVE" } },
     subscription: {

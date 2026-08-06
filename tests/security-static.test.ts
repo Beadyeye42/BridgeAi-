@@ -302,7 +302,9 @@ describe("security foundation static controls", () => {
     expect(assignmentRoute).toContain("findSupplierMatches(tx");
     expect(matching).toContain('status: "APPROVED"');
     expect(matching).toContain('status: "ACTIVE"');
-    expect(matching).toContain("categories: { some: { productCategoryId: request.categoryId } }");
+    expect(matching).toContain("{ categories: { some: { productCategoryId: request.categoryId } } }");
+    expect(matching).toContain("productCategory: { parentId: request.categoryId }");
+    expect(matching).toContain("children: { some: { id: request.categoryId } }");
     expect(matching).toContain("bestCoverageMatch");
     expect(matching).toContain("matches.slice(0, options.limit)");
     expect(coverageRoute).toContain('action: "COVERAGE.CREATED"');

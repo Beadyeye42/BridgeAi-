@@ -2,6 +2,7 @@ import "server-only";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { Prisma, type Attachment, type WhatsAppJob } from "@prisma/client";
 import { applicationOrigin, metaContactTemplate, metaQuoteTemplate, whatsappConciergeConfig, whatsappMessagingPolicy } from "@/lib/config";
+import { launchCategoryRootId, normalizeLaunchCategorySlug } from "@/lib/categories/catalogue";
 import { runAsDatabaseWorker } from "@/lib/db";
 import { analyzeQuoteAttachment, quoteAttachmentAnalysisSchema, type QuoteAttachmentAnalysis } from "@/lib/ai/attachment-intake";
 import { extractQuoteIntake, quoteDraftSchema, type QuoteDraft } from "@/lib/ai/quote-intake";
@@ -1155,7 +1156,10 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   const refreshed = await loadJob(job.id);
   if (!refreshed?.conversation) throw new Error("CONVERSATION_NOT_FOUND");
   const stage = refreshed.conversation.aiStage;
-  const draft = decryptDraft(refreshed.conversation.aiDraftEncrypted);
+  const decryptedDraft = decryptDraft(refreshed.conversation.aiDraftEncrypted);
+  const draft = decryptedDraft
+    ? { ...decryptedDraft, categorySlug: normalizeLaunchCategorySlug(decryptedDraft.categorySlug) }
+    : null;
 
   if (attachmentAnalyses.some((analysis) => analysis.needsHumanReview)) {
     await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
@@ -1277,7 +1281,10 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   }
 
   const categories = await runAsDatabaseWorker("whatsapp_ai", (tx) => tx.productCategory.findMany({
-    where: { active: true }, orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
+    where: {
+      active: true,
+      OR: [{ id: launchCategoryRootId }, { parentId: launchCategoryRootId }],
+    }, orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
     select: { slug: true, name: true, description: true }, take: 100,
   }));
   if (!categories.length) throw new Error("NO_PRODUCT_CATEGORIES");

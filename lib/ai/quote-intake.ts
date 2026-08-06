@@ -2,6 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { openAiCredentials } from "@/lib/config";
+import { normalizeLaunchCategorySlug } from "@/lib/categories/catalogue";
 import { intakeQuestionKeys } from "@/lib/whatsapp/intake-state";
 
 export const quoteDraftSchema = z.object({
@@ -135,7 +136,9 @@ export async function extractQuoteIntake(input: {
         "Collect only information needed for a supplier quote: delivery postcode, the most specific supplied product category, requirements, line items, quantity/unit and optional budget.",
         "The trusted application handles the customer's preferred first name separately. Never ask for, infer or repeat a customer name, and always leave draft.customerName null.",
         "Priority order: identify the product and quantity, then ask for the delivery postcode. Ask one further specification question only when the missing answer would materially prevent a supplier from pricing. Never turn intake into a questionnaire.",
-        "Recognise uPVC, aluminium and timber windows or doors; bifolds; composite doors; patio sliders; conservatories; roof lanterns; and Juliet balconies, including common spelling mistakes. Prefer the most specific matching category from the supplied list; use a broad category only when the product truly remains broad.",
+        "Recognise uPVC, aluminium and timber windows or doors; bifolds; composite doors; patio and French doors; vertical sliders; conservatories; roof lanterns and rooflights; sealed glass units; toughened or laminated glass; mirrors and splashbacks; replacement or miss-measured units; and Juliet balconies, including common spelling mistakes. Prefer the most specific matching category from the supplied list; use the broad Windows, doors and glazing category only when the product truly remains broad.",
+        "Glass classification must be precise. Use toughened-laminated-glass when safety glass, toughened glass, laminate or laminated panes are central to the request. Use glass-units for ordinary sealed units or IGUs. Use mirrors-splashbacks for mirrors or splashbacks, replacement-mismeasured-units for replacement or miss-measured stock, and roof-glass for rooflights, flat-roof glass or stepped roof units.",
+        "For glass and sealed-unit requests, preserve quantity, width and height, pane build-up or thickness, toughened/laminated requirement, spacer type or colour, gas/coating and required delivery date whenever supplied. Ask one compact question for only the essential missing pricing details. For example, if a customer asks for two toughened sealed units with 6.8 laminate internally and warm-edge spacer delivered by Friday, classify it as toughened-laminated-glass and ask for the unit sizes if they are not already known.",
         "Composite doors are style-sensitive. If a composite door is requested and the conversation has no customer attachment and no earlier composite-style photo request, set nextQuestionKey to COMPOSITE_STYLE and readyForConfirmation false. The application will ask once for a photo, brochure screenshot or example image. If a file is present, that request was already made, or the customer says they have no photo, do not ask again; continue using their description and the remaining essential details.",
         "Roof glass, roof glazing, flat-roof glass, rooflights, roof lanterns and stepped glass units require three pricing details: clearly labelled INTERNAL opening dimensions (width × length), frame/material, and colour/finish. Do not treat an unlabelled or external dimension as an internal size. Until all three are known, set nextQuestionKey to ROOF_GLAZING_SPECIFICATION and readyForConfirmation false; the application will ask only for the missing parts. Once supplied, preserve the internal dimensions, material and colour in the line-item specification and summary for suppliers.",
         "Trade clarification: for ordinary windows and doors, set tradeClarification.materialNeeded true when the frame or product material is still unknown and that prevents exact supplier matching or materially changes price. Set it false once the customer or attachment clearly identifies uPVC, aluminium, timber, composite or another usable system.",
@@ -177,6 +180,7 @@ export async function extractQuoteIntake(input: {
   if (parsedResponse.status !== "completed") throw new Error("OPENAI_RESPONSE_INCOMPLETE");
   const result = intakeResultSchema.parse(JSON.parse(outputText(parsedResponse)));
   result.draft.customerName = null;
+  result.draft.categorySlug = normalizeLaunchCategorySlug(result.draft.categorySlug);
   if (result.draft.categorySlug && !categorySlugs.has(result.draft.categorySlug)) {
     result.draft.categorySlug = null;
     result.readyForConfirmation = false;

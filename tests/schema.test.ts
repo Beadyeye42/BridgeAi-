@@ -10,6 +10,10 @@ const tradeCategoryExpansion = readFileSync(
   new URL("../supabase/migrations/20260805152503_expand_trade_product_categories.sql", import.meta.url),
   "utf8",
 );
+const launchCategoryCatalogue = readFileSync(
+  new URL("../supabase/migrations/20260806160415_launch_windows_doors_glazing_catalogue.sql", import.meta.url),
+  "utf8",
+);
 const requiredModels = ["User", "SupplierCompany", "SupplierTeamMembership", "SupplierAccreditation", "CustomerContact", "Conversation", "WhatsAppMessage", "WhatsAppJob", "Attachment", "QuoteRequest", "SupplierOpportunity", "QuoteRequestItem", "SupplierAssignment", "SupplierQuotation", "CoverageArea", "ProductCategory", "Subscription", "Notification", "AuditLog"];
 
 describe("Prisma domain contract", () => {
@@ -40,5 +44,16 @@ describe("Prisma domain contract", () => {
     expect(tradeCategoryExpansion).toContain("patio-sliding-doors");
     expect(tradeCategoryExpansion).toContain("roof-lanterns");
     expect(tradeCategoryExpansion).toContain("juliet-balconies");
+  });
+  it("ships the focused windows, doors and glazing launch catalogue", () => {
+    expect(launchCategoryCatalogue).toContain("Windows, doors and glazing");
+    expect(launchCategoryCatalogue).toContain("uPVC windows and doors");
+    expect(launchCategoryCatalogue).toContain("Aluminium windows and bifolds");
+    expect(launchCategoryCatalogue).toContain("vertical-sliders");
+    expect(launchCategoryCatalogue).toContain("glass-units");
+    expect(launchCategoryCatalogue).toContain("toughened-laminated-glass");
+    expect(launchCategoryCatalogue).toContain("mirrors-splashbacks");
+    expect(launchCategoryCatalogue).toContain("replacement-mismeasured-units");
+    expect(launchCategoryCatalogue).toContain("SYSTEM.PRODUCT_CATALOGUE_LAUNCHED");
   });
 });
