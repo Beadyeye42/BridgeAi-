@@ -2,6 +2,12 @@ import { Prisma } from "@prisma/client";
 import { lookupPostcode, normalizePostcode, PostcodeLookupError } from "../location/postcodes";
 import { bestCoverageMatch, type CoverageMatch, type DeliveryLocation } from "./coverage";
 import { supplierOnboardingReadiness } from "../suppliers/onboarding";
+import {
+  isRalCode,
+  isRalColourMarker,
+  isStandardColour,
+  normaliseCapabilityValue,
+} from "../capabilities/options";
 
 type MatchingClient = Pick<Prisma.TransactionClient, "supplierCompany">;
 
@@ -41,13 +47,29 @@ const FRESH_DAYS = 14;
 const DEADLINE_STALE_LIMIT_DAYS = 14;
 const DAY_MS = 86_400_000;
 
-const normalise = (value: string) => value.trim().toLocaleLowerCase("en-GB").replace(/\s+/g, " ");
 const supports = (values: string[], required: string) => {
-  const wanted = normalise(required);
+  const wanted = normaliseCapabilityValue(required);
   return values.some((value) => {
-    const supplied = normalise(value);
-    return supplied === "any" || supplied === "all" || supplied === "all standard" || supplied === wanted;
+    const supplied = normaliseCapabilityValue(value);
+    return supplied === "any" || supplied === "all" || supplied === wanted;
   });
+};
+
+const supportsSystem = (values: string[], required: string) => {
+  const wanted = normaliseCapabilityValue(required);
+  return values.some((value) => {
+    const supplied = normaliseCapabilityValue(value);
+    return supplied === "any" || supplied === "all" || supplied === wanted || wanted.startsWith(`${supplied} `);
+  });
+};
+
+const supportsColour = (values: string[], required: string) => {
+  if (supports(values, required)) return true;
+  if (isRalCode(required)) return values.some(isRalColourMarker);
+  if (isStandardColour(required)) {
+    return values.some((value) => normaliseCapabilityValue(value) === "all standard");
+  }
+  return false;
 };
 
 export async function resolveDeliveryLocation(request: Pick<RequestForMatching, "deliveryPostcode" | "deliveryLatitude" | "deliveryLongitude">): Promise<LocationResolution> {
@@ -96,11 +118,11 @@ export function evaluateCapability(request: RequestForMatching, capability: Capa
     else rejected.push(`Does not confirm manufacturer ${request.requiredManufacturer}`);
   }
   if (request.requiredSystem) {
-    if (supports(capability.systemNames, request.requiredSystem)) { score += 12; reasons.push(`Offers system ${request.requiredSystem}`); }
+    if (supportsSystem(capability.systemNames, request.requiredSystem)) { score += 12; reasons.push(`Offers system ${request.requiredSystem}`); }
     else rejected.push(`Does not confirm system ${request.requiredSystem}`);
   }
   if (request.requiredColour) {
-    if (supports(capability.colourNames, request.requiredColour)) { score += 10; reasons.push(`Offers colour ${request.requiredColour}`); }
+    if (supportsColour(capability.colourNames, request.requiredColour)) { score += 10; reasons.push(`Offers colour ${request.requiredColour}`); }
     else rejected.push(`Does not confirm colour ${request.requiredColour}`);
   }
   if (request.requiredFinish) {

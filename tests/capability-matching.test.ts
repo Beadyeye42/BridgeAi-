@@ -89,4 +89,58 @@ describe("live supplier capability matching", () => {
     expect(result.reasons).toContain("Collection is required but unavailable");
     expect(result.reasons).toContain("Order quantity is below the supplier minimum of 5");
   });
+
+  it("matches a detailed system when its profile family is selected", () => {
+    const result = evaluateCapability(
+      { ...request, requiredSystem: "Liniar 70" },
+      capability({ systemNames: ["Liniar"] }),
+      coverage,
+      now,
+    );
+    expect(result.outcome).toBe("MATCHED");
+  });
+
+  it("recognises common aluminium profile aliases", () => {
+    const result = evaluateCapability(
+      { ...request, requiredManufacturer: null, requiredSystem: "Smarts", requiredColour: null },
+      capability({ systemNames: ["Smart Systems"] }),
+      coverage,
+      now,
+    );
+    expect(result.outcome).toBe("MATCHED");
+  });
+
+  it("uses the RAL checkbox for RAL-coded requests only", () => {
+    const ral = evaluateCapability(
+      { ...request, requiredColour: "RAL 7016" },
+      capability({ colourNames: ["RAL colours"] }),
+      coverage,
+      now,
+    );
+    const named = evaluateCapability(
+      { ...request, requiredColour: "Olive" },
+      capability({ colourNames: ["RAL colours"] }),
+      coverage,
+      now,
+    );
+    expect(ral.outcome).toBe("MATCHED");
+    expect(named.outcome).toBe("REJECTED");
+  });
+
+  it("limits legacy all-standard selection to recognised standard colours", () => {
+    const standard = evaluateCapability(
+      request,
+      capability({ colourNames: ["All standard"] }),
+      coverage,
+      now,
+    );
+    const nonStandard = evaluateCapability(
+      { ...request, requiredColour: "Olive" },
+      capability({ colourNames: ["All standard"] }),
+      coverage,
+      now,
+    );
+    expect(standard.outcome).toBe("MATCHED");
+    expect(nonStandard.outcome).toBe("REJECTED");
+  });
 });
