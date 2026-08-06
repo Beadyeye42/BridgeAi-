@@ -2,21 +2,38 @@ import { prisma } from "@/lib/db";
 import { requireSupplierPage } from "@/lib/auth/guards";
 import { PortalPage, identity } from "@/components/dashboard/portal-page";
 import { CapabilityManager } from "@/components/dashboard/capability-manager";
+import { launchedSupplierCategoryWhere } from "@/lib/categories/catalogue";
 
 export const dynamic = "force-dynamic";
 
 export default async function CapabilitiesPage() {
   const { session, companyId } = await requireSupplierPage();
-  const company = await prisma.supplierCompany.findUniqueOrThrow({
-    where: { id: companyId },
-    include: {
-      categories: { include: { productCategory: true }, orderBy: { productCategory: { displayOrder: "asc" } } },
-      capabilities: true,
-    },
+  const company = await prisma.supplierCompany.findUniqueOrThrow({ where: { id: companyId } });
+  const selections = await prisma.supplierProductCategory.findMany({
+    where: { supplierCompanyId: companyId },
+    select: { productCategoryId: true },
   });
-  const byCategory = new Map(company.capabilities.map((item) => [item.productCategoryId, item]));
+  const selectedCategoryIds = selections.map(({ productCategoryId }) => productCategoryId);
+  const categories = selectedCategoryIds.length
+    ? await prisma.productCategory.findMany({
+        where: {
+          ...launchedSupplierCategoryWhere(),
+          id: { in: selectedCategoryIds },
+        },
+        orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
+      })
+    : [];
+  const capabilities = selectedCategoryIds.length
+    ? await prisma.supplierCapability.findMany({
+        where: {
+          supplierCompanyId: companyId,
+          productCategoryId: { in: selectedCategoryIds },
+        },
+      })
+    : [];
+  const byCategory = new Map(capabilities.map((item) => [item.productCategoryId, item]));
   return <PortalPage {...identity(session, company)} eyebrow="Live supplier network" title="Capabilities & capacity" description="Tell Bridge AI exactly what you can supply and your current lead times so only suitable enquiries reach your team.">
-    <CapabilityManager capabilities={company.categories.map(({ productCategory }) => {
+    <CapabilityManager capabilities={categories.map((productCategory) => {
       const saved = byCategory.get(productCategory.id);
       return {
         productCategoryId: productCategory.id,
@@ -36,7 +53,7 @@ export default async function CapabilitiesPage() {
         shortageNote: saved?.shortageNote ?? null,
         shortageUntil: saved?.shortageUntil?.toISOString() ?? null,
         active: saved?.active ?? true,
-        lastConfirmedAt: saved?.lastConfirmedAt.toISOString() ?? null,
+        lastConfirmedAt: saved?.lastConfirmedAt?.toISOString() ?? null,
       };
     })}/>
   </PortalPage>;

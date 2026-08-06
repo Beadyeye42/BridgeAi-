@@ -4,6 +4,7 @@ import { requireSupplierApi } from "@/lib/auth/api";
 import { supplierCapabilitiesSchema, supplierCapabilityActivationSchema, validationError } from "@/lib/auth/validation";
 import { writeAuditLog } from "@/lib/audit";
 import { rematchOpenRequestsForSupplier } from "@/lib/matching/rematch";
+import { launchedSupplierCategoryWhere } from "@/lib/categories/catalogue";
 
 export const runtime = "nodejs";
 
@@ -18,12 +19,13 @@ export async function PATCH(request: Request) {
   const parsed = supplierCapabilityActivationSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: validationError(parsed.error) }, { status: 400 });
 
-  const selectedCategory = await prisma.supplierProductCategory.findFirst({
+  const selectedCategory = await prisma.productCategory.findFirst({
     where: {
-      supplierCompanyId: auth.companyId,
-      productCategoryId: parsed.data.productCategoryId,
+      ...launchedSupplierCategoryWhere(),
+      id: parsed.data.productCategoryId,
+      suppliers: { some: { supplierCompanyId: auth.companyId } },
     },
-    select: { productCategory: { select: { name: true } } },
+    select: { name: true },
   });
   if (!selectedCategory) {
     return NextResponse.json({ error: "Select this product in Company profile before activating it" }, { status: 400 });
@@ -66,10 +68,10 @@ export async function PATCH(request: Request) {
       action: "SUPPLIER.CAPABILITY_ACTIVATED",
       entityType: "SupplierCapability",
       entityId: parsed.data.productCategoryId,
-      summary: `${selectedCategory.productCategory.name} activated for quote matching`,
+      summary: `${selectedCategory.name} activated for quote matching`,
       metadata: {
         productCategoryId: parsed.data.productCategoryId,
-        categoryName: selectedCategory.productCategory.name,
+        categoryName: selectedCategory.name,
         capacityStatus: "AVAILABLE",
         confirmedAt: confirmedAt.toISOString(),
       },
@@ -97,11 +99,14 @@ export async function PUT(request: Request) {
   const parsed = supplierCapabilitiesSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: validationError(parsed.error) }, { status: 400 });
 
-  const selected = await prisma.supplierProductCategory.findMany({
-    where: { supplierCompanyId: auth.companyId },
-    select: { productCategoryId: true },
+  const selected = await prisma.productCategory.findMany({
+    where: {
+      ...launchedSupplierCategoryWhere(),
+      suppliers: { some: { supplierCompanyId: auth.companyId } },
+    },
+    select: { id: true },
   });
-  const selectedIds = new Set(selected.map((item) => item.productCategoryId));
+  const selectedIds = new Set(selected.map((item) => item.id));
   if (parsed.data.capabilities.some((item) => !selectedIds.has(item.productCategoryId))) {
     return NextResponse.json({ error: "A capability can only be saved for a selected product category" }, { status: 400 });
   }
