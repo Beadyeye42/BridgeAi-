@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   conversationProgress,
+  enforceTradeClarification,
   quoteDraftFingerprint,
   repeatClarification,
   requiredQuestionKey,
@@ -30,6 +31,24 @@ describe("WhatsApp intake conversation state", () => {
     const clarification = { materialNeeded: true, colourNeeded: true, colourTerm: "olive" };
     expect(requiredQuestionKey({ ...completeDraft, deliveryPostcode: null }, "NONE", clarification)).toBe("DELIVERY_POSTCODE");
     expect(requiredQuestionKey(completeDraft, "NONE", clarification)).toBe("SPECIFICATION");
+  });
+
+  it("deterministically catches olive windows even if the model misses the ambiguity", () => {
+    const clarification = enforceTradeClarification(
+      { ...completeDraft, summary: "Supply six olive windows" },
+      { materialNeeded: false, colourNeeded: false, colourTerm: null },
+      ["I want 6 olive windows"],
+    );
+    expect(clarification).toEqual({ materialNeeded: true, colourNeeded: true, colourTerm: "olive" });
+  });
+
+  it("accepts an explicit material and industry colour resolution", () => {
+    const clarification = enforceTradeClarification(
+      { ...completeDraft, categorySlug: "upvc-windows" },
+      { materialNeeded: false, colourNeeded: false, colourTerm: null },
+      ["Six olive windows", "uPVC, RAL 6003"],
+    );
+    expect(clarification).toEqual({ materialNeeded: false, colourNeeded: false, colourTerm: "olive" });
   });
 
   it("asks one compact material and industry-colour clarification", () => {

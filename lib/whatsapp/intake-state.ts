@@ -17,6 +17,13 @@ export type TradeClarification = {
   colourTerm: string | null;
 };
 
+type TradeDraft = {
+  categorySlug: string | null;
+  title: string | null;
+  summary: string | null;
+  items: Array<{ description: string; specification?: string | null }>;
+};
+
 export const MAX_UNPRODUCTIVE_TURNS = 2;
 
 function canonicalJson(value: unknown): string {
@@ -79,6 +86,28 @@ export function requiredQuestionKey(
 
 function safeClarificationTerm(value: string | null | undefined) {
   return value?.replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) || null;
+}
+
+export function enforceTradeClarification(
+  draft: TradeDraft,
+  proposed: TradeClarification,
+  customerMessages: string[],
+): TradeClarification {
+  const evidence = [
+    ...customerMessages.slice(-12),
+    draft.title,
+    draft.summary,
+    ...draft.items.flatMap((item) => [item.description, item.specification]),
+  ].filter((value): value is string => Boolean(value)).join(" ");
+  const materialKnown = /\b(?:uPVC|PVCu|aluminium|aluminum|timber|wood|composite)\b/i.test(evidence);
+  const broadMaterialCategory = draft.categorySlug === "windows" || draft.categorySlug === "doors";
+  const oliveMentioned = /\bolive(?:\s+green)?\b/i.test(evidence);
+  const industryColourResolved = /\b(?:RAL\s*[-:]?\s*\d{4}|BS\s*[-:]?\s*\d{3,4}|(?:closest|nearest)(?:\s+available)?(?:\s+olive)?\s+(?:match|finish|shade|colour)|manufacturer(?:'s)?\s+(?:colour|finish|code|name)|(?:colour|finish)\s+code)\b/i.test(evidence);
+  return {
+    materialNeeded: proposed.materialNeeded || (broadMaterialCategory && !materialKnown),
+    colourNeeded: proposed.colourNeeded || (oliveMentioned && !industryColourResolved),
+    colourTerm: proposed.colourTerm ?? (oliveMentioned ? "olive" : null),
+  };
 }
 
 export function tradeSpecificationClarification(input: TradeClarification, productDescription?: string | null) {

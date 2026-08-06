@@ -28,6 +28,7 @@ import {
 } from "@/lib/whatsapp/policy";
 import {
   conversationProgress,
+  enforceTradeClarification,
   quoteDraftFingerprint,
   repeatClarification,
   requiredQuestionKey,
@@ -1048,6 +1049,11 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
       result.reply = "I couldn’t match that postcode. What is the full UK delivery postcode? For example, GL52 6TD.";
     }
   }
+  result.tradeClarification = enforceTradeClarification(
+    result.draft,
+    result.tradeClarification,
+    messages.filter((message) => message.direction === "INBOUND").map((message) => message.text),
+  );
   if (result.needsHumanReview) {
     await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
       await tx.conversation.update({ where: { id: refreshed.conversation!.id }, data: { aiStage: "HUMAN_REVIEW", aiDraftEncrypted: encryptPrivateValue(JSON.stringify(result.draft)) } });
