@@ -5,18 +5,19 @@ import { Sidebar } from "./sidebar";
 import { BrandMark } from "@/components/brand-mark";
 import type { SupplierOnboardingReadiness } from "@/lib/suppliers/onboarding";
 import { OnboardingReadiness as OnboardingReadinessCard } from "./onboarding-readiness";
+import { RefreshButton } from "./refresh-button";
 
 export function SupplierDashboard({ data, demo = false, onboarding, supplierStatus = "APPROVED" }: { data: DashboardData; demo?: boolean; onboarding?: SupplierOnboardingReadiness; supplierStatus?: string }) {
   const requestBase = demo ? "/requests" : "/dashboard/requests";
   return (
     <div className="portal-shell">
       <Sidebar companyName={data.companyName} initials={data.initials} companyStatus={supplierStatus} activeRequestCount={data.stats.newRequests} unreadNotificationCount={data.unreadNotificationCount} />
-      <header className="mobile-header"><BrandMark compact /><span>{data.companyName}</span><button className="icon-button" aria-label="Notifications"><Bell size={19} /></button></header>
+      <header className="mobile-header"><BrandMark compact /><span>{data.companyName}</span><div className="mobile-header-actions"><RefreshButton compact/><Link href="/dashboard/notifications" className="icon-button" aria-label="Notifications"><Bell size={19} /></Link></div></header>
       <main className="portal-main">
         {demo && <div className="demo-banner"><Sparkles size={15} /><span><b>Demonstration workspace</b> — realistic sample data, no customer information.</span><Link href="/login">Supplier sign in <ArrowUpRight size={14} /></Link></div>}
         <div className="page-heading">
           <div><p className="eyebrow">{demo ? "Sunday, 2 August" : new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long" }).format(new Date())}</p><h1>Good afternoon, {data.contactName.split(" ")[0]}.</h1><p>Here’s what needs your attention across {data.companyName}.</p></div>
-          <div className="heading-actions"><button className="search-button" aria-label="Search"><Search size={18} /><span>Search</span><kbd>⌘ K</kbd></button><button className="icon-button desktop-only" aria-label="Notifications"><Bell size={19} />{data.unreadNotificationCount > 0 && <i />}</button><span className="avatar">{data.initials}</span></div>
+          <div className="heading-actions"><button className="search-button" aria-label="Search"><Search size={18} /><span>Search</span><kbd>⌘ K</kbd></button><RefreshButton/><Link href="/dashboard/notifications" className="icon-button desktop-only" aria-label="Notifications"><Bell size={19} />{data.unreadNotificationCount > 0 && <i />}</Link><span className="avatar">{data.initials}</span></div>
         </div>
 
         {onboarding && (!onboarding.ready || supplierStatus !== "APPROVED")
