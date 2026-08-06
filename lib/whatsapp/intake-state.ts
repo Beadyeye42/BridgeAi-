@@ -26,6 +26,17 @@ type TradeDraft = {
 
 export const MAX_UNPRODUCTIVE_TURNS = 2;
 
+const recognisedIndustryColourPattern = /\b(?:white|black|anthracite(?: gr[ae]y)?|anthercite(?: gr[ae]y)?|antracite(?: gr[ae]y)?|slate gr[ae]y|agate gr[ae]y|chartwell(?: green)?|cream|irish oak|rosewood(?: brown)?)\b/i;
+const colourMentionPattern = /\b(?:white|black|anthracite(?: gr[ae]y)?|anthercite(?: gr[ae]y)?|antracite(?: gr[ae]y)?|slate gr[ae]y|agate gr[ae]y|chartwell(?: green)?|cream|irish oak|rosewood(?: brown)?|olive(?: green)?)\b/gi;
+
+export function isRecognisedIndustryColour(value: string | null | undefined) {
+  return Boolean(value && recognisedIndustryColourPattern.test(value));
+}
+
+function latestColourMention(value: string) {
+  return Array.from(value.matchAll(new RegExp(colourMentionPattern.source, "gi"))).at(-1)?.[0] ?? null;
+}
+
 function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   if (value && typeof value === "object") {
@@ -103,10 +114,14 @@ export function enforceTradeClarification(
   const broadMaterialCategory = draft.categorySlug === "windows" || draft.categorySlug === "doors";
   const oliveMentioned = /\bolive(?:\s+green)?\b/i.test(evidence);
   const industryColourResolved = /\b(?:RAL\s*[-:]?\s*\d{4}|BS\s*[-:]?\s*\d{3,4}|(?:closest|nearest)(?:\s+available)?(?:\s+olive)?\s+(?:match|finish|shade|colour)|manufacturer(?:'s)?\s+(?:colour|finish|code|name)|(?:colour|finish)\s+code)\b/i.test(evidence);
+  const colourTerm = proposed.colourTerm ?? latestColourMention(evidence) ?? (oliveMentioned ? "olive" : null);
+  const recognisedIndustryColour = isRecognisedIndustryColour(colourTerm);
   return {
     materialNeeded: proposed.materialNeeded || (broadMaterialCategory && !materialKnown),
-    colourNeeded: proposed.colourNeeded || (oliveMentioned && !industryColourResolved),
-    colourTerm: proposed.colourTerm ?? (oliveMentioned ? "olive" : null),
+    colourNeeded: recognisedIndustryColour || industryColourResolved
+      ? false
+      : proposed.colourNeeded || (oliveMentioned && !industryColourResolved),
+    colourTerm,
   };
 }
 

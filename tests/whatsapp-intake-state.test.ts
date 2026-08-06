@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   conversationProgress,
   enforceTradeClarification,
+  isRecognisedIndustryColour,
   quoteDraftFingerprint,
   repeatClarification,
   requiredQuestionKey,
@@ -44,11 +45,46 @@ describe("WhatsApp intake conversation state", () => {
 
   it("accepts an explicit material and industry colour resolution", () => {
     const clarification = enforceTradeClarification(
-      { ...completeDraft, categorySlug: "upvc-windows" },
-      { materialNeeded: false, colourNeeded: false, colourTerm: null },
+      { ...completeDraft, categorySlug: "upvc-windows", summary: "Supply six olive uPVC windows" },
+      { materialNeeded: false, colourNeeded: true, colourTerm: "olive" },
       ["Six olive windows", "uPVC, RAL 6003"],
     );
     expect(clarification).toEqual({ materialNeeded: false, colourNeeded: false, colourTerm: "olive" });
+  });
+
+  it.each([
+    "white",
+    "black",
+    "anthracite grey",
+    "anthracite",
+    "anthercite grey",
+    "slate grey",
+    "agate grey",
+    "Chartwell green",
+    "cream",
+    "Irish oak",
+    "rosewood brown",
+  ])("accepts the recognised industry finish %s without asking for a RAL code", (colour) => {
+    expect(isRecognisedIndustryColour(colour)).toBe(true);
+    const clarification = enforceTradeClarification(
+      {
+        ...completeDraft,
+        categorySlug: "upvc-windows",
+        summary: `Supply six uPVC windows in ${colour}`,
+      },
+      { materialNeeded: false, colourNeeded: true, colourTerm: colour },
+      [`Six uPVC windows in ${colour}`],
+    );
+    expect(clarification).toEqual({ materialNeeded: false, colourNeeded: false, colourTerm: colour });
+  });
+
+  it("still requires clarification for an unrecognised colour name", () => {
+    const clarification = enforceTradeClarification(
+      { ...completeDraft, categorySlug: "upvc-windows", summary: "Supply six uPVC windows in moss green" },
+      { materialNeeded: false, colourNeeded: true, colourTerm: "moss green" },
+      ["Six uPVC windows in moss green"],
+    );
+    expect(clarification.colourNeeded).toBe(true);
   });
 
   it("asks one compact material and industry-colour clarification", () => {
