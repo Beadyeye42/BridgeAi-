@@ -974,12 +974,18 @@ model Notification {
   sentAt            DateTime?
   failedAt          DateTime?
   failureReason     String?
+  deliveryAttempts  Int                 @default(0)
+  availableAt       DateTime            @default(now())
+  lockedAt          DateTime?
+  lastAttemptAt     DateTime?
+  providerMessageId String?
   createdAt         DateTime            @default(now())
   user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   supplierCompany   SupplierCompany?    @relation(fields: [supplierCompanyId], references: [id], onDelete: Cascade)
 
   @@index([userId, readAt, createdAt])
   @@index([supplierCompanyId, type])
+  @@index([channel, sentAt, availableAt, createdAt])
   @@schema("bridge_ai")
 }
 

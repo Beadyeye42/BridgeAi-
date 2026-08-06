@@ -16,6 +16,7 @@ import { evaluateSupplierMatches } from "@/lib/matching/suppliers";
 import { runProductionMonitoringSafely } from "@/lib/monitoring/operational-alerts";
 import { addSupplierResponseHours } from "@/lib/quotes/response-clock";
 import { selectQuotationForCustomer } from "@/lib/quotes/selection";
+import { processSupplierWinnerEmailsSafely } from "@/lib/notifications/email-worker";
 import { decryptPrivateValue, encryptPrivateValue } from "@/lib/security/encryption";
 import { sanitizeCustomerImage } from "@/lib/security/customer-image";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
@@ -1311,6 +1312,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     }
     const grant = await selectQuotationForCustomer({ quotationId: selected.id, evidence: `WhatsApp message ${inbound.externalMessageId}` });
     await enqueueContactUnlock(grant.id);
+    await processSupplierWinnerEmailsSafely({ limit: 10 });
     await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
       await tx.conversation.update({ where: { id: refreshed.conversation!.id }, data: { aiStage: "SELECTION_RECORDED" } });
       await writeWhatsAppAudit(tx, {
