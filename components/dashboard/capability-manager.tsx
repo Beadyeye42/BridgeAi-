@@ -2,12 +2,22 @@
 
 import { useState } from "react";
 import { CheckCircle2, ChevronDown, LoaderCircle, Save, Sparkles } from "lucide-react";
+import {
+  includesCapabilityValue,
+  isRalCode,
+  isRalColourMarker,
+  isStandardColour,
+  PROFILE_SYSTEM_OPTIONS_BY_CATEGORY,
+  RAL_COLOUR_MARKER,
+  STANDARD_COLOUR_OPTIONS,
+} from "@/lib/capabilities/options";
 
 type CapacityStatus = "AVAILABLE" | "LIMITED" | "URGENT_ONLY" | "FULL" | "PAUSED";
 
 type Capability = {
   productCategoryId: string;
   categoryName: string;
+  categorySlug: string;
   manufacturerNames: string[];
   systemNames: string[];
   colourNames: string[];
@@ -29,6 +39,8 @@ type RematchResult = { checked?: number; matched?: number; blocked?: number; blo
 
 const dayOptions = [[1, "Mon"], [2, "Tue"], [3, "Wed"], [4, "Thu"], [5, "Fri"], [6, "Sat"], [7, "Sun"]] as const;
 const splitList = (value: FormDataEntryValue | null) => String(value ?? "").split(",").map((item) => item.trim()).filter(Boolean);
+const stringList = (values: FormDataEntryValue[]) => values.map(String).map((item) => item.trim()).filter(Boolean);
+const uniqueList = (values: string[]) => [...new Set(values)];
 const nullableNumber = (value: FormDataEntryValue | null) => String(value ?? "").trim() ? Number(value) : null;
 const friendlyBlockingReason = (reason: string) => {
   const missingDetail = reason.match(/^Does not confirm (manufacturer|system|colour|finish) (.+)$/i);
@@ -83,11 +95,17 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
     const form = new FormData(event.currentTarget);
     const payload = capabilities.map((capability) => {
       const prefix = capability.productCategoryId;
+      const selectedProfiles = stringList(form.getAll(`${prefix}:profile`));
+      const selectedColours = stringList(form.getAll(`${prefix}:colour`));
       return {
         productCategoryId: prefix,
-        manufacturerNames: splitList(form.get(`${prefix}:manufacturers`)),
-        systemNames: splitList(form.get(`${prefix}:systems`)),
-        colourNames: splitList(form.get(`${prefix}:colours`)),
+        manufacturerNames: uniqueList([...selectedProfiles, ...splitList(form.get(`${prefix}:manufacturers`))]),
+        systemNames: uniqueList([...selectedProfiles, ...splitList(form.get(`${prefix}:systems`))]),
+        colourNames: uniqueList([
+          ...selectedColours,
+          ...splitList(form.get(`${prefix}:ralCodes`)),
+          ...splitList(form.get(`${prefix}:otherColours`)),
+        ]),
         finishNames: splitList(form.get(`${prefix}:finishes`)),
         minimumOrderValue: nullableNumber(form.get(`${prefix}:minimumValue`)),
         minimumOrderQuantity: nullableNumber(form.get(`${prefix}:minimumQuantity`)),
@@ -150,6 +168,13 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
     {capabilities.map((capability) => {
       const prefix = capability.productCategoryId;
       const active = activeByCategory[prefix];
+      const profileOptions = PROFILE_SYSTEM_OPTIONS_BY_CATEGORY[capability.categorySlug] ?? [];
+      const knownProfileValues = [...capability.manufacturerNames, ...capability.systemNames];
+      const selectedRal = capability.colourNames.some(isRalColourMarker);
+      const ralCodes = capability.colourNames.filter(isRalCode);
+      const otherColours = capability.colourNames.filter((value) => !isStandardColour(value) && !isRalColourMarker(value) && !isRalCode(value));
+      const otherSystems = capability.systemNames.filter((value) => !profileOptions.some((option) => includesCapabilityValue([value], option)));
+      const otherManufacturers = capability.manufacturerNames.filter((value) => !profileOptions.some((option) => includesCapabilityValue([value], option)));
       return <section className="panel capability-advanced-card" key={prefix}>
         <details>
           <summary>
@@ -158,10 +183,31 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
           </summary>
           <div className="capability-advanced-content">
             <label className="toggle-row"><span><b>Use this product for matching</b><small>Turn this off and save to pause this product</small></span><input type="checkbox" name={`${prefix}:active`} checked={active} onChange={(event) => setActiveByCategory((current) => ({ ...current, [prefix]: event.target.checked }))}/></label>
+            {profileOptions.length ? <div className="capability-option-section">
+              <div className="capability-option-heading"><b>Profile systems</b><small>Tick every system or brand your company supplies.</small></div>
+              <div className="capability-option-grid">
+                {profileOptions.map((option) => <OptionCard key={option} name={`${prefix}:profile`} value={option} checked={includesCapabilityValue(knownProfileValues, option)} />)}
+              </div>
+              <div className="form-grid">
+                <Field name={`${prefix}:systems`} label="Other profile systems (optional)" value={otherSystems.join(", ")} placeholder="Add any other systems, separated by commas" />
+                <Field name={`${prefix}:manufacturers`} label="Other manufacturers (optional)" value={otherManufacturers.join(", ")} placeholder="Add any other manufacturers" />
+              </div>
+            </div> : <div className="form-grid capability-fields">
+              <Field name={`${prefix}:manufacturers`} label="Manufacturers" value={capability.manufacturerNames.join(", ")} placeholder="Add manufacturers, separated by commas" />
+              <Field name={`${prefix}:systems`} label="Systems or brands" value={capability.systemNames.join(", ")} placeholder="Add systems or brands, separated by commas" />
+            </div>}
+            <div className="capability-option-section">
+              <div className="capability-option-heading"><b>Colours supplied</b><small>Tick every standard colour you supply. Tick RAL colours only if you can supply RAL-specified finishes.</small></div>
+              <div className="capability-option-grid capability-colour-grid">
+                {STANDARD_COLOUR_OPTIONS.map((option) => <OptionCard key={option} name={`${prefix}:colour`} value={option} checked={includesCapabilityValue(capability.colourNames, option)} />)}
+                <OptionCard name={`${prefix}:colour`} value={RAL_COLOUR_MARKER} checked={selectedRal} description="Any RAL-specified colour" />
+              </div>
+              <div className="form-grid">
+                <Field name={`${prefix}:ralCodes`} label="Specific RAL codes (optional)" value={ralCodes.join(", ")} placeholder="For example RAL 7016, RAL 9005" />
+                <Field name={`${prefix}:otherColours`} label="Other named colours (optional)" value={otherColours.join(", ")} placeholder="Add other colours, separated by commas" />
+              </div>
+            </div>
             <div className="form-grid capability-fields">
-              <Field name={`${prefix}:manufacturers`} label="Manufacturers" value={capability.manufacturerNames.join(", ")} placeholder="For example Liniar, Rehau, VEKA" />
-              <Field name={`${prefix}:systems`} label="Profile systems or brands" value={capability.systemNames.join(", ")} placeholder="Comma-separated systems" />
-              <Field name={`${prefix}:colours`} label="Colours supplied" value={capability.colourNames.join(", ")} placeholder="White, anthracite grey, Chartwell green" />
               <Field name={`${prefix}:finishes`} label="Finishes supplied" value={capability.finishNames.join(", ")} placeholder="Foil, powder coat, anodised" />
               <Field name={`${prefix}:minimumQuantity`} label="Minimum order quantity" value={capability.minimumOrderQuantity ?? ""} type="number" min="1" />
               <Field name={`${prefix}:minimumValue`} label="Minimum order value (£)" value={capability.minimumOrderValue ?? ""} type="number" min="0" step="0.01" />
@@ -180,6 +226,13 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
     })}
     <div className="sticky-save">{message && <p className={`form-result ${error ? "error" : "success"}`}>{!error && <CheckCircle2 size={14}/>} {message}</p>}<button className="button button-dark" disabled={busy || Boolean(activatingId)}>{busy ? <LoaderCircle className="spin" size={15}/> : <Save size={15}/>} {busy ? "Saving…" : "Save advanced details"}</button></div>
   </form>;
+}
+
+function OptionCard({ name, value, checked, description }: { name: string; value: string; checked: boolean; description?: string }) {
+  return <label className="choice-card capability-option-card">
+    <input type="checkbox" name={name} value={value} defaultChecked={checked}/>
+    <span><b>{value}</b>{description ? <small>{description}</small> : null}</span>
+  </label>;
 }
 
 function Field({ name, label, value, placeholder, type = "text", min, step, required }: { name: string; label: string; value: string | number; placeholder?: string; type?: string; min?: string; step?: string; required?: boolean }) {

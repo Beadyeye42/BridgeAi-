@@ -21,6 +21,7 @@ export default async function CapabilitiesPage() {
       return {
         productCategoryId: productCategory.id,
         categoryName: productCategory.name,
+        categorySlug: productCategory.slug,
         manufacturerNames: saved?.manufacturerNames ?? [],
         systemNames: saved?.systemNames ?? [],
         colourNames: saved?.colourNames ?? [],
