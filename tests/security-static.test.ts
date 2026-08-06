@@ -158,6 +158,22 @@ describe("security foundation static controls", () => {
     expect(customer).not.toMatch(/\n\s+displayName\s+String/);
   });
 
+  it("cancels only encrypted WhatsApp drafts and preserves confirmed quote requests", () => {
+    const processor = read("lib/whatsapp/processor.ts");
+    const cancellation = processor.slice(
+      processor.indexOf("async function cancelQuoteDrafts"),
+      processor.indexOf("async function processInbound"),
+    );
+    expect(cancellation).toContain("customerContactId: conversation.customerContactId");
+    expect(cancellation).toContain("aiDraftEncrypted: null");
+    expect(cancellation).toContain('action: allDrafts ? "WHATSAPP.ALL_DRAFTS_CANCELLED" : "WHATSAPP.DRAFT_CANCELLED"');
+    expect(cancellation).toContain("submittedRequestsChanged: false");
+    expect(cancellation).not.toContain("quoteRequest.update");
+    expect(cancellation).not.toContain("quoteRequest.delete");
+    expect(processor).toContain("&& !isCancelAllDraftsRequest(body)");
+    expect(processor).toContain("&& !isCancelDraftRequest(body)");
+  });
+
   it("keeps WhatsApp AI processing durable, consent-gated and inaccessible to suppliers", () => {
     const migration = read("supabase/migrations/20260804195726_whatsapp_ai_concierge.sql");
     expect(migration).toContain('ALTER TABLE bridge_ai."WhatsAppJob" FORCE ROW LEVEL SECURITY');

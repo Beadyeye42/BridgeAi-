@@ -20,6 +20,9 @@ import {
   attachmentInterpretation,
   earliestInboundAt,
   firstContactConsentReply,
+  isCancelAllDraftsRequest,
+  isCancelDraftRequest,
+  isConversationOptOut,
   isMenuRequest,
   isNewQuoteRequest,
   isQuoteConfirmation,
@@ -508,10 +511,6 @@ export function isConsent(value: string) {
   return /^(continue|i agree|agree)$/i.test(value.trim());
 }
 
-export function isStop(value: string) {
-  return /^(stop|cancel|end|unsubscribe)$/i.test(value.trim());
-}
-
 export function formatConfirmation(draft: QuoteDraft, categoryName: string, attachmentCount = 0) {
   const items = draft.items.map((item, index) => (
     `${index + 1}. ${item.quantity} ${item.unit} — ${item.description}${item.specification ? ` — ${item.specification}` : ""}`
@@ -735,6 +734,7 @@ async function quoteHistoryReply(conversation: LoadedJob["conversation"]) {
     "Your recent quote requests:",
     lines.join("\n"),
     draft?.title ? `Unsent draft: ${draft.title}.` : null,
+    draft?.title ? "Reply CANCEL DRAFT to clear only that unfinished job." : null,
     "Reply NEW QUOTE to start another request. For the latest supplier prices on your active request, reply QUOTES.",
   ].filter(Boolean).join("\n\n");
 }
@@ -775,14 +775,99 @@ async function startNewQuote(
       entityType: "Conversation",
       entityId: conversation.id,
       summary: "Customer started a fresh WhatsApp quote intake session",
-      metadata: { messageId: inbound.id, previousStage: conversation.aiStage, startedAt: startedAt.toISOString() },
+      metadata: {
+        messageId: inbound.id,
+        previousStage: conversation.aiStage,
+        previousDraftDiscarded: Boolean(conversation.aiDraftEncrypted),
+        startedAt: startedAt.toISOString(),
+      },
     });
     return next;
   });
   if (announce) {
-    await sendReply(job, updated, "Brilliant — let’s price another job. What product do you need? You can type the details or send a photo, drawing or PDF.");
+    await sendReply(job, updated, conversation.aiDraftEncrypted
+      ? "Done — I’ve cleared the previous unsent draft so the jobs cannot get mixed together. No confirmed request was changed. What product do you need for the new quote? You can type the details or send a photo, drawing or PDF."
+      : "Brilliant — let’s price another job. What product do you need? You can type the details or send a photo, drawing or PDF.");
   }
   return updated;
+}
+
+async function cancelQuoteDrafts(
+  job: WhatsAppJob,
+  conversation: NonNullable<LoadedJob["conversation"]>,
+  inbound: NonNullable<LoadedJob["whatsappMessage"]>,
+  allDrafts: boolean,
+) {
+  const startedAt = inbound.occurredAt;
+  const currentDraftCount = conversation.aiDraftEncrypted ? 1 : 0;
+  const result = await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
+    const otherDrafts = allDrafts
+      ? await tx.conversation.updateMany({
+          where: {
+            customerContactId: conversation.customerContactId,
+            id: { not: conversation.id },
+            aiDraftEncrypted: { not: null },
+          },
+          data: {
+            aiStage: "COLLECTING",
+            aiDraftEncrypted: null,
+            aiDraftFingerprint: null,
+            aiLastQuestionKey: null,
+            aiUnproductiveTurns: 0,
+            closedAt: null,
+          },
+        })
+      : { count: 0 };
+    const next = await tx.conversation.update({
+      where: { id: conversation.id },
+      data: {
+        aiStage: "COLLECTING",
+        aiSessionStartedAt: startedAt,
+        aiDraftEncrypted: null,
+        aiDraftFingerprint: null,
+        aiLastQuestionKey: null,
+        aiUnproductiveTurns: 0,
+        aiLastProgressAt: startedAt,
+        closedAt: null,
+      },
+      include: {
+        customerContact: true,
+        messages: {
+          orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+          take: 30,
+          include: { attachments: true },
+        },
+      },
+    });
+    const clearedDraftCount = currentDraftCount + otherDrafts.count;
+    await writeWhatsAppAudit(tx, {
+      action: allDrafts ? "WHATSAPP.ALL_DRAFTS_CANCELLED" : "WHATSAPP.DRAFT_CANCELLED",
+      entityType: "Conversation",
+      entityId: conversation.id,
+      summary: allDrafts
+        ? "Customer cleared every unfinished WhatsApp quote draft"
+        : "Customer cleared the current unfinished WhatsApp quote draft",
+      metadata: {
+        messageId: inbound.id,
+        clearedDraftCount,
+        submittedRequestsChanged: false,
+        startedAt: startedAt.toISOString(),
+      },
+    });
+    return { next, clearedDraftCount };
+  });
+
+  const cleared = result.clearedDraftCount > 0
+    ? allDrafts
+      ? `Done — I’ve cleared ${result.clearedDraftCount} unfinished draft${result.clearedDraftCount === 1 ? "" : "s"}.`
+      : "Done — I’ve cancelled the unfinished draft."
+    : "There was no unfinished draft to cancel, so you’re already starting clean.";
+  await sendReply(
+    job,
+    result.next,
+    `${cleared} No confirmed or live quote requests were changed.\n\nWhat product would you like a new quote for? You can type the details or send a photo, drawing or PDF.`,
+  );
+  return result.next;
 }
 
 async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
@@ -793,8 +878,10 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   let justConsented = false;
   const text = inbound.bodyEncrypted ? decryptPrivateValue(inbound.bodyEncrypted) : "";
 
-  const controlMessage = isStop(text)
+  const controlMessage = isConversationOptOut(text)
     || isConsent(text)
+    || isCancelAllDraftsRequest(text)
+    || isCancelDraftRequest(text)
     || isQuoteConfirmation(text)
     || isQuoteRefresh(text)
     || isNewQuoteRequest(text)
@@ -805,7 +892,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     return undefined;
   }
 
-  if (isStop(text)) {
+  if (isConversationOptOut(text)) {
     await runAsDatabaseWorker("whatsapp_ai", (tx) => tx.conversation.update({
       where: { id: conversation.id },
       data: {
@@ -864,6 +951,11 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     });
     conversation = consentedConversation;
     justConsented = true;
+  }
+
+  if (isCancelAllDraftsRequest(text) || isCancelDraftRequest(text)) {
+    await cancelQuoteDrafts(job, conversation, inbound, isCancelAllDraftsRequest(text));
+    return undefined;
   }
 
   if (isNewQuoteRequest(text)) {
@@ -1028,7 +1120,9 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
       const parts: Array<{ direction: "INBOUND" | "OUTBOUND"; text: string }> = [];
       if (message.bodyEncrypted) {
         const body = decryptPrivateValue(message.bodyEncrypted);
-        if (!(justConsented && message.id === inbound.id && isConsent(body))) {
+        if (!(justConsented && message.id === inbound.id && isConsent(body))
+          && !isCancelAllDraftsRequest(body)
+          && !isCancelDraftRequest(body)) {
           parts.push({ direction: message.direction, text: body });
         }
       }

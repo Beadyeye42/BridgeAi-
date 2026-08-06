@@ -79,6 +79,10 @@ export function isQuoteRefresh(value: string) {
   return /^(quotes?|update|status)$/i.test(value.trim());
 }
 
+export function isConversationOptOut(value: string) {
+  return /^(stop|end|unsubscribe|close conversation)$/i.test(value.trim());
+}
+
 export function newQuoteDetails(value: string) {
   const trimmed = value.trim();
   const match = /^(?:i\s+(?:need|want|would\s+like)\s+)?(?:a\s+)?(?:new|another|separate|different)\s+(?:quote|job)(?:\s+(?:for|about)\s+|\s*[:\-]\s*|\s+)(.+)$/i.exec(trimmed);
@@ -95,6 +99,16 @@ export function isQuoteHistoryRequest(value: string) {
   return /^(?:2|my quotes?|past quotes?|quote history|previous quotes?|history)$/i.test(value.trim());
 }
 
+export function isCancelAllDraftsRequest(value: string) {
+  return /^(?:cancel|clear|delete|discard|remove)\s+all\s+(?:current\s+)?(?:(?:quote|job)\s+)?drafts?$/i.test(value.trim())
+    || /^(?:cancel|clear|delete|discard|remove)\s+all\s+(?:current\s+)?(?:quotes?|jobs?)$/i.test(value.trim());
+}
+
+export function isCancelDraftRequest(value: string) {
+  if (isCancelAllDraftsRequest(value)) return false;
+  return /^(?:3|cancel|(?:cancel|clear|delete|discard|remove) (?:current )?(?:(?:quote|job) )?draft|cancel (?:current )?(?:quote|job)|start again|start over|reset (?:current )?(?:quote|job|draft))$/i.test(value.trim());
+}
+
 export function isMenuRequest(value: string) {
   return /^(hi|hello|hey|menu|help|start)$/i.test(value.trim());
 }
@@ -104,7 +118,8 @@ export function quoteMenu(hasDraft = false) {
     "Hi 👋 I’m Bridge AI — your industry partner for finding competitive prices and lead times from approved suppliers.",
     "1 — NEW QUOTE\nStart a fresh job, including a separate job for another customer.",
     "2 — MY QUOTES\nCheck your recent requests.",
+    "3 — CANCEL DRAFT\nClear the unfinished job and start again. Confirmed requests stay safe.",
     "You can type the product you need or send a photo, drawing or PDF.",
-    hasDraft ? "Your unsent draft is still safe. Continue describing it, or reply YES or CONFIRM when the summary is right." : null,
+    hasDraft ? "One unsent draft is open. Continue describing it, reply YES when the summary is right, or reply CANCEL DRAFT to clear it." : "There is no unfinished draft open.",
   ].filter(Boolean).join("\n\n");
 }

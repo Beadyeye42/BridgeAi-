@@ -3,6 +3,9 @@ import {
   attachmentInterpretation,
   earliestInboundAt,
   firstContactConsentReply,
+  isCancelAllDraftsRequest,
+  isCancelDraftRequest,
+  isConversationOptOut,
   isMenuRequest,
   isNewQuoteRequest,
   isQuoteConfirmation,
@@ -62,6 +65,15 @@ describe("WhatsApp messaging policy", () => {
     expect(isQuoteHistoryRequest("quotes")).toBe(false);
   });
 
+  it("separates draft cancellation from closing the WhatsApp conversation", () => {
+    expect(["3", "cancel", "CANCEL DRAFT", "cancel current quote", "start again", "reset job"].every(isCancelDraftRequest)).toBe(true);
+    expect(["CANCEL ALL DRAFTS", "clear all quote drafts", "delete all current jobs"].every(isCancelAllDraftsRequest)).toBe(true);
+    expect(["STOP", "unsubscribe", "close conversation"].every(isConversationOptOut)).toBe(true);
+    expect(isConversationOptOut("cancel")).toBe(false);
+    expect(isCancelDraftRequest("cancel all drafts")).toBe(false);
+    expect(isCancelAllDraftsRequest("cancel draft")).toBe(false);
+  });
+
   it("keeps product details when a customer starts another job", () => {
     expect(isNewQuoteRequest("another quote for aluminium bifolds")).toBe(true);
     expect(newQuoteDetails("another quote for aluminium bifolds")).toBe("aluminium bifolds");
@@ -74,8 +86,10 @@ describe("WhatsApp messaging policy", () => {
     expect(menu).toContain("industry partner");
     expect(menu).toContain("1 — NEW QUOTE");
     expect(menu).toContain("2 — MY QUOTES");
+    expect(menu).toContain("3 — CANCEL DRAFT");
     expect(menu).toContain("photo, drawing or PDF");
-    expect(menu).toContain("unsent draft is still safe");
+    expect(menu).toContain("One unsent draft is open");
+    expect(menu).toContain("Confirmed requests stay safe");
   });
 
   it("guides a first-time customer without requiring a special opening phrase", () => {
