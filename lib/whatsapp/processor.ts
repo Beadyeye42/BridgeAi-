@@ -38,6 +38,8 @@ import {
   quoteDraftFingerprint,
   repeatClarification,
   requiredQuestionKey,
+  roofGlazingSpecificationDecision,
+  roofGlazingSpecificationPrompt,
   tradeSpecificationClarification,
 } from "@/lib/whatsapp/intake-state";
 
@@ -1071,12 +1073,18 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     return telemetry;
   }
   const compositeDoorPhoto = compositeDoorPhotoDecision(result.draft, messages);
+  const roofGlazingSpecification = roofGlazingSpecificationDecision(result.draft, messages);
   if (compositeDoorPhoto.handled && result.nextQuestionKey === "COMPOSITE_STYLE") {
+    result.nextQuestionKey = "NONE";
+  }
+  if (!roofGlazingSpecification.shouldAsk && result.nextQuestionKey === "ROOF_GLAZING_SPECIFICATION") {
     result.nextQuestionKey = "NONE";
   }
   const questionKey = compositeDoorPhoto.shouldAsk
     ? "COMPOSITE_STYLE"
-    : requiredQuestionKey(result.draft, result.nextQuestionKey, result.tradeClarification);
+    : roofGlazingSpecification.shouldAsk
+      ? "ROOF_GLAZING_SPECIFICATION"
+      : requiredQuestionKey(result.draft, result.nextQuestionKey, result.tradeClarification);
   const ready = result.readyForConfirmation && questionKey === "NONE" && draftIsComplete(result.draft);
   const fingerprint = quoteDraftFingerprint(result.draft);
   const progress = conversationProgress({
@@ -1161,7 +1169,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     : null;
   const reply = ready && category
       ? formatConfirmation(result.draft, category.name, attachmentCount)
-      : `${mediaAcknowledgement ? `${mediaAcknowledgement}\n\n` : ""}${compositeDoorPhoto.shouldAsk ? compositeDoorStylePhotoPrompt() : tradeClarification ?? repeatedClarification ?? enforcedClarification ?? result.reply}${rejectedMedia ? "\n\nOne uploaded file could not be accepted. Please send a genuine JPG, PNG or PDF within the size limit." : ""}`;
+      : `${mediaAcknowledgement ? `${mediaAcknowledgement}\n\n` : ""}${compositeDoorPhoto.shouldAsk ? compositeDoorStylePhotoPrompt() : roofGlazingSpecification.shouldAsk ? roofGlazingSpecificationPrompt(roofGlazingSpecification) : tradeClarification ?? repeatedClarification ?? enforcedClarification ?? result.reply}${rejectedMedia ? "\n\nOne uploaded file could not be accepted. Please send a genuine JPG, PNG or PDF within the size limit." : ""}`;
   await sendReply(job, refreshed.conversation, reply);
   return telemetry;
 }

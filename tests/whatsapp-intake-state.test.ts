@@ -8,6 +8,8 @@ import {
   quoteDraftFingerprint,
   repeatClarification,
   requiredQuestionKey,
+  roofGlazingSpecificationDecision,
+  roofGlazingSpecificationPrompt,
   tradeSpecificationClarification,
 } from "../lib/whatsapp/intake-state";
 
@@ -128,6 +130,59 @@ describe("WhatsApp intake conversation state", () => {
     expect(compositeDoorPhotoDecision(draft, [
       { direction: "INBOUND", text: "I don't have a photo, but it is a cottage style" },
     ])).toMatchObject({ customerHasNoPhoto: true, shouldAsk: false });
+  });
+
+  it.each([
+    ["roof-glass", "Flat roof glass"],
+    ["roof-lanterns", "Roof lantern"],
+    ["stepped-units", "Stepped unit flat roof glass"],
+  ])("requires internal size, material and colour for %s", (categorySlug, title) => {
+    const decision = roofGlazingSpecificationDecision({
+      categorySlug,
+      title,
+      summary: `${title} required`,
+      items: [{ description: title }],
+    }, []);
+    expect(decision).toEqual({
+      isRoofGlazing: true,
+      internalSizesNeeded: true,
+      materialNeeded: true,
+      colourNeeded: true,
+      shouldAsk: true,
+    });
+    const reply = roofGlazingSpecificationPrompt(decision);
+    expect(reply).toContain("INTERNAL opening size");
+    expect(reply).toContain("frame/material");
+    expect(reply).toContain("colour or finish");
+  });
+
+  it("accepts a complete roof-glazing specification", () => {
+    const decision = roofGlazingSpecificationDecision({
+      categorySlug: "roof-lanterns",
+      title: "Roof lantern",
+      summary: "Aluminium roof lantern in anthracite grey",
+      items: [{ description: "Roof lantern" }],
+    }, [{ direction: "INBOUND", text: "Internal opening size is 2000 x 3000 mm, aluminium, anthracite grey" }]);
+    expect(decision).toMatchObject({
+      isRoofGlazing: true,
+      internalSizesNeeded: false,
+      materialNeeded: false,
+      colourNeeded: false,
+      shouldAsk: false,
+    });
+  });
+
+  it("does not mistake an external roof-glass measurement for the required internal size", () => {
+    const decision = roofGlazingSpecificationDecision({
+      categorySlug: "roof-glass",
+      title: "Flat roof glass",
+      summary: "Black aluminium flat roof glass",
+      items: [{ description: "Flat roof glass" }],
+    }, [{ direction: "INBOUND", text: "The external size is 1200 x 2400 mm" }]);
+    expect(decision).toMatchObject({ internalSizesNeeded: true, materialNeeded: false, colourNeeded: false, shouldAsk: true });
+    const reply = roofGlazingSpecificationPrompt(decision);
+    expect(reply).toContain("INTERNAL opening size");
+    expect(reply).not.toContain("frame/material suppliers");
   });
 
   it("asks one compact material and industry-colour clarification", () => {
