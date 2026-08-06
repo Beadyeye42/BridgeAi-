@@ -24,16 +24,24 @@ export async function POST(request: Request) {
   if (!company || company.status !== "APPROVED" || !isFoundingSupplier(company.foundingMemberNumber)) return NextResponse.json({ error: "An approved founding supplier account is required before submitting a quotation" }, { status: 403 });
   if (!subscription || subscription.status !== "ACTIVE" || (subscription.currentPeriodEnd && subscription.currentPeriodEnd <= new Date())) return NextResponse.json({ error: "An active Bridge AI supplier membership is required before submitting a quotation" }, { status: 402 });
 
-  const quotation = await prisma.$transaction(async (tx) => {
-    const saved = await tx.supplierQuotation.upsert({
-      where: { assignmentId: assignment.id },
-      update: { price: parsed.data.price, leadTimeDays: parsed.data.leadTimeDays, validUntil: parsed.data.validUntil, notes: parsed.data.notes, status: "SUBMITTED", submittedAt: new Date() },
-      create: { quoteRequestId: assignment.quoteRequestId, supplierCompanyId: companyId, assignmentId: assignment.id, price: parsed.data.price, leadTimeDays: parsed.data.leadTimeDays, validUntil: parsed.data.validUntil, notes: parsed.data.notes, status: "SUBMITTED", submittedAt: new Date() },
+  const submittedAt = new Date();
+  let quotation;
+  try {
+    quotation = await prisma.$transaction(async (tx) => {
+      const saved = await tx.supplierQuotation.upsert({
+        where: { assignmentId: assignment.id },
+        update: { price: parsed.data.price, leadTimeDays: parsed.data.leadTimeDays, validUntil: parsed.data.validUntil, notes: parsed.data.notes, status: "SUBMITTED", submittedAt },
+        create: { quoteRequestId: assignment.quoteRequestId, supplierCompanyId: companyId, assignmentId: assignment.id, price: parsed.data.price, leadTimeDays: parsed.data.leadTimeDays, validUntil: parsed.data.validUntil, notes: parsed.data.notes, status: "SUBMITTED", submittedAt, createdAt: submittedAt },
+      });
+      await tx.supplierAssignment.update({ where: { id: assignment.id }, data: { status: "QUOTED", respondedAt: submittedAt } });
+      await writeAuditLog({ actorUserId: session.userId, supplierCompanyId: companyId, action: "QUOTATION.SUBMITTED", entityType: "SupplierQuotation", entityId: saved.id, summary: "Supplier quotation submitted", metadata: { price: parsed.data.price, leadTimeDays: parsed.data.leadTimeDays }, request }, tx);
+      return saved;
     });
-    await tx.supplierAssignment.update({ where: { id: assignment.id }, data: { status: "QUOTED", respondedAt: new Date() } });
-    await writeAuditLog({ actorUserId: session.userId, supplierCompanyId: companyId, action: "QUOTATION.SUBMITTED", entityType: "SupplierQuotation", entityId: saved.id, summary: "Supplier quotation submitted", metadata: { price: parsed.data.price, leadTimeDays: parsed.data.leadTimeDays }, request }, tx);
-    return saved;
-  });
+  } catch (error) {
+    console.error("Quotation submission failed", { assignmentId: assignment.id, error });
+    await prisma.systemEvent.create({ data: { severity: "ERROR", source: "quotation", code: "QUOTATION_SUBMIT_FAILED", message: error instanceof Error ? error.message.slice(0, 1000) : "Quotation submission failed", context: { assignmentId: assignment.id, supplierCompanyId: companyId } } }).catch(() => undefined);
+    return NextResponse.json({ error: "The quotation could not be submitted. Please try again." }, { status: 500 });
+  }
   after(async () => {
     try {
       const job = await enqueueQuoteSummary(quotation.id);

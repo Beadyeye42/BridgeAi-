@@ -117,6 +117,30 @@ describe("security foundation static controls", () => {
     expect(source).not.toContain("requireSupplierApi");
   });
 
+  it("authorises private attachment reads before server-only signed URL creation", () => {
+    const source = read("app/api/attachments/[id]/download/route.ts");
+    const identity = source.indexOf("await getCurrentSession()");
+    const attachment = source.indexOf("prisma.attachment.findUnique");
+    const companyPermission = source.indexOf("const permitted");
+    const signedUrl = source.indexOf("getSupabaseAdmin().storage");
+    expect(identity).toBeGreaterThan(-1);
+    expect(attachment).toBeGreaterThan(identity);
+    expect(companyPermission).toBeGreaterThan(attachment);
+    expect(signedUrl).toBeGreaterThan(companyPermission);
+    expect(source).toContain('scanStatus !== "CLEAN"');
+    expect(source).toContain('code: "ATTACHMENT_SIGNED_URL_FAILED"');
+    expect(source).not.toContain("getPrivateStorage");
+  });
+
+  it("uses one timestamp for quotation creation and returns structured failures", () => {
+    const source = read("app/api/quotations/route.ts");
+    expect(source).toContain("const submittedAt = new Date()");
+    expect(source).toContain("submittedAt, createdAt: submittedAt");
+    expect(source).toContain("respondedAt: submittedAt");
+    expect(source).toContain('code: "QUOTATION_SUBMIT_FAILED"');
+    expect(source).toContain('NextResponse.json({ error: "The quotation could not be submitted. Please try again." }');
+  });
+
   it("does not retain a parallel Prisma migration history", () => {
     expect(globSync("prisma/migrations/**/*.sql")).toHaveLength(0);
     expect(globSync("supabase/migrations/*.sql").length).toBeGreaterThanOrEqual(
