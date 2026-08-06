@@ -1,6 +1,7 @@
 import { after, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdminApi } from "@/lib/auth/api";
+import { processSupplierWinnerEmailsSafely } from "@/lib/notifications/email-worker";
 import { selectQuotationForCustomer } from "@/lib/quotes/selection";
 import { enqueueContactUnlock, processWhatsAppJobs } from "@/lib/whatsapp/processor";
 
@@ -15,8 +16,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   try {
     const grant = await selectQuotationForCustomer({ quotationId: id, actorUserId: auth.session.userId, evidence: parsed.data.evidence });
     after(async () => {
-      const job = await enqueueContactUnlock(grant.id);
-      if (job) await processWhatsAppJobs({ limit: 5 });
+      await Promise.allSettled([
+        (async () => {
+          const job = await enqueueContactUnlock(grant.id);
+          if (job) await processWhatsAppJobs({ limit: 5 });
+        })(),
+        processSupplierWinnerEmailsSafely({ limit: 10 }),
+      ]);
     });
     return NextResponse.json({ ok: true, contactAccessGrantId: grant.id });
   } catch (error) {

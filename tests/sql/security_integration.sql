@@ -632,6 +632,21 @@ BEGIN
   EXECUTE 'RESET ROLE';
   PERFORM set_config('request.jwt.claim.sub', '', true);
 
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  PERFORM set_config('request.jwt.claim.sub', user_a::text, true);
+  BEGIN
+    INSERT INTO bridge_ai."Notification" (
+      id,"userId","supplierCompanyId",type,channel,title,body,"actionUrl","createdAt"
+    ) VALUES (
+      'forbidden_winner_email',user_a,'security_company_a','QUOTATION_ACCEPTED','EMAIL',
+      'forbidden','forbidden','/dashboard/requests/SECURITY-1',now()
+    );
+    RAISE EXCEPTION 'Supplier queued its own winner email';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  EXECUTE 'RESET ROLE';
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+
   INSERT INTO bridge_ai."ContactAccessGrant" (
     id,"quotationId","customerContactId","supplierCompanyId",reason,"createdAt"
   ) VALUES ('security_grant','security_quote','security_customer','security_company_a','CUSTOMER_SELECTED',now());
@@ -693,6 +708,29 @@ BEGIN
     AND coalesce(with_check, qual) LIKE '%is_trusted_worker%whatsapp_ai%';
   IF visible_count <> 3 THEN
     RAISE EXCEPTION 'trusted WhatsApp customer-selection policies are incomplete';
+  END IF;
+  SELECT count(*) INTO visible_count
+  FROM pg_policies
+  WHERE schemaname='bridge_ai'
+    AND policyname IN (
+      'whatsapp_ai_winner_email_insert',
+      'supplier_email_notification_select',
+      'supplier_email_notification_update',
+      'supplier_email_active_profile_select',
+      'supplier_email_audit_insert',
+      'supplier_email_system_event_insert'
+    )
+    AND roles @> ARRAY['authenticated']::name[]
+    AND coalesce(with_check, qual) LIKE '%is_trusted_worker%';
+  IF visible_count <> 6 THEN
+    RAISE EXCEPTION 'supplier email worker policies are incomplete';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM bridge_ai."AuditLog"
+    WHERE action='SYSTEM.SUPPLIER_WINNER_EMAIL_ENABLED'
+      AND "entityType"='SecurityConfiguration'
+  ) THEN
+    RAISE EXCEPTION 'supplier winner email security configuration audit is missing';
   END IF;
 END
 $test$;

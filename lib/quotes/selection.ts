@@ -57,6 +57,11 @@ export async function selectQuotationForCustomer(input: {
       where: { supplierCompanyId: quotation.supplierCompanyId, status: "ACTIVE" },
       select: { userId: true },
     });
+    const preferences = members.length ? await tx.notificationPreference.findMany({
+      where: { supplierCompanyId: quotation.supplierCompanyId, userId: { in: members.map(({ userId }) => userId) } },
+      select: { userId: true, emailQuotationUpdates: true },
+    }) : [];
+    const preferenceByUserId = new Map(preferences.map((preference) => [preference.userId, preference]));
     if (members.length) {
       await tx.notification.createMany({
         data: members.map(({ userId }) => ({
@@ -68,6 +73,21 @@ export async function selectQuotationForCustomer(input: {
           actionUrl: `/dashboard/requests/${quotation.quoteRequest.reference}`,
         })),
       });
+      const emailRecipients = members.filter(({ userId }) => preferenceByUserId.get(userId)?.emailQuotationUpdates !== false);
+      if (emailRecipients.length) {
+        await tx.notification.createMany({
+          data: emailRecipients.map(({ userId }) => ({
+            userId,
+            supplierCompanyId: quotation.supplierCompanyId,
+            type: "QUOTATION_ACCEPTED" as const,
+            channel: "EMAIL" as const,
+            title: `You won request ${quotation.quoteRequest.reference}`,
+            body: "The customer selected your quotation. Sign in to Bridge AI to view the request and securely access the customer details.",
+            actionUrl: `/dashboard/requests/${quotation.quoteRequest.reference}`,
+          })),
+          skipDuplicates: true,
+        });
+      }
     }
     if (input.actorUserId) {
       await tx.auditLog.createMany({

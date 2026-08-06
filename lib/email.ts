@@ -1,3 +1,5 @@
+import { buildSupplierWinnerEmail, type SupplierWinnerEmailInput } from "@/lib/notifications/winner-email";
+
 export async function sendTeamInvitationEmail(email: string, invitationUrl: string) {
   if (!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM) {
     if (process.env.NODE_ENV === "development") console.info(`[Bridge AI] Team invitation for ${email}: ${invitationUrl}`);
@@ -62,6 +64,41 @@ export async function sendOperationalAlertEmail(
     body: JSON.stringify({ from: process.env.EMAIL_FROM, to: config.recipients, subject, text }),
   });
   if (!response.ok) throw new Error(`Operational alert email failed with status ${response.status}`);
+  const payload = await response.json().catch(() => null) as { id?: string } | null;
+  return { delivered: true as const, providerEmailId: payload?.id ?? null };
+}
+
+export function supplierEmailConfiguration() {
+  if (!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM) {
+    return { configured: false as const, reason: "Resend supplier email delivery is not configured" };
+  }
+  return { configured: true as const, reason: null };
+}
+
+export async function sendSupplierWinnerEmail(
+  recipientEmail: string,
+  input: SupplierWinnerEmailInput,
+  idempotencyKey: string,
+) {
+  const config = supplierEmailConfiguration();
+  if (!config.configured) throw new Error(`SUPPLIER_EMAIL_NOT_CONFIGURED: ${config.reason}`);
+  const email = buildSupplierWinnerEmail(input);
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+      "Idempotency-Key": idempotencyKey,
+    },
+    body: JSON.stringify({
+      from: process.env.EMAIL_FROM,
+      to: [recipientEmail],
+      subject: email.subject,
+      text: email.text,
+      html: email.html,
+    }),
+  });
+  if (!response.ok) throw new Error(`Supplier winner email failed with status ${response.status}`);
   const payload = await response.json().catch(() => null) as { id?: string } | null;
   return { delivered: true as const, providerEmailId: payload?.id ?? null };
 }
