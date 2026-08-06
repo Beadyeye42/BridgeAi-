@@ -65,6 +65,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .page-heading h1 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: clamp(26px, 2.4vw, 38px); font-weight: 500; line-height: 1.13; letter-spacing: -1.2px; }
 .page-heading > div > p:last-child { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
 .heading-actions { display: flex; align-items: center; gap: 10px; }
+.refresh-button { min-height: 39px; gap: 7px; padding: 0 13px; white-space: nowrap; }
 .search-button { height: 39px; min-width: 210px; display: flex; align-items: center; gap: 9px; padding: 0 10px 0 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: #8b9390; font-size: 11px; box-shadow: 0 2px 8px rgba(20,38,31,.025); }
 .search-button kbd { margin-left: auto; padding: 3px 6px; border: 1px solid #e4e7e5; border-radius: 4px; background: #f6f7f6; color: #89918e; font-size: 9px; }
 .icon-button { position: relative; width: 39px; height: 39px; padding: 0; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: #51605b; cursor: pointer; }
@@ -180,6 +181,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .mobile-header { position: sticky; top: 0; height: 60px; padding: 0 16px; display: flex; align-items: center; gap: 12px; background: rgba(24,40,34,.97); color: white; z-index: 30; }
   .mobile-header > span:nth-child(2) { flex: 1; padding-left: 2px; font-size: 11px; font-weight: 650; }
   .mobile-header .icon-button { width: 34px; height: 34px; border-color: rgba(255,255,255,.1); background: rgba(255,255,255,.05); color: white; }
+  .mobile-header-actions { display: flex; align-items: center; gap: 8px; }
   .portal-main { margin-left: 0; padding: 20px 15px 92px; }
   .demo-banner { align-items: flex-start; flex-wrap: wrap; font-size: 10px; line-height: 1.5; }
   .demo-banner a { width: 100%; margin: 2px 0 0 23px; }
