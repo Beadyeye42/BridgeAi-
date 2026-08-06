@@ -117,6 +117,10 @@ export const supplierCapabilitiesSchema = z.object({
   ),
 });
 
+export const supplierCapabilityActivationSchema = z.object({
+  productCategoryId: z.string().min(1).max(64),
+});
+
 const optionalCoverageLabel = z.string().trim().min(2).max(100).optional();
 export const coverageAreaSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("POSTCODE"), label: optionalCoverageLabel, postcodePrefix: z.string().trim().min(1).max(8).regex(/^[A-Za-z][A-Za-z0-9 ]{0,7}$/, "Enter a UK postcode or postcode area, such as GL52 6TD, B or CV").transform((v) => v.toUpperCase()) }),
