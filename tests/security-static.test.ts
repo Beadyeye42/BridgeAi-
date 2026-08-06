@@ -166,7 +166,8 @@ describe("security foundation static controls", () => {
     expect(migration).not.toMatch(/CREATE POLICY .*supplier.*WhatsAppJob/i);
     const processor = read("lib/whatsapp/processor.ts");
     expect(processor).toContain("if (!conversation.aiConsentAt)");
-    expect(processor).toContain('stage === "AWAITING_CONFIRMATION" && isConfirmation(text)');
+    expect(processor).toContain('stage === "AWAITING_CONFIRMATION" && isQuoteConfirmation(text)');
+    expect(processor).toContain("aiSessionStartedAt: sessionStartedAt");
     expect(processor).toContain("sanitizeCustomerImage");
     expect(processor).toContain('scanStatus: "CLEAN"');
     expect(processor).toContain('scanStatus: "PENDING" as const');

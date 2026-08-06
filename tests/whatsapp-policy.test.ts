@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  attachmentInterpretation,
+  earliestInboundAt,
+  firstContactConsentReply,
   isMenuRequest,
   isNewQuoteRequest,
+  isQuoteConfirmation,
   newQuoteDetails,
   isQuoteHistoryRequest,
   isQuoteRefresh,
@@ -72,5 +76,40 @@ describe("WhatsApp messaging policy", () => {
     expect(menu).toContain("2 — MY QUOTES");
     expect(menu).toContain("photo, drawing or PDF");
     expect(menu).toContain("unsent draft is still safe");
+  });
+
+  it("guides a first-time customer without requiring a special opening phrase", () => {
+    const reply = firstContactConsentReply({
+      privacyUrl: "https://bridge-ai.example/legal/privacy",
+      hasMedia: true,
+      hasText: false,
+    });
+    expect(reply).toContain("say “Hi”");
+    expect(reply).toContain("Can I have a quote please?");
+    expect(reply).toContain("photo, drawing or PDF");
+    expect(reply).toContain("securely received your file");
+    expect(reply).toContain("won’t analyse it until you choose to continue");
+    expect(reply).toContain("Reply CONTINUE");
+  });
+
+  it("keeps the customer's first message inside the quote session after consent", () => {
+    const firstPhotoAt = new Date("2026-08-05T11:55:00.000Z");
+    expect(earliestInboundAt([
+      { direction: "INBOUND", occurredAt: firstPhotoAt },
+      { direction: "OUTBOUND", occurredAt: new Date("2026-08-05T11:56:00.000Z") },
+      { direction: "INBOUND", occurredAt: now },
+    ], now)).toEqual(firstPhotoAt);
+  });
+
+  it("accepts a natural yes only as an explicit quote confirmation", () => {
+    expect(["YES", "yes please", "That's right", "correct", "go ahead", "send it"].every(isQuoteConfirmation)).toBe(true);
+    expect(isQuoteConfirmation("maybe")).toBe(false);
+    expect(isQuoteConfirmation("yes, but change the colour")).toBe(false);
+  });
+
+  it("turns attachment analysis into a cautious customer-facing interpretation", () => {
+    const reply = attachmentInterpretation(["six window elevations with handwritten dimensions."]);
+    expect(reply).toContain("My reading is: six window elevations");
+    expect(reply).toContain("If I’ve misunderstood anything");
   });
 });

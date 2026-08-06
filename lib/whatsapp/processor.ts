@@ -17,8 +17,12 @@ import { PRIVATE_BUCKET } from "@/lib/storage";
 import { downloadMetaMedia, sendMetaTemplate, sendMetaText } from "@/lib/whatsapp/meta-client";
 import { writeWhatsAppSystemEvent } from "@/lib/whatsapp/system-events";
 import {
+  attachmentInterpretation,
+  earliestInboundAt,
+  firstContactConsentReply,
   isMenuRequest,
   isNewQuoteRequest,
+  isQuoteConfirmation,
   newQuoteDetails,
   isQuoteHistoryRequest,
   isQuoteRefresh,
@@ -490,16 +494,10 @@ function decryptDraft(value: Uint8Array | null) {
   return quoteDraftSchema.parse(JSON.parse(decryptPrivateValue(value)));
 }
 
-function consentReply() {
+function consentReply(input: { hasMedia: boolean; hasText: boolean }) {
   const origin = process.env.APP_URL?.trim();
   const privacyUrl = origin ? `${applicationOrigin(origin)}/legal/privacy` : "/legal/privacy";
-  return [
-    "Hi 👋 I’m Bridge AI, your quotation assistant from Ironbridge Group Ltd.",
-    "I’ll help turn your details, photos, drawings or PDFs into a clear request for approved suppliers, then bring their prices and lead times back here.",
-    "Your contact details stay private until you accept a quote and the selected supplier completes the secure unlock payment.",
-    `Privacy: ${privacyUrl}`,
-    "Reply CONTINUE to proceed, or STOP to end.",
-  ].join("\n\n");
+  return firstContactConsentReply({ privacyUrl, ...input });
 }
 
 export function isConsent(value: string) {
@@ -508,10 +506,6 @@ export function isConsent(value: string) {
 
 export function isStop(value: string) {
   return /^(stop|cancel|end|unsubscribe)$/i.test(value.trim());
-}
-
-export function isConfirmation(value: string) {
-  return /^confirm$/i.test(value.trim());
 }
 
 export function formatConfirmation(draft: QuoteDraft, categoryName: string, attachmentCount = 0) {
@@ -529,7 +523,7 @@ export function formatConfirmation(draft: QuoteDraft, categoryName: string, atta
       ? `Files: ${attachmentCount} received securely and added to this job`
       : "For the most accurate pricing, send a photo, drawing or PDF now if you have one. You can still continue without a file.",
     draft.customerBudget === null ? null : `Budget: £${draft.customerBudget.toLocaleString("en-GB", { maximumFractionDigits: 2 })}`,
-    "Reply CONFIRM to send it, or tell me what to change.",
+    "Reply YES or CONFIRM to send it, or tell me what to change.",
   ].filter(Boolean).join("\n\n");
 }
 
@@ -792,11 +786,12 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   const inbound = loaded.whatsappMessage;
   if (!initialConversation || !inbound || inbound.direction !== "INBOUND") throw new Error("INBOUND_JOB_INVALID");
   let conversation: NonNullable<LoadedJob["conversation"]> = initialConversation;
+  let justConsented = false;
   const text = inbound.bodyEncrypted ? decryptPrivateValue(inbound.bodyEncrypted) : "";
 
   const controlMessage = isStop(text)
     || isConsent(text)
-    || isConfirmation(text)
+    || isQuoteConfirmation(text)
     || isQuoteRefresh(text)
     || isNewQuoteRequest(text)
     || isQuoteHistoryRequest(text)
@@ -824,16 +819,20 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
 
   if (!conversation.aiConsentAt) {
     if (!isConsent(text)) {
-      await sendReply(job, conversation, consentReply());
+      await sendReply(job, conversation, consentReply({
+        hasMedia: Boolean(inbound.mediaIdEncrypted),
+        hasText: Boolean(text.trim()),
+      }));
       return undefined;
     }
     const consentedAt = new Date();
+    const sessionStartedAt = earliestInboundAt(conversation.messages, consentedAt);
     const consentedConversation = await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
       const updated = await tx.conversation.update({
         where: { id: conversation.id },
         data: {
           aiConsentAt: consentedAt,
-          aiSessionStartedAt: consentedAt,
+          aiSessionStartedAt: sessionStartedAt,
           aiStage: "COLLECTING",
           aiDraftFingerprint: null,
           aiLastQuestionKey: null,
@@ -855,12 +854,12 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
         entityType: "Conversation",
         entityId: conversation.id,
         summary: "Customer consented to automated WhatsApp quote intake",
-        metadata: { messageId: inbound.id },
+        metadata: { messageId: inbound.id, sessionStartedAt: sessionStartedAt.toISOString() },
       });
       return updated;
     });
-    await sendReply(job, consentedConversation, "Perfect — what are you pricing today? For example, uPVC windows, aluminium bifolds, a composite door or a roof lantern. You can also send a photo, drawing or PDF.");
-    return undefined;
+    conversation = consentedConversation;
+    justConsented = true;
   }
 
   if (isNewQuoteRequest(text)) {
@@ -887,17 +886,21 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   let rejectedMedia = false;
   let currentAttachmentCount = 0;
   const attachmentAnalyses: QuoteAttachmentAnalysis[] = [];
+  const currentAttachmentAnalyses: QuoteAttachmentAnalysis[] = [];
   for (const message of mediaMessages) {
     const outcome = await persistMedia(message, conversation.id);
     rejectedMedia ||= outcome.rejected;
     if (outcome.attachment) {
-      if (message.id === inbound.id) currentAttachmentCount += 1;
+      if (message.id === inbound.id || justConsented) currentAttachmentCount += 1;
       const analysis = await ensureAttachmentAnalysis(
         outcome.attachment,
         outcome.bytes,
         conversation.customerContact.phoneHash,
       );
-      if (analysis) attachmentAnalyses.push(analysis);
+      if (analysis) {
+        attachmentAnalyses.push(analysis);
+        if (message.id === inbound.id || justConsented) currentAttachmentAnalyses.push(analysis);
+      }
     }
   }
 
@@ -920,7 +923,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     return undefined;
   }
 
-  if (stage === "AWAITING_CONFIRMATION" && isConfirmation(text)) {
+  if (stage === "AWAITING_CONFIRMATION" && isQuoteConfirmation(text)) {
     if (!draft) throw new Error("QUOTE_DRAFT_MISSING");
     let request;
     try {
@@ -1020,7 +1023,10 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     .flatMap((message) => {
       const parts: Array<{ direction: "INBOUND" | "OUTBOUND"; text: string }> = [];
       if (message.bodyEncrypted) {
-        parts.push({ direction: message.direction, text: decryptPrivateValue(message.bodyEncrypted) });
+        const body = decryptPrivateValue(message.bodyEncrypted);
+        if (!(justConsented && message.id === inbound.id && isConsent(body))) {
+          parts.push({ direction: message.direction, text: body });
+        }
       }
       for (const attachment of message.attachments) {
         const analysis = decryptAttachmentAnalysis(attachment.aiSummaryEncrypted);
@@ -1133,8 +1139,9 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     .filter((message) => message.occurredAt >= refreshed.conversation!.aiSessionStartedAt)
     .reduce((count, message) => count + message.attachments.length, 0);
   const mediaAcknowledgement = currentAttachmentCount > 0
-    ? `\n\nGreat — I’ve securely received and read ${currentAttachmentCount === 1 ? "that file" : `those ${currentAttachmentCount} files`} and added the useful details.`
-    : "";
+    ? attachmentInterpretation(currentAttachmentAnalyses.map((analysis) => analysis.summary))
+      ?? `I’ve securely received and read ${currentAttachmentCount === 1 ? "that file" : `those ${currentAttachmentCount} files`} and added the useful details.`
+    : null;
   const repeatedClarification = !ready && progress.repeatedQuestion && !progress.progressed
     ? repeatClarification(questionKey)
     : null;
@@ -1146,7 +1153,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     : null;
   const reply = ready && category
       ? formatConfirmation(result.draft, category.name, attachmentCount)
-      : `${tradeClarification ?? repeatedClarification ?? enforcedClarification ?? result.reply}${mediaAcknowledgement}${rejectedMedia ? "\n\nOne uploaded file could not be accepted. Please send a genuine JPG, PNG or PDF within the size limit." : ""}`;
+      : `${mediaAcknowledgement ? `${mediaAcknowledgement}\n\n` : ""}${tradeClarification ?? repeatedClarification ?? enforcedClarification ?? result.reply}${rejectedMedia ? "\n\nOne uploaded file could not be accepted. Please send a genuine JPG, PNG or PDF within the size limit." : ""}`;
   await sendReply(job, refreshed.conversation, reply);
   return telemetry;
 }

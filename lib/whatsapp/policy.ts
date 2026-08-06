@@ -11,6 +11,53 @@ type ReplyMessage = WindowMessage & {
   body?: string | null;
 };
 
+type FirstContactReplyInput = {
+  privacyUrl: string;
+  hasMedia: boolean;
+  hasText: boolean;
+};
+
+export function earliestInboundAt(messages: WindowMessage[], fallback: Date) {
+  return messages
+    .filter((message) => message.direction === "INBOUND")
+    .reduce(
+      (earliest, message) => message.occurredAt < earliest ? message.occurredAt : earliest,
+      fallback,
+    );
+}
+
+export function firstContactConsentReply(input: FirstContactReplyInput) {
+  const received = input.hasMedia
+    ? "I’ve securely received your file. I’ll keep it safe, but I won’t analyse it until you choose to continue."
+    : input.hasText
+      ? "I’ve securely received what you sent. I’ll keep it safe, but I won’t analyse it until you choose to continue."
+      : null;
+  return [
+    "Hi 👋 I’m Bridge AI, your quotation assistant from Ironbridge Group Ltd.",
+    "You can start naturally — say “Hi”, “Can I have a quote please?”, describe the job, or send a photo, drawing or PDF.",
+    received,
+    "I’ll turn the useful details into a clear request for approved suppliers, then bring their prices and lead times back here.",
+    "Your contact details stay private until you accept a quote and the selected supplier completes the secure contact unlock.",
+    `Privacy: ${input.privacyUrl}`,
+    "Reply CONTINUE to let Bridge AI use automated processing for this enquiry, or STOP to end.",
+  ].filter(Boolean).join("\n\n");
+}
+
+export function isQuoteConfirmation(value: string) {
+  return /^(?:confirm|yes|yes please|yep|correct|yes,? (?:that(?:'s| is) right|correct)|that(?:'s| is) right|looks right|go ahead|send it)$/i.test(value.trim());
+}
+
+export function attachmentInterpretation(summaries: string[]) {
+  const safe = summaries
+    .map((summary) => summary.replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 320))
+    .filter(Boolean);
+  if (!safe.length) return null;
+  const evidence = safe.length === 1 ? safe[0] : safe.map((summary) => `• ${summary}`).join("\n");
+  return safe.length === 1
+    ? `I’ve checked the file. My reading is: ${evidence.replace(/[.!?]+$/, "")}. If I’ve misunderstood anything, tell me and I’ll correct it.`
+    : `I’ve checked the files. My reading is:\n${evidence}\nIf I’ve misunderstood anything, tell me and I’ll correct it.`;
+}
+
 export function isServiceWindowOpen(messages: WindowMessage[], now = new Date()) {
   const lastInboundAt = messages
     .filter((message) => message.direction === "INBOUND")
@@ -58,6 +105,6 @@ export function quoteMenu(hasDraft = false) {
     "1 — NEW QUOTE\nStart a fresh job, including a separate job for another customer.",
     "2 — MY QUOTES\nCheck your recent requests.",
     "You can type the product you need or send a photo, drawing or PDF.",
-    hasDraft ? "Your unsent draft is still safe. Continue describing it, or reply CONFIRM when the summary is right." : null,
+    hasDraft ? "Your unsent draft is still safe. Continue describing it, or reply YES or CONFIRM when the summary is right." : null,
   ].filter(Boolean).join("\n\n");
 }
