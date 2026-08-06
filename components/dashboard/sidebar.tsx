@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Bell, Building2, ChevronDown, CreditCard, FileText, HelpCircle, LayoutDashboard, MapPin, Settings, Users } from "lucide-react";
+import { BarChart3, Bell, Building2, ChevronDown, CreditCard, FileText, Gauge, HelpCircle, LayoutDashboard, MapPin, Settings, Users } from "lucide-react";
 import { BrandMark } from "@/components/brand-mark";
 import { LogoutButton } from "@/components/auth/logout-button";
 
@@ -13,6 +13,7 @@ const primary = [
 ];
 const management = [
   { label: "Company profile", icon: Building2, href: "/dashboard/company" },
+  { label: "Capabilities", icon: Gauge, href: "/dashboard/capabilities" },
   { label: "Coverage areas", icon: MapPin, href: "/dashboard/coverage" },
   { label: "Team members", icon: Users, href: "/dashboard/team" },
   { label: "Subscription", icon: CreditCard, href: "/dashboard/subscription" },

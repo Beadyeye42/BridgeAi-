@@ -12,7 +12,7 @@ import { runAsDatabaseWorker } from "@/lib/db";
 import { analyzeQuoteAttachment, quoteAttachmentAnalysisSchema, type QuoteAttachmentAnalysis } from "@/lib/ai/attachment-intake";
 import { extractQuoteIntake, quoteDraftSchema, type QuoteDraft } from "@/lib/ai/quote-intake";
 import { lookupPostcode, PostcodeLookupError } from "@/lib/location/postcodes";
-import { findSupplierMatches } from "@/lib/matching/suppliers";
+import { evaluateSupplierMatches } from "@/lib/matching/suppliers";
 import { runProductionMonitoringSafely } from "@/lib/monitoring/operational-alerts";
 import { addSupplierResponseHours } from "@/lib/quotes/response-clock";
 import { selectQuotationForCustomer } from "@/lib/quotes/selection";
@@ -535,6 +535,12 @@ export function formatConfirmation(draft: QuoteDraft, categoryName: string, atta
     `Project: ${draft.title}`,
     `Category: ${categoryName}`,
     `Delivery: ${draft.deliveryPostcode}`,
+    draft.requiredManufacturer ? `Manufacturer: ${draft.requiredManufacturer}` : null,
+    draft.requiredSystem ? `System: ${draft.requiredSystem}` : null,
+    draft.requiredColour ? `Colour: ${draft.requiredColour}` : null,
+    draft.requiredFinish ? `Finish: ${draft.requiredFinish}` : null,
+    draft.requiredBy ? `Required by: ${new Date(draft.requiredBy).toLocaleDateString("en-GB", { timeZone: "Europe/London" })}` : null,
+    draft.collectionRequired ? "Fulfilment: Collection required" : null,
     `Requirements: ${draft.summary}`,
     items,
     attachmentCount > 0
@@ -716,6 +722,12 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
         deliveryLatitude: delivery.latitude,
         deliveryLongitude: delivery.longitude,
         customerBudget: draft.customerBudget,
+        requiredManufacturer: draft.requiredManufacturer,
+        requiredSystem: draft.requiredSystem,
+        requiredColour: draft.requiredColour,
+        requiredFinish: draft.requiredFinish,
+        requiredBy: draft.requiredBy ? new Date(draft.requiredBy) : null,
+        collectionRequired: draft.collectionRequired,
         status: "OPEN",
         distributionLimit,
         responseDueAt: addSupplierResponseHours(now, quoteResponseHours),
@@ -733,16 +745,46 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
       },
       data: { quoteRequestId: request.id },
     });
-    const matches = await findSupplierMatches(
+    const evaluations = await evaluateSupplierMatches(
       tx,
-      request,
+      { ...request, items: draft.items },
       {
         postcode: delivery.postcode,
         latitude: delivery.latitude,
         longitude: delivery.longitude,
       },
-      { limit: Math.min(distributionLimit, 5) },
     );
+    const matches = evaluations
+      .filter((evaluation) => evaluation.outcome === "MATCHED")
+      .slice(0, Math.min(distributionLimit, 3));
+    const selectedSupplierIds = new Set(matches.map((match) => match.id));
+    for (const evaluation of evaluations) {
+      await tx.supplierMatchDecision.upsert({
+        where: {
+          quoteRequestId_supplierCompanyId: {
+            quoteRequestId: request.id,
+            supplierCompanyId: evaluation.id,
+          },
+        },
+        create: {
+          quoteRequestId: request.id,
+          supplierCompanyId: evaluation.id,
+          outcome: evaluation.outcome,
+          score: evaluation.score,
+          selected: selectedSupplierIds.has(evaluation.id),
+          reasons: evaluation.reasons,
+          capabilitySnapshot: evaluation.capabilitySnapshot,
+        },
+        update: {
+          outcome: evaluation.outcome,
+          score: evaluation.score,
+          selected: selectedSupplierIds.has(evaluation.id),
+          reasons: evaluation.reasons,
+          capabilitySnapshot: evaluation.capabilitySnapshot,
+          decidedAt: now,
+        },
+      });
+    }
     const assignedSupplierIds: string[] = [];
     for (const match of matches) {
       const assignment = await tx.supplierAssignment.create({
@@ -765,6 +807,9 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
           supplierCompanyId: match.id,
           coverageType: match.match.type,
           coverageLabel: match.match.label,
+          matchingScore: match.score,
+          matchingReasons: match.reasons,
+          capabilitySnapshot: match.capabilitySnapshot,
           responseDueAt: request.responseDueAt.toISOString(),
         },
       });

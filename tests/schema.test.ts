@@ -14,7 +14,7 @@ const launchCategoryCatalogue = readFileSync(
   new URL("../supabase/migrations/20260806160415_launch_windows_doors_glazing_catalogue.sql", import.meta.url),
   "utf8",
 );
-const requiredModels = ["User", "SupplierCompany", "SupplierTeamMembership", "SupplierAccreditation", "CustomerContact", "Conversation", "WhatsAppMessage", "WhatsAppJob", "Attachment", "QuoteRequest", "SupplierOpportunity", "QuoteRequestItem", "SupplierAssignment", "SupplierQuotation", "CoverageArea", "ProductCategory", "Subscription", "Notification", "AuditLog"];
+const requiredModels = ["User", "SupplierCompany", "SupplierTeamMembership", "SupplierAccreditation", "SupplierCapability", "CustomerContact", "Conversation", "WhatsAppMessage", "WhatsAppJob", "Attachment", "QuoteRequest", "SupplierMatchDecision", "SupplierOpportunity", "QuoteRequestItem", "SupplierAssignment", "SupplierQuotation", "CoverageArea", "ProductCategory", "Subscription", "Notification", "AuditLog"];
 
 describe("Prisma domain contract", () => {
   it.each(requiredModels)("defines %s", (model) => expect(schema).toMatch(new RegExp(`model ${model} \\{`)));

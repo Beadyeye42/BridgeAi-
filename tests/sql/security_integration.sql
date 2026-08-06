@@ -355,9 +355,41 @@ BEGIN
   INSERT INTO bridge_ai."SupplierAssignment" (
     id,"quoteRequestId","supplierCompanyId",status,"assignedAt","expiresAt"
   ) VALUES ('security_assignment','security_request','security_company_a','PENDING',now(),request_deadline);
+  INSERT INTO bridge_ai."SupplierCapability" (
+    id,"supplierCompanyId","productCategoryId","manufacturerNames","systemNames","colourNames",
+    "standardLeadTimeDays","urgentLeadTimeDays","capacityStatus",active,"lastConfirmedAt","createdAt","updatedAt"
+  ) VALUES
+    ('security_capability_a','security_company_a','security_category',ARRAY['Liniar'],ARRAY['Liniar 70'],ARRAY['Anthracite grey'],14,7,'AVAILABLE',true,now(),now(),now()),
+    ('security_capability_b','security_company_b','security_category',ARRAY['Other'],ARRAY['Other'],ARRAY['White'],21,NULL,'LIMITED',true,now(),now(),now());
+  INSERT INTO bridge_ai."SupplierMatchDecision" (
+    id,"quoteRequestId","supplierCompanyId",outcome,score,selected,reasons,"decidedAt"
+  ) VALUES
+    ('security_match_a','security_request','security_company_a','MATCHED',96,true,'["matched"]'::jsonb,now()),
+    ('security_match_b','security_request_supplier_denied','security_company_b','REJECTED',10,false,'["wrong system"]'::jsonb,now());
 
   EXECUTE 'SET LOCAL ROLE authenticated';
   PERFORM set_config('request.jwt.claim.sub', user_a::text, true);
+  SELECT count(*) INTO visible_count FROM bridge_ai."SupplierCapability" WHERE id='security_capability_a';
+  IF visible_count <> 1 THEN RAISE EXCEPTION 'Supplier A could not read its own capability'; END IF;
+  SELECT count(*) INTO visible_count FROM bridge_ai."SupplierCapability" WHERE id='security_capability_b';
+  IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier A read Supplier B capability'; END IF;
+  UPDATE bridge_ai."SupplierCapability" SET "standardLeadTimeDays"=10 WHERE id='security_capability_a';
+  GET DIAGNOSTICS affected_count = ROW_COUNT;
+  IF affected_count <> 1 THEN RAISE EXCEPTION 'Supplier A owner could not update its own capability'; END IF;
+  BEGIN
+    INSERT INTO bridge_ai."SupplierCapability" (
+      id,"supplierCompanyId","productCategoryId","standardLeadTimeDays","capacityStatus",active,"lastConfirmedAt","createdAt","updatedAt"
+    ) VALUES ('forbidden_capability_b','security_company_b','security_category',14,'AVAILABLE',true,now(),now(),now());
+    RAISE EXCEPTION 'Supplier A inserted Supplier B capability';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  SELECT count(*) INTO visible_count FROM bridge_ai."SupplierMatchDecision" WHERE id='security_match_a';
+  IF visible_count <> 1 THEN RAISE EXCEPTION 'Supplier A could not read its own match reason'; END IF;
+  SELECT count(*) INTO visible_count FROM bridge_ai."SupplierMatchDecision" WHERE id='security_match_b';
+  IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier A read Supplier B match decision'; END IF;
+  UPDATE bridge_ai."SupplierMatchDecision" SET score=100 WHERE id='security_match_a';
+  GET DIAGNOSTICS affected_count = ROW_COUNT;
+  IF affected_count <> 0 THEN RAISE EXCEPTION 'Supplier changed its own system match decision'; END IF;
   SELECT count(*) INTO visible_count FROM bridge_ai."CustomerContact" WHERE id='security_customer';
   IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier selected encrypted customer identity'; END IF;
   SELECT count(*) INTO visible_count FROM bridge_ai."WhatsAppMessage" WHERE id='security_message';
@@ -366,7 +398,7 @@ BEGIN
   IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier selected private WhatsApp processing or fallback state'; END IF;
   SELECT count(*) INTO visible_count FROM bridge_ai."SupplierOpportunity"
   WHERE "quoteRequestId"='security_request_supplier_denied';
-  IF visible_count <> 1 THEN RAISE EXCEPTION 'Approved supplier could not browse safe opportunity projection'; END IF;
+  IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier browsed an opportunity not selected for its company'; END IF;
   SELECT count(*) INTO visible_count FROM bridge_ai."QuoteRequest"
   WHERE id='security_request_supplier_denied';
   IF visible_count <> 0 THEN RAISE EXCEPTION 'Opportunity browsing exposed the private quote request row'; END IF;
@@ -379,7 +411,7 @@ BEGIN
   PERFORM set_config('request.jwt.claim.sub', user_b::text, true);
   SELECT count(*) INTO visible_count FROM bridge_ai."SupplierOpportunity"
   WHERE "quoteRequestId"='security_request_supplier_denied';
-  IF visible_count <> 1 THEN RAISE EXCEPTION 'Approved non-subscriber could not browse an opportunity'; END IF;
+  IF visible_count <> 0 THEN RAISE EXCEPTION 'Approved non-subscriber browsed an unassigned opportunity'; END IF;
   BEGIN
     PERFORM bridge_private.claim_supplier_opportunity('SECURITY-SUPPLIER-DENIED','security_company_b');
     RAISE EXCEPTION 'Authenticated client directly executed server-only opportunity claim';

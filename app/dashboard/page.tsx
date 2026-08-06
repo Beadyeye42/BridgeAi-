@@ -19,10 +19,6 @@ export default async function DashboardPage() {
   const companyId = getPrimarySupplierCompanyId(session);
   if (!companyId) redirect("/account-restricted");
   const dashboard = await getSupplierDashboard(companyId, session.userId);
-  const assignmentsByRequest = new Map(
-    dashboard.assignments.map((assignment) => [assignment.quoteRequestId, assignment]),
-  );
-
   const data: DashboardData = {
     companyName: dashboard.company.tradingName ?? dashboard.company.legalName,
     contactName: `${session.user.firstName} ${session.user.lastName}`,
@@ -38,7 +34,7 @@ export default async function DashboardPage() {
         ) ?? "—",
     },
     stats: {
-      newRequests: dashboard.openOpportunityCount,
+      newRequests: dashboard.openAssignmentCount,
       openQuotes: dashboard.metrics.openQuotes,
       wonThisMonth: dashboard.metrics.wonThisMonth,
       responseRate: dashboard.metrics.responseRate,
@@ -48,30 +44,28 @@ export default async function DashboardPage() {
       winRate: dashboard.metrics.winRate === null ? "—" : `${dashboard.metrics.winRate}%`,
       monthValue: new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", maximumFractionDigits: 0 }).format(dashboard.metrics.monthValuePence / 100),
     },
-    requests: dashboard.opportunities.map((opportunity) => {
-      const assignment = assignmentsByRequest.get(opportunity.quoteRequestId);
+    requests: dashboard.assignments.map((assignment) => {
+      const quoteRequest = assignment.quoteRequest;
       return {
-        assignmentId: assignment?.id,
-        reference: opportunity.reference,
-        title: opportunity.title,
-        category: opportunity.category.name,
-        area: `${opportunity.deliveryArea} area`,
+        assignmentId: assignment.id,
+        reference: quoteRequest.reference,
+        title: quoteRequest.title,
+        category: quoteRequest.category.name,
+        area: `${quoteRequest.deliveryPostcode.slice(0, -3)} area`,
         distance: "Customer details protected",
         received: formatRelative(
-          opportunity.publishedAt,
+          assignment.assignedAt,
           dashboard.generatedAt.getTime(),
         ),
-        due: formatDue(opportunity.responseDueAt, dashboard.generatedAt.getTime()),
+        due: formatDue(assignment.expiresAt, dashboard.generatedAt.getTime()),
         urgency:
-          supplierResponseMillisecondsBetween(dashboard.generatedAt, opportunity.responseDueAt) < 8 * 3_600_000
+          supplierResponseMillisecondsBetween(dashboard.generatedAt, assignment.expiresAt) < 8 * 3_600_000
             ? "urgent"
             : "normal",
-        itemCount: opportunity.itemCount,
-        attachmentCount: opportunity.attachmentCount,
+        itemCount: quoteRequest.items.length,
+        attachmentCount: quoteRequest.attachments.length,
         status:
-          !assignment
-            ? "Available"
-            : assignment.status === "PENDING"
+          assignment.status === "PENDING"
               ? "New"
               : assignment.status === "VIEWED"
                 ? "Viewed"

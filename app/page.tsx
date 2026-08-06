@@ -53,7 +53,7 @@ export default function Home() {
           <div className="home-trust">
             <span><ShieldCheck size={16} /> Customer details protected</span>
             <span><Target size={16} /> Product and coverage matching</span>
-            <span><UsersRound size={16} /> Maximum five suppliers per job</span>
+            <span><UsersRound size={16} /> Best three suppliers per job</span>
           </div>
         </div>
 
