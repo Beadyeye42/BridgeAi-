@@ -5,6 +5,7 @@ import { requireSupplierApi } from "@/lib/auth/api";
 import { getPrivateStorage, PRIVATE_BUCKET } from "@/lib/storage";
 import { writeAuditLog } from "@/lib/audit";
 import { runProductionMonitoringSafely } from "@/lib/monitoring/operational-alerts";
+import { recordIdSchema } from "@/lib/auth/validation";
 
 export const runtime = "nodejs";
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -12,6 +13,7 @@ const MAX_BYTES = 10 * 1024 * 1024;
 export async function POST(request: Request) {
   const auth = await requireSupplierApi(); if ("error" in auth) return auth.error;
   const form = await request.formData(); const quotationId = String(form.get("quotationId") ?? ""); const file = form.get("file");
+  if (!recordIdSchema.safeParse(quotationId).success) return NextResponse.json({ error: "Invalid quotation identifier" }, { status: 400 });
   if (!(file instanceof File) || file.type !== "application/pdf" || file.size < 1 || file.size > MAX_BYTES) return NextResponse.json({ error: "Attach a PDF no larger than 10 MB" }, { status: 400 });
   const quotation = await prisma.supplierQuotation.findFirst({ where: { id: quotationId, supplierCompanyId: auth.companyId, status: "SUBMITTED" } });
   if (!quotation) return NextResponse.json({ error: "Quotation not found" }, { status: 404 });

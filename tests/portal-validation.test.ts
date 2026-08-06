@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { accreditationReviewSchema, accreditationUploadSchema, adminAssignmentSchema, companyProfileSchema, coverageAreaSchema, notificationPreferenceSchema, quotationSchema } from "../lib/auth/validation";
+import { accreditationReviewSchema, accreditationUploadSchema, adminAssignmentSchema, companyProfileSchema, coverageAreaSchema, notificationPreferenceSchema, quotationSchema, recordIdSchema } from "../lib/auth/validation";
 
 describe("supplier portal validation", () => {
   it("normalises postcode coverage prefixes", () => {
@@ -34,6 +34,14 @@ describe("supplier portal validation", () => {
     expect(notificationPreferenceSchema.safeParse({ emailNewRequests: true, emailRequestReminders: true, emailQuotationUpdates: true, smsUrgentRequests: false, inAppEnabled: true, quietHoursStart: "19:00", quietHoursEnd: null }).success).toBe(false);
     const quotation = quotationSchema.parse({ assignmentId: "cm00000000000000000000000", price: "1250.50", leadTimeDays: "14", validUntil: "2099-12-31" });
     expect(quotation.validUntil?.toISOString()).toBe("2099-12-31T23:59:59.999Z");
+  });
+
+  it("accepts opaque opportunity-claim identifiers when submitting quotations", () => {
+    const claimedAssignmentId = "claim_f8625a74a1134eae9d0b4d8e40e1d3f1";
+    expect(quotationSchema.safeParse({ assignmentId: claimedAssignmentId, price: "1250.50", leadTimeDays: "14" }).success).toBe(true);
+    expect(recordIdSchema.safeParse("quotation-123_ABC").success).toBe(true);
+    expect(recordIdSchema.safeParse("../../another-company").success).toBe(false);
+    expect(recordIdSchema.safeParse("x".repeat(65)).success).toBe(false);
   });
 
   it("requires the simplified company identity, address and contact details", () => {

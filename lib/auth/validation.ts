@@ -47,8 +47,19 @@ const quotationValidUntil = z.union([
   return value instanceof Date ? value : new Date(`${value}T23:59:59.999Z`);
 });
 
+// Record identifiers are opaque application values. Opportunity claims use a
+// `claim_...` identifier while records created directly by Prisma use CUIDs.
+// Keep the boundary bounded and character-safe without coupling API validation
+// to one particular ID generator.
+export const recordIdSchema = z
+  .string()
+  .trim()
+  .min(1, "Invalid record identifier")
+  .max(64, "Invalid record identifier")
+  .regex(/^[A-Za-z0-9_-]+$/, "Invalid record identifier");
+
 export const quotationSchema = z.object({
-  assignmentId: z.string().cuid(),
+  assignmentId: recordIdSchema,
   price: z.coerce.number().positive().max(10_000_000),
   leadTimeDays: z.coerce.number().int().min(1).max(730),
   validUntil: quotationValidUntil,
