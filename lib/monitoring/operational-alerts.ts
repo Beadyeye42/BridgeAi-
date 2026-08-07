@@ -18,7 +18,10 @@ export async function discoverOperationalAlerts(now = new Date()) {
   const staleAttachmentBefore = new Date(now.getTime() - STALE_ATTACHMENT_MS);
   const [failedWhatsAppJobs, failedStripeWebhooks, problemAttachments, storageEvents] = await Promise.all([
     trustedPrisma.whatsAppJob.findMany({
-      where: { status: "FAILED" },
+      where: {
+        status: "FAILED",
+        NOT: { errorCode: { startsWith: "SUPERSEDED_" } },
+      },
       select: { id: true, type: true, attempts: true, errorCode: true },
       take: 100,
     }),

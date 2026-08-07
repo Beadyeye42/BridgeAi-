@@ -321,8 +321,10 @@ BEGIN
   EXECUTE 'RESET ROLE';
   PERFORM set_config('request.jwt.claim.sub', '', true);
   UPDATE bridge_ai.platform_administrators SET active=false WHERE "userId"=user_a;
-  INSERT INTO bridge_ai."ProductCategory" (id,name,slug,active,"displayOrder","createdAt","updatedAt")
-  VALUES ('security_category','Security category','security-category',true,0,now(),now());
+  INSERT INTO bridge_ai."ProductCategory" (id,name,slug,active,"adminVisible","displayOrder","createdAt","updatedAt")
+  VALUES ('security_industry','Security industry','security-industry',true,true,0,now(),now());
+  INSERT INTO bridge_ai."ProductCategory" (id,name,slug,active,"adminVisible","parentId","displayOrder","createdAt","updatedAt")
+  VALUES ('security_category','Security category','security-category',true,false,'security_industry',0,now(),now());
   request_deadline := bridge_private.add_supplier_response_hours(now(), 24);
   INSERT INTO bridge_ai."QuoteRequest" (
     id,reference,"conversationId","customerContactId","categoryId",title,summary,"deliveryPostcode",currency,status,
@@ -678,6 +680,10 @@ BEGIN
      OR NOT has_function_privilege('bridge_ai_app','bridge_private.write_whatsapp_system_event(bridge_ai."SystemEventSeverity",text,text,text,jsonb)','EXECUTE')
      OR NOT has_function_privilege('bridge_ai_app','bridge_private.claim_supplier_opportunity(text,text)','EXECUTE') THEN
     RAISE EXCEPTION 'legacy privileged functions remain executable';
+  END IF;
+  IF NOT has_schema_privilege('authenticated','bridge_private','USAGE')
+     OR has_schema_privilege('anon','bridge_private','USAGE') THEN
+    RAISE EXCEPTION 'private RLS helper schema grants are incorrect';
   END IF;
   SELECT count(*) INTO visible_count
   FROM pg_policies
