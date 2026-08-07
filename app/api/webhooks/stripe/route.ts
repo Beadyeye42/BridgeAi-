@@ -22,6 +22,14 @@ async function syncSubscription(subscription: Stripe.Subscription) {
   const companyId = subscription.metadata.supplierCompanyId;
   if (!companyId) throw new Error("STRIPE_SUBSCRIPTION_COMPANY_MISSING");
   const item = subscription.items.data[0];
+  const membershipPlan = subscription.metadata.membershipPlanId
+    ? await runAsDatabaseWorker("stripe_billing", (tx) => tx.membershipPlan.findUnique({ where: { id: subscription.metadata.membershipPlanId } }))
+    : subscription.metadata.planCode
+      ? await runAsDatabaseWorker("stripe_billing", (tx) => tx.membershipPlan.findUnique({ where: { code: subscription.metadata.planCode } }))
+      : null;
+  const membershipPromotion = subscription.metadata.membershipPromotionId
+    ? await runAsDatabaseWorker("stripe_billing", (tx) => tx.membershipPromotion.findUnique({ where: { id: subscription.metadata.membershipPromotionId } }))
+    : null;
   await runAsDatabaseWorker("stripe_billing", async (tx) => {
     const current = await tx.subscription.findUnique({ where: { supplierCompanyId: companyId } });
     const complimentaryActive = current?.accessSource === "COMPLIMENTARY"
@@ -46,6 +54,8 @@ async function syncSubscription(subscription: Stripe.Subscription) {
         providerSubscriptionId: subscription.id,
         providerScheduleId: typeof subscription.schedule === "string" ? subscription.schedule : subscription.schedule?.id ?? null,
         planCode: subscription.metadata.planCode || FOUNDING_PLAN_CODE,
+        membershipPlanId: membershipPlan?.id ?? current?.membershipPlanId ?? null,
+        promotionId: membershipPromotion?.id ?? null,
         status: localSubscriptionStatus(subscription.status),
         accessSource: "STRIPE",
         currentPeriodStart: item?.current_period_start ? new Date(item.current_period_start * 1000) : null,
@@ -65,6 +75,8 @@ async function syncSubscription(subscription: Stripe.Subscription) {
         providerSubscriptionId: subscription.id,
         providerScheduleId: typeof subscription.schedule === "string" ? subscription.schedule : subscription.schedule?.id ?? null,
         planCode: subscription.metadata.planCode || FOUNDING_PLAN_CODE,
+        membershipPlanId: membershipPlan?.id ?? null,
+        promotionId: membershipPromotion?.id ?? null,
         status: localSubscriptionStatus(subscription.status),
         accessSource: "STRIPE",
         currentPeriodStart: item?.current_period_start ? new Date(item.current_period_start * 1000) : null,
@@ -78,7 +90,7 @@ async function syncSubscription(subscription: Stripe.Subscription) {
       entityType: "Subscription",
       entityId: subscription.id,
       summary: `Stripe membership state synchronized as ${subscription.status}`,
-      metadata: { stripeStatus: subscription.status },
+      metadata: { stripeStatus: subscription.status, membershipPlanId: membershipPlan?.id ?? null, membershipTier: membershipPlan?.tier ?? null, membershipPromotionId: membershipPromotion?.id ?? null },
     } });
   });
 }

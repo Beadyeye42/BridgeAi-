@@ -2,6 +2,55 @@ import { prisma } from "@/lib/db";
 import { requireSupplierPage } from "@/lib/auth/guards";
 import { PortalPage, identity } from "@/components/dashboard/portal-page";
 import { CoverageManager } from "@/components/dashboard/management-forms";
+import { DEFAULT_PLAN_IDS, effectiveMembershipLimits } from "@/lib/billing/membership-plans";
 
 export const dynamic = "force-dynamic";
-export default async function CoveragePage(){const {session,companyId}=await requireSupplierPage();const company=await prisma.supplierCompany.findUniqueOrThrow({where:{id:companyId},include:{coverageAreas:{where:{active:true},orderBy:{createdAt:"asc"}}}});return <PortalPage {...identity(session,company)} eyebrow="Opportunity matching" title="Coverage areas" description="Choose postcode areas, mileage from one or more depots, or nationwide coverage for automatic enquiry matching."><CoverageManager areas={company.coverageAreas.map((a)=>({id:a.id,type:a.type,label:a.label,postcodePrefix:a.postcodePrefix,centrePostcode:a.centrePostcode,radiusMiles:a.radiusMiles}))}/></PortalPage>}
+
+export default async function CoveragePage() {
+  const { session, companyId } = await requireSupplierPage();
+  const company = await prisma.supplierCompany.findUniqueOrThrow({
+    where: { id: companyId },
+    include: {
+      coverageAreas: { where: { active: true }, orderBy: [{ purpose: "asc" }, { createdAt: "asc" }] },
+      collectionLocations: { where: { active: true }, orderBy: { createdAt: "asc" } },
+      subscription: { include: { membershipPlan: true } },
+    },
+  });
+  const plan = company.subscription?.membershipPlan
+    ?? await prisma.membershipPlan.findUnique({ where: { id: DEFAULT_PLAN_IDS.LOCAL } });
+  const limits = plan ? effectiveMembershipLimits(plan, company) : null;
+
+  return <PortalPage
+    {...identity(session, company)}
+    eyebrow="Geographic matching"
+    title="Service, delivery & collection"
+    description="Tell Bridge AI where you install or service, where you deliver products, and where buyers can collect. These are kept separate for accurate matching."
+  >
+    <CoverageManager
+      areas={company.coverageAreas.map((area) => ({
+        id: area.id,
+        type: area.type,
+        purpose: area.purpose,
+        label: area.label,
+        postcodePrefix: area.postcodePrefix,
+        centrePostcode: area.centrePostcode,
+        radiusMiles: area.radiusMiles,
+      }))}
+      collections={company.collectionLocations.map((location) => ({
+        id: location.id,
+        label: location.label,
+        postcode: location.postcode,
+        collectionDays: location.collectionDays,
+        noticeRequired: location.noticeRequired,
+        noticeHours: location.noticeHours,
+      }))}
+      plan={plan && limits ? {
+        name: plan.name,
+        tier: limits.tier,
+        maximumRadiusMiles: limits.maximumRadiusMiles,
+        nationwideAllowed: limits.nationwideAllowed,
+        maximumActiveOpportunities: limits.maximumActiveOpportunities,
+      } : null}
+    />
+  </PortalPage>;
+}

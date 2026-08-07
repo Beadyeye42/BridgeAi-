@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentSession, getPrimarySupplierCompanyId } from "@/lib/auth/session";
 import { assignmentDecisionSchema, validationError } from "@/lib/auth/validation";
 import { writeAuditLog } from "@/lib/audit";
+import { inviteNextEligibleSupplier } from "@/lib/matching/replacements";
 
 export const runtime = "nodejs";
 
@@ -46,6 +47,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: "This request has closed" }, { status: 409 });
     }
     throw error;
+  }
+  if (nextStatus === "DECLINED") {
+    await inviteNextEligibleSupplier(assignment.quoteRequestId, assignment.id).catch((error) => console.error("Automatic replacement invitation failed", error));
   }
   return NextResponse.json({ ok: true, status: nextStatus });
 }

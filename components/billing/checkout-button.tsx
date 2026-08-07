@@ -2,13 +2,13 @@
 import { useState } from "react";
 import { CreditCard, LoaderCircle } from "lucide-react";
 
-export function CheckoutButton({ endpoint, children, className = "button button-dark" }: { endpoint: string; children: React.ReactNode; className?: string }) {
+export function CheckoutButton({ endpoint, children, body, className = "button button-dark" }: { endpoint: string; children: React.ReactNode; body?: unknown; className?: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   async function start() {
     setBusy(true); setError("");
     try {
-      const response = await fetch(endpoint, { method: "POST" });
+      const response = await fetch(endpoint, { method: "POST", headers: body ? { "Content-Type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined });
       const result = await response.json();
       if (!response.ok || !result.url) throw new Error(result.error || "Checkout could not be started");
       window.location.assign(result.url);

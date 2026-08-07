@@ -24,10 +24,10 @@ export default function Home() {
   return (
     <main className="home-shell">
       <div className="home-offer-bar">
-        <span><Sparkles size={14} /> Founding supplier offer</span>
-        <b>£29.99 per month for six months</b>
-        <span>Only 100 approved places</span>
-        <Link href="/register">Claim your place <ArrowRight size={14} /></Link>
+        <span><Sparkles size={14} /> Matched supplier membership</span>
+        <b>Plans from £29.99 per month</b>
+        <span>Choose Local, Regional or Nationwide reach</span>
+        <Link href="/register">Apply to join <ArrowRight size={14} /></Link>
       </div>
 
       <header className="home-nav">
@@ -46,10 +46,10 @@ export default function Home() {
           <h1>Your next trade customer is already on <em>WhatsApp.</em></h1>
           <p className="home-intro">Bridge AI turns customer messages, photos, drawings and PDFs into clear quote opportunities—then matches each job with approved suppliers for the right product and delivery area.</p>
           <div className="home-actions">
-            <Link className="button button-dark home-primary" href="/register">Claim a founding supplier place <ArrowRight size={16} /></Link>
+            <Link className="button button-dark home-primary" href="/register">Apply as a supplier <ArrowRight size={16} /></Link>
             <Link className="button button-outline home-secondary" href="/demo">Explore the supplier portal</Link>
           </div>
-          <p className="home-action-note"><Check size={14} /> Browse safe opportunity summaries before subscribing. No introduction or winning fees.</p>
+          <p className="home-action-note"><Check size={14} /> No public job board. Opportunities are sent only when your verified capability, capacity and geography match.</p>
           <div className="home-trust">
             <span><ShieldCheck size={16} /> Customer details protected</span>
             <span><Target size={16} /> Product and coverage matching</span>
@@ -81,7 +81,7 @@ export default function Home() {
               <div><dt>Delivery area</dt><dd><MapPin size={13} /> GL52</dd></div>
               <div><dt>Requirements</dt><dd>6 items</dd></div>
               <div><dt>Attachments</dt><dd>1 verified file</dd></div>
-              <div><dt>Supplier places</dt><dd>5 maximum</dd></div>
+              <div><dt>Supplier invitations</dt><dd>Best 3 maximum</dd></div>
             </dl>
             <div className="home-match-action"><span><LockKeyhole size={13} /> Contact details protected</span><b>View opportunity <ArrowRight size={13} /></b></div>
           </div>
@@ -94,7 +94,7 @@ export default function Home() {
           <span><b>people use WhatsApp</b><small>Messaging is already a daily customer habit.</small></span>
           <a href={metaWhatsAppSource} target="_blank" rel="noreferrer">Source: Meta, June 2026</a>
         </div>
-        <div><strong>5</strong><span><b>suppliers maximum</b><small>Every job has a controlled quote limit.</small></span></div>
+        <div><strong>3</strong><span><b>matched suppliers maximum</b><small>No first-come, first-served claiming.</small></span></div>
         <div><strong>£0</strong><span><b>winning fees</b><small>Your monthly membership is the full platform fee.</small></span></div>
       </section>
 
@@ -128,7 +128,7 @@ export default function Home() {
           <div className="home-preview-top"><BrandMark compact /><span>SUPPLIER PORTAL</span><i>NEW</i></div>
           <div className="home-preview-title"><span>Quote opportunity</span><b>6 uPVC windows & composite door</b><small>Matched to your products and coverage</small></div>
           <div className="home-preview-facts"><span><MapPin size={14} /><b>GL52 area</b><small>38 miles away</small></span><span><FileText size={14} /><b>6 items</b><small>Specifications included</small></span><span><Paperclip size={14} /><b>1 file</b><small>Security checked</small></span></div>
-          <div className="home-preview-deadline"><span><i /> 3 of 5 places available</span><b>Respond by 4:30pm tomorrow</b></div>
+          <div className="home-preview-deadline"><span><i /> Selected for your capability</span><b>Respond by 4:30pm tomorrow</b></div>
           <div className="home-preview-button">View full opportunity <ArrowRight size={14} /></div>
         </div>
       </section>
@@ -141,24 +141,23 @@ export default function Home() {
         <div className="home-flow">
           <div><span>01</span><b>The buyer messages Bridge AI</b><p>They describe the job and send any supporting photos, drawings or PDFs through WhatsApp.</p></div>
           <div><span>02</span><b>AI prepares the quote request</b><p>Product, delivery area, specifications and files become a structured opportunity.</p></div>
-          <div><span>03</span><b>Matched suppliers choose to quote</b><p>Up to five relevant subscribed suppliers can submit a price and lead time.</p></div>
+          <div><span>03</span><b>The best matched suppliers are invited</b><p>Up to three eligible suppliers receive the opportunity. Declines can trigger the next ranked match.</p></div>
           <div><span>04</span><b>The customer selects</b><p>The chosen supplier and customer receive the details needed to move the order forward.</p></div>
         </div>
       </section>
 
       <section className="home-membership" id="membership">
         <div className="home-membership-copy">
-          <p className="eyebrow">Founding supplier membership</p>
-          <h2>Join early. Build your advantage.</h2>
-          <p>Bridge AI is opening the network to its first 100 approved suppliers. Set your products and coverage, browse suitable opportunities and subscribe when you are ready to quote.</p>
+          <p className="eyebrow">Geographic supplier membership</p>
+          <h2>Pay for the reach your business actually needs.</h2>
+          <p>There is no free-for-all opportunity list. Confirm the products, systems, colours, lead times and live capacity you can genuinely support; Bridge AI ranks the most suitable suppliers for each request.</p>
           <div className="home-membership-points"><span><Check size={15} /> No introduction fees</span><span><Check size={15} /> No winning fees</span><span><Check size={15} /> Stripe-secured billing</span></div>
         </div>
-        <div className="home-price-card">
-          <span>FIRST SIX MONTHS</span>
-          <div><sup>£</sup><strong>29.99</strong><small>per month</small></div>
-          <p>Then £49.99 per month. No VAT is currently charged.</p>
-          <Link className="button" href="/register">Apply for a founding place <ArrowRight size={15} /></Link>
-          <small>Membership is available only after supplier approval.</small>
+        <div className="home-plan-stack">
+          <div className="home-price-card"><span>LOCAL PARTNER</span><div><sup>£</sup><strong>29.99</strong><small>per month</small></div><p>Choose a service and delivery radius from 1–40 miles. Up to 5 live opportunities.</p></div>
+          <div className="home-price-card"><span>REGIONAL PARTNER</span><div><sup>£</sup><strong>59.99</strong><small>per month</small></div><p>Choose a radius from 1–100 miles. Up to 10 live opportunities.</p></div>
+          <div className="home-price-card"><span>NATIONWIDE PARTNER</span><div><sup>£</sup><strong>89.99</strong><small>per month</small></div><p>Great Britain eligibility with exact capability matching. Up to 20 live opportunities.</p></div>
+          <Link className="button button-dark" href="/register">Apply as a supplier <ArrowRight size={15} /></Link><small>Approval is required. VAT is not currently charged; it will be applied only if legally required and enabled.</small>
         </div>
       </section>
 

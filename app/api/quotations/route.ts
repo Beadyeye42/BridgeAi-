@@ -4,7 +4,6 @@ import { getCurrentSession, getPrimarySupplierCompanyId } from "@/lib/auth/sessi
 import { quotationSchema, validationError } from "@/lib/auth/validation";
 import { writeAuditLog } from "@/lib/audit";
 import { enqueueQuoteSummary, processWhatsAppJobs } from "@/lib/whatsapp/processor";
-import { isFoundingSupplier } from "@/lib/billing/pricing";
 
 export const runtime = "nodejs";
 
@@ -25,9 +24,9 @@ export async function POST(request: Request) {
   if (!["OPEN", "MATCHING", "QUOTED"].includes(assignment.quoteRequest.status) || assignment.quoteRequest.responseDueAt <= new Date()) {
     return NextResponse.json({ error: "This request has closed and can no longer receive quotations" }, { status: 409 });
   }
-  const company = await prisma.supplierCompany.findUnique({ where: { id: companyId }, select: { status: true, foundingMemberNumber: true } });
+  const company = await prisma.supplierCompany.findUnique({ where: { id: companyId }, select: { status: true } });
   const subscription = await prisma.subscription.findUnique({ where: { supplierCompanyId: companyId } });
-  if (!company || company.status !== "APPROVED" || !isFoundingSupplier(company.foundingMemberNumber)) return NextResponse.json({ error: "An approved founding supplier account is required before submitting a quotation" }, { status: 403 });
+  if (!company || company.status !== "APPROVED") return NextResponse.json({ error: "An approved supplier account is required before submitting a quotation" }, { status: 403 });
   if (!subscription || subscription.status !== "ACTIVE" || (subscription.currentPeriodEnd && subscription.currentPeriodEnd <= new Date())) return NextResponse.json({ error: "An active Bridge AI supplier membership is required before submitting a quotation" }, { status: 402 });
 
   const submittedAt = new Date();

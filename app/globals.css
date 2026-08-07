@@ -679,7 +679,18 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .home-footer > span { flex: 1; }
 .home-footer nav a:hover { color: #315f50; }
 
+.pricing-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+.pricing-grid h3 { margin: 0; font-family: var(--font-display), Georgia, serif; font-size: 28px; }
+.pricing-grid h3 small { font-family: var(--font-sans), Arial, sans-serif; font-size: 11px; font-weight: 650; color: #718079; }
+.pricing-grid .selected-plan { outline: 2px solid #5b8c75; background: #f8fcf6; }
+.home-plan-stack { display: grid; gap: 14px; }
+.home-plan-stack .home-price-card { width: 100%; }
+.home-plan-stack .home-price-card div { margin: 6px 0; }
+.home-plan-stack .home-price-card strong { font-size: 42px; }
+.home-plan-stack > small { color: #718079; line-height: 1.5; }
+
 @media (max-width: 1080px) {
+  .pricing-grid { grid-template-columns: 1fr; }
   .home-hero { grid-template-columns: 1fr; padding-top: 65px; }
   .home-hero-copy { max-width: 820px; }
   .home-visual { width: min(720px, 100%); margin: 0 auto; }

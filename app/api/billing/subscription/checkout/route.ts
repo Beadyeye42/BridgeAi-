@@ -2,8 +2,8 @@ import { after, NextResponse } from "next/server";
 import { requireSupplierApi } from "@/lib/auth/api";
 import { prisma, runAsDatabaseWorker } from "@/lib/db";
 import { applicationOrigin } from "@/lib/config";
-import { getStripe, introductoryMembershipPriceId } from "@/lib/stripe/server";
-import { FOUNDING_PLAN_CODE, isFoundingSupplier } from "@/lib/billing/pricing";
+import { ensureMembershipPlanStripePrice, ensureMembershipPromotionStripeCoupon, getStripe } from "@/lib/stripe/server";
+import { membershipCheckoutSchema, validationError } from "@/lib/auth/validation";
 import { runProductionMonitoringSafely } from "@/lib/monitoring/operational-alerts";
 
 export const runtime = "nodejs";
@@ -14,11 +14,55 @@ export async function POST(request: Request) {
   const membership = auth.session.user.memberships.find((item) => item.supplierCompanyId === auth.companyId);
   if (!membership || !["OWNER", "MANAGER"].includes(membership.role)) return NextResponse.json({ error: "Owner or manager access required" }, { status: 403 });
   if (membership.supplierCompany.status !== "APPROVED") return NextResponse.json({ error: "Supplier approval is required before subscribing" }, { status: 409 });
-  if (!isFoundingSupplier(membership.supplierCompany.foundingMemberNumber)) return NextResponse.json({ error: "The first 100 approved supplier places have been allocated" }, { status: 409 });
+
+  const parsed = membershipCheckoutSchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return NextResponse.json({ error: validationError(parsed.error) }, { status: 400 });
+
   try {
-    const stripe = getStripe();
+    const plan = await prisma.membershipPlan.findFirst({ where: { id: parsed.data.membershipPlanId, active: true } });
     const current = await prisma.subscription.findUnique({ where: { supplierCompanyId: auth.companyId } });
-    if (current?.status === "ACTIVE") return NextResponse.json({ error: "This membership is already active" }, { status: 409 });
+    if (!plan) return NextResponse.json({ error: "That membership plan is not available" }, { status: 404 });
+    const stripe = getStripe();
+    const priceId = await ensureMembershipPlanStripePrice(plan);
+    const origin = applicationOrigin(request.url);
+    const now = new Date();
+    let applicablePromotion = await runAsDatabaseWorker("stripe_billing", async (tx) => {
+      const promotion = await tx.membershipPromotion.findFirst({
+        where: {
+          active: true,
+          startsAt: { lte: now },
+          OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+          eligiblePlanCodes: { has: plan.code },
+        },
+        orderBy: [{ promotionalPricePence: "asc" }, { startsAt: "asc" }],
+      });
+      if (!promotion?.subscriberLimit) return promotion;
+      const claimed = await tx.subscription.count({ where: { promotionId: promotion.id, status: { in: ["ACTIVE", "TRIALING", "PAST_DUE"] } } });
+      return claimed < promotion.subscriberLimit ? promotion : null;
+    });
+    if (current?.status === "ACTIVE" && applicablePromotion && !applicablePromotion.existingSubscribersQualify) applicablePromotion = null;
+    const promotionCouponId = applicablePromotion ? await ensureMembershipPromotionStripeCoupon(applicablePromotion, plan) : null;
+
+    if (current?.status === "ACTIVE") {
+      if (current.accessSource === "COMPLIMENTARY") return NextResponse.json({ error: "Your complimentary access is active. An administrator can change its tier." }, { status: 409 });
+      if (!current.providerSubscriptionId) throw new Error("Active Stripe subscription reference is missing");
+      if (current.membershipPlanId === plan.id) return NextResponse.json({ error: `${plan.name} is already active` }, { status: 409 });
+      const providerSubscription = await stripe.subscriptions.retrieve(current.providerSubscriptionId);
+      const item = providerSubscription.items.data[0];
+      if (!item) throw new Error("Stripe subscription item is missing");
+      await stripe.subscriptions.update(providerSubscription.id, {
+        items: [{ id: item.id, price: priceId }],
+        proration_behavior: "create_prorations",
+        discounts: promotionCouponId ? [{ coupon: promotionCouponId }] : undefined,
+        metadata: { ...providerSubscription.metadata, supplierCompanyId: auth.companyId, membershipPlanId: plan.id, planCode: plan.code, membershipTier: plan.tier, membershipPromotionId: applicablePromotion?.id ?? "" },
+      });
+      await runAsDatabaseWorker("stripe_billing", async (tx) => {
+        await tx.subscription.update({ where: { id: current.id }, data: { membershipPlanId: plan.id, planCode: plan.code, promotionId: applicablePromotion?.id ?? null } });
+        await tx.auditLog.create({ data: { actorUserId: auth.session.userId, supplierCompanyId: auth.companyId, action: "BILLING.MEMBERSHIP_PLAN_CHANGED", entityType: "Subscription", entityId: current.id, summary: `Membership changed to ${plan.name}`, metadata: { membershipPlanId: plan.id, tier: plan.tier, monthlyPricePence: plan.monthlyPricePence } } });
+      });
+      return NextResponse.json({ url: `${origin}/dashboard/subscription?plan=changed` });
+    }
+
     let subscriptionId = current?.id;
     let customerId = current?.providerCustomerId;
     if (!customerId) {
@@ -29,42 +73,34 @@ export async function POST(request: Request) {
         metadata: { supplierCompanyId: auth.companyId },
       }, { idempotencyKey: `supplier-customer:${auth.companyId}` });
       customerId = customer.id;
-      const saved = await runAsDatabaseWorker("stripe_billing", (tx) => tx.subscription.upsert({
-        where: { supplierCompanyId: auth.companyId },
-        update: { providerCustomerId: customerId, planCode: FOUNDING_PLAN_CODE },
-        create: { supplierCompanyId: auth.companyId, providerCustomerId: customerId, planCode: FOUNDING_PLAN_CODE, status: "EXPIRED" },
-      }));
-      subscriptionId = saved.id;
     }
-    const origin = applicationOrigin(request.url);
+    const saved = await runAsDatabaseWorker("stripe_billing", (tx) => tx.subscription.upsert({
+      where: { supplierCompanyId: auth.companyId },
+      update: { providerCustomerId: customerId, membershipPlanId: plan.id, promotionId: applicablePromotion?.id ?? null, planCode: plan.code },
+      create: { supplierCompanyId: auth.companyId, providerCustomerId: customerId, membershipPlanId: plan.id, promotionId: applicablePromotion?.id ?? null, planCode: plan.code, status: "EXPIRED" },
+    }));
+    subscriptionId = saved.id;
+
     const checkout = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,
-      line_items: [{ price: introductoryMembershipPriceId(), quantity: 1 }],
+      line_items: [{ price: priceId, quantity: 1 }],
+      discounts: promotionCouponId ? [{ coupon: promotionCouponId }] : undefined,
       success_url: `${origin}/dashboard/subscription?checkout=success`,
       cancel_url: `${origin}/dashboard/subscription?checkout=cancelled`,
-      allow_promotion_codes: false,
-      automatic_tax: { enabled: false },
+      allow_promotion_codes: true,
+      automatic_tax: { enabled: plan.taxEnabled },
       billing_address_collection: "required",
       customer_update: { address: "auto", name: "auto" },
-      metadata: { kind: "supplier_membership", supplierCompanyId: auth.companyId, planCode: FOUNDING_PLAN_CODE },
-      subscription_data: { metadata: { supplierCompanyId: auth.companyId, planCode: FOUNDING_PLAN_CODE, introductoryMonths: "6" } },
-    }, { idempotencyKey: `membership-checkout:${auth.companyId}:${new Date().toISOString().slice(0, 13)}` });
+      metadata: { kind: "supplier_membership", supplierCompanyId: auth.companyId, membershipPlanId: plan.id, planCode: plan.code, membershipPromotionId: applicablePromotion?.id ?? "" },
+      subscription_data: { metadata: { supplierCompanyId: auth.companyId, membershipPlanId: plan.id, planCode: plan.code, membershipTier: plan.tier, membershipPromotionId: applicablePromotion?.id ?? "" } },
+    }, { idempotencyKey: `membership-checkout:${auth.companyId}:${plan.id}:${new Date().toISOString().slice(0, 13)}` });
     if (!checkout.url) throw new Error("Stripe did not return a checkout URL");
-    await runAsDatabaseWorker("stripe_billing", (tx) => tx.auditLog.create({ data: { actorUserId: auth.session.userId, supplierCompanyId: auth.companyId, action: "BILLING.MEMBERSHIP_CHECKOUT_CREATED", entityType: "Subscription", entityId: subscriptionId, summary: "Founding supplier membership checkout created at £29.99 for six months", metadata: { foundingMemberNumber: membership.supplierCompany.foundingMemberNumber, planCode: FOUNDING_PLAN_CODE, vatCharged: false } } }));
+    await runAsDatabaseWorker("stripe_billing", (tx) => tx.auditLog.create({ data: { actorUserId: auth.session.userId, supplierCompanyId: auth.companyId, action: "BILLING.MEMBERSHIP_CHECKOUT_CREATED", entityType: "Subscription", entityId: subscriptionId, summary: `${plan.name} checkout created`, metadata: { membershipPlanId: plan.id, tier: plan.tier, monthlyPricePence: plan.monthlyPricePence, taxEnabled: plan.taxEnabled, membershipPromotionId: applicablePromotion?.id ?? null } } }));
     return NextResponse.json({ url: checkout.url });
   } catch (error) {
     console.error("Membership checkout failed", error);
-    await runAsDatabaseWorker("stripe_billing", (tx) => tx.systemEvent.create({ data: {
-      severity: "ERROR",
-      source: "STRIPE_CHECKOUT",
-      code: "STRIPE_CHECKOUT_CREATION_FAILED",
-      message: "A supplier membership checkout could not be created.",
-      context: {
-        supplierCompanyId: auth.companyId,
-        errorType: error instanceof Error ? error.name : "UnknownError",
-      },
-    } })).catch(() => undefined);
+    await runAsDatabaseWorker("stripe_billing", (tx) => tx.systemEvent.create({ data: { severity: "ERROR", source: "STRIPE_CHECKOUT", code: "STRIPE_CHECKOUT_CREATION_FAILED", message: "A supplier membership checkout or plan change could not be created.", context: { supplierCompanyId: auth.companyId, errorType: error instanceof Error ? error.name : "UnknownError" } } })).catch(() => undefined);
     after(runProductionMonitoringSafely);
     return NextResponse.json({ error: error instanceof Error && error.message.includes("not configured") ? error.message : "Billing checkout could not be started" }, { status: 503 });
   }

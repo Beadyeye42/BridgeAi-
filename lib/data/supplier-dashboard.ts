@@ -13,7 +13,7 @@ export async function getSupplierDashboard(supplierCompanyId: string, userId: st
     const company = await tx.supplierCompany.findUniqueOrThrow({
       where: { id: supplierCompanyId },
       include: {
-        subscription: true,
+        subscription: { include: { membershipPlan: true } },
         categories: true,
         coverageAreas: true,
         memberships: true,
@@ -67,6 +67,14 @@ export async function getSupplierDashboard(supplierCompanyId: string, userId: st
     const unreadNotificationCount = await tx.notification.count({
       where: { userId, supplierCompanyId, readAt: null },
     });
+    const rejectedMatches = await tx.supplierMatchDecision.findMany({
+      where: { supplierCompanyId, outcome: "REJECTED", decidedAt: { gte: last30Days } },
+      select: { reasons: true, distanceMiles: true },
+      take: 1000,
+    });
+    const geographicMisses = rejectedMatches.filter((decision) => Array.isArray(decision.reasons)
+      && decision.reasons.some((reason) => typeof reason === "string" && reason.toLowerCase().includes("outside configured")));
+    const regionalBandMisses = geographicMisses.filter((decision) => decision.distanceMiles !== null && Number(decision.distanceMiles) > 40 && Number(decision.distanceMiles) <= 100).length;
 
     const answeredAssignments = recentAssignments.filter((item) => item.respondedAt);
     const responseRate = recentAssignments.length
@@ -95,6 +103,11 @@ export async function getSupplierDashboard(supplierCompanyId: string, userId: st
       },
       latestWonQuotation,
       recentQuotations: recentQuotations.slice(0, 5),
+      upgradeInsight: {
+        geographicMisses: geographicMisses.length,
+        regionalBandMisses,
+        tier: company.subscription?.membershipPlan?.tier ?? null,
+      },
     };
   }));
 }

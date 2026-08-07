@@ -4,19 +4,60 @@ import { prisma } from "@/lib/db";
 import { requireSupplierApi } from "@/lib/auth/api";
 import { coverageAreaSchema, validationError } from "@/lib/auth/validation";
 import { writeAuditLog } from "@/lib/audit";
-import { lookupPostcode, normalizePostcode, postcodeOutwardCode, PostcodeLookupError } from "@/lib/location/postcodes";
+import { lookupPostcode, PostcodeLookupError } from "@/lib/location/postcodes";
+import { distanceMiles } from "@/lib/matching/coverage";
+import { DEFAULT_PLAN_IDS, effectiveMembershipLimits } from "@/lib/billing/membership-plans";
 
 export async function POST(request: Request) {
   const auth = await requireSupplierApi(); if ("error" in auth) return auth.error;
   const parsed = coverageAreaSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: validationError(parsed.error) }, { status: 400 });
 
+  const company = await prisma.supplierCompany.findUnique({
+    where: { id: auth.companyId },
+    include: { subscription: { include: { membershipPlan: true } } },
+  });
+  if (!company) return NextResponse.json({ error: "Supplier company not found" }, { status: 404 });
+  const plan = company.subscription?.membershipPlan
+    ?? await prisma.membershipPlan.findUnique({ where: { id: DEFAULT_PLAN_IDS.LOCAL } });
+  if (!plan) return NextResponse.json({ error: "Membership plans are not configured" }, { status: 503 });
+  const limits = effectiveMembershipLimits(plan, company);
+  const purposeRadius = parsed.data.purpose === "SERVICE"
+    ? limits.maximumServiceRadiusMiles
+    : limits.maximumDeliveryRadiusMiles;
+  if (parsed.data.type === "NATIONWIDE" && !limits.nationwideAllowed) {
+    return NextResponse.json({ error: `${plan.name} does not include nationwide coverage` }, { status: 403 });
+  }
+  if (parsed.data.type === "POSTCODE") {
+    return NextResponse.json({ error: "Postcode-area rules are no longer used. Choose one honest radius from your company base." }, { status: 422 });
+  }
+  if (parsed.data.type === "DISTANCE" && purposeRadius !== null && parsed.data.radiusMiles > purposeRadius) {
+    return NextResponse.json({ error: `${plan.name} allows a maximum ${purposeRadius}-mile ${parsed.data.purpose.toLowerCase()} radius` }, { status: 403 });
+  }
+
   let data: Prisma.CoverageAreaUncheckedCreateInput;
+  let geographicOrigin: { postcode: string; latitude: number; longitude: number } | null = null;
   try {
     if (parsed.data.type === "DISTANCE") {
       const location = await lookupPostcode(parsed.data.centrePostcode);
+      geographicOrigin = company.geographicOriginLatitude !== null && company.geographicOriginLongitude !== null
+        ? {
+          postcode: company.geographicOriginPostcode ?? company.postcode ?? location.postcode,
+          latitude: Number(company.geographicOriginLatitude),
+          longitude: Number(company.geographicOriginLongitude),
+        }
+        : await lookupPostcode(company.geographicOriginPostcode ?? company.postcode ?? location.postcode);
+      if (purposeRadius !== null) {
+        const offsetFromCompanyBase = distanceMiles(geographicOrigin, location);
+        if (offsetFromCompanyBase + parsed.data.radiusMiles > purposeRadius + 0.01) {
+          return NextResponse.json({
+            error: `${plan.name} coverage must stay within ${purposeRadius} miles of your company base (${geographicOrigin.postcode}).`,
+          }, { status: 403 });
+        }
+      }
       data = {
         supplierCompanyId: auth.companyId,
+        purpose: parsed.data.purpose,
         type: parsed.data.type,
         label: parsed.data.label ?? `${location.postcode} base`,
         centrePostcode: location.postcode,
@@ -24,14 +65,8 @@ export async function POST(request: Request) {
         latitude: location.latitude,
         longitude: location.longitude,
       };
-    } else if (parsed.data.type === "POSTCODE") {
-      const suppliedPostcode = normalizePostcode(parsed.data.postcodePrefix);
-      const postcodePrefix = suppliedPostcode.length > 4
-        ? postcodeOutwardCode((await lookupPostcode(suppliedPostcode)).postcode)
-        : suppliedPostcode;
-      data = { supplierCompanyId: auth.companyId, type: parsed.data.type, postcodePrefix, label: parsed.data.label ?? `${postcodePrefix} area` };
     } else {
-      data = { supplierCompanyId: auth.companyId, type: parsed.data.type, label: parsed.data.label ?? "Nationwide" };
+      data = { supplierCompanyId: auth.companyId, purpose: parsed.data.purpose, type: parsed.data.type, label: parsed.data.label ?? `Nationwide ${parsed.data.purpose.toLowerCase()}` };
     }
   } catch (error) {
     if (error instanceof PostcodeLookupError) {
@@ -45,6 +80,7 @@ export async function POST(request: Request) {
     const result = await prisma.$transaction(async (tx) => {
       const duplicateWhere: Prisma.CoverageAreaWhereInput = {
         supplierCompanyId: auth.companyId,
+        purpose: data.purpose,
         type: data.type,
         active: true,
         ...(data.type === "DISTANCE" ? { centrePostcode: data.centrePostcode, radiusMiles: data.radiusMiles }
@@ -54,8 +90,18 @@ export async function POST(request: Request) {
       const existing = await tx.coverageArea.findFirst({ where: duplicateWhere });
       if (existing) return { area: existing, alreadyExists: true };
 
+      if (geographicOrigin && (company.geographicOriginLatitude === null || company.geographicOriginLongitude === null)) {
+        await tx.supplierCompany.update({
+          where: { id: auth.companyId },
+          data: {
+            geographicOriginPostcode: geographicOrigin.postcode,
+            geographicOriginLatitude: geographicOrigin.latitude,
+            geographicOriginLongitude: geographicOrigin.longitude,
+          },
+        });
+      }
       const saved = await tx.coverageArea.create({ data });
-      await writeAuditLog({ actorUserId: auth.session.userId, supplierCompanyId: auth.companyId, action: "COVERAGE.CREATED", entityType: "CoverageArea", entityId: saved.id, summary: `Coverage area ${saved.label} created`, metadata: { type: saved.type, radiusMiles: saved.radiusMiles }, request }, tx);
+      await writeAuditLog({ actorUserId: auth.session.userId, supplierCompanyId: auth.companyId, action: "COVERAGE.CREATED", entityType: "CoverageArea", entityId: saved.id, summary: `${saved.purpose.toLowerCase()} coverage ${saved.label} created`, metadata: { type: saved.type, purpose: saved.purpose, radiusMiles: saved.radiusMiles, membershipPlanId: plan.id }, request }, tx);
       return { area: saved, alreadyExists: false };
     });
     return NextResponse.json({ ok: true, ...result }, { status: result.alreadyExists ? 200 : 201 });

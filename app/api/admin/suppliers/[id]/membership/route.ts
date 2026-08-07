@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireAdminApi } from "@/lib/auth/api";
 import { adminComplimentaryMembershipSchema, validationError } from "@/lib/auth/validation";
 import { writeAuditLog } from "@/lib/audit";
-import { COMPLIMENTARY_PLAN_CODE, isFoundingSupplier, isMembershipActive } from "@/lib/billing/pricing";
+import { COMPLIMENTARY_PLAN_CODE, isMembershipActive } from "@/lib/billing/pricing";
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminApi();
@@ -17,13 +17,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     include: { subscription: true },
   });
   if (!company) return NextResponse.json({ error: "Supplier not found" }, { status: 404 });
-  if (company.status !== "APPROVED" || !isFoundingSupplier(company.foundingMemberNumber)) {
-    return NextResponse.json({ error: "Approve the supplier and allocate a founding place before granting membership" }, { status: 409 });
+  if (company.status !== "APPROVED") {
+    return NextResponse.json({ error: "Approve the supplier before granting membership" }, { status: 409 });
   }
 
   const now = new Date();
   if (parsed.data.action === "GRANT") {
     const grant = parsed.data;
+    const plan = await prisma.membershipPlan.findFirst({ where: { id: grant.membershipPlanId, active: true } });
+    if (!plan) return NextResponse.json({ error: "Choose an active membership tier" }, { status: 404 });
     const paidMembershipInProgress = company.subscription?.accessSource === "STRIPE"
       && !["CANCELLED", "EXPIRED"].includes(company.subscription.status);
     if (paidMembershipInProgress) {
@@ -39,6 +41,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           supplierCompanyId: id,
           provider: "bridge-ai",
           planCode: COMPLIMENTARY_PLAN_CODE,
+          membershipPlanId: plan.id,
           status: "ACTIVE",
           accessSource: "COMPLIMENTARY",
           currentPeriodStart: now,
@@ -50,6 +53,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         },
         update: {
           planCode: COMPLIMENTARY_PLAN_CODE,
+          membershipPlanId: plan.id,
           status: "ACTIVE",
           accessSource: "COMPLIMENTARY",
           currentPeriodStart: now,
@@ -71,7 +75,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         entityType: "Subscription",
         entityId: saved.id,
         summary: `Complimentary supplier membership ${wasActiveComplimentary ? "replaced with a new period" : "granted"} for ${grant.durationDays} days`,
-        metadata: { durationDays: grant.durationDays, reason: grant.reason, expiresAt: currentPeriodEnd.toISOString() },
+        metadata: { durationDays: grant.durationDays, reason: grant.reason, expiresAt: currentPeriodEnd.toISOString(), membershipPlanId: plan.id, membershipTier: plan.tier },
         request,
       }, tx);
       return saved;

@@ -1,43 +1,35 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import {
-  FOUNDING_PLAN_CODE,
-  FOUNDING_SUPPLIER_LIMIT,
-  INTRODUCTORY_MONTHS,
-  INTRODUCTORY_PRICE_PENCE,
-  STANDARD_PRICE_PENCE,
-  isFoundingSupplier,
-} from "@/lib/billing/pricing";
+import { DEFAULT_PLAN_CODES, DEFAULT_PLAN_IDS } from "@/lib/billing/membership-plans";
 
-describe("founding supplier pricing", () => {
-  it("defines the approved commercial model", () => {
-    expect(FOUNDING_SUPPLIER_LIMIT).toBe(100);
-    expect(INTRODUCTORY_MONTHS).toBe(6);
-    expect(INTRODUCTORY_PRICE_PENCE).toBe(2_999);
-    expect(STANDARD_PRICE_PENCE).toBe(4_999);
-    expect(FOUNDING_PLAN_CODE).toBe("bridge-ai-founding-supplier");
-    expect(isFoundingSupplier(1)).toBe(true);
-    expect(isFoundingSupplier(100)).toBe(true);
-    expect(isFoundingSupplier(101)).toBe(false);
-    expect(isFoundingSupplier(null)).toBe(false);
+const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+
+describe("geographic supplier memberships", () => {
+  it("defines three stable plan identities", () => {
+    expect(DEFAULT_PLAN_IDS.LOCAL).toBe("plan_local_partner");
+    expect(DEFAULT_PLAN_IDS.REGIONAL).toBe("plan_regional_partner");
+    expect(DEFAULT_PLAN_IDS.NATIONWIDE).toBe("plan_nationwide_partner");
+    expect(DEFAULT_PLAN_CODES.LOCAL).toBe("bridge-ai-local-partner");
   });
 
-  it("uses a six-month two-price schedule without VAT collection", () => {
-    const checkout = readFileSync("app/api/billing/subscription/checkout/route.ts", "utf8");
-    const webhook = readFileSync("app/api/webhooks/stripe/route.ts", "utf8");
-    expect(checkout).toContain('automatic_tax: { enabled: false }');
-    expect(checkout).not.toContain("tax_id_collection");
-    expect(checkout).toContain("introductoryMembershipPriceId()");
-    expect(webhook).toContain("ensureFoundingPriceSchedule");
-    expect(webhook).toContain('duration: { interval: "month", interval_count: INTRODUCTORY_MONTHS }');
-    expect(webhook).toContain("standardMembershipPriceId()");
+  it("creates a plan-specific recurring Stripe price and keeps tax admin controlled", () => {
+    const checkout = read("app/api/billing/subscription/checkout/route.ts");
+    const stripe = read("lib/stripe/server.ts");
+    const webhook = read("app/api/webhooks/stripe/route.ts");
+    expect(checkout).toContain("ensureMembershipPlanStripePrice(plan)");
+    expect(checkout).toContain("automatic_tax: { enabled: plan.taxEnabled }");
+    expect(checkout).toContain("membershipPlanId: plan.id");
+    expect(stripe).toContain('recurring: { interval: "month" }');
+    expect(webhook).toContain("membershipPlanId");
   });
 
-  it("enforces immutable founding places in PostgreSQL", () => {
-    const migration = readFileSync("supabase/migrations/20260805215057_founding_supplier_pricing.sql", "utf8");
-    expect(migration).toContain("pg_advisory_xact_lock");
-    expect(migration).toContain("FOUNDING_SUPPLIER_CAPACITY_REACHED");
-    expect(migration).toContain('BETWEEN 1 AND 100');
-    expect(migration).toContain("founding supplier place is server controlled");
+  it("seeds and protects plan limits in PostgreSQL", () => {
+    const migration = read("supabase/migrations/20260807163701_geographic_membership_intelligent_matching.sql");
+    expect(migration).toContain("plan_local_partner");
+    expect(migration).toContain("plan_regional_partner");
+    expect(migration).toContain("plan_nationwide_partner");
+    expect(migration).toContain("enforce_coverage_membership_limit");
+    expect(migration).toContain("enforce_automatic_assignment_limits");
+    expect(migration).toContain('FORCE ROW LEVEL SECURITY');
   });
 });

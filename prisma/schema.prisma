@@ -177,12 +177,39 @@ enum CoverageType {
   @@schema("bridge_ai")
 }
 
+enum CoveragePurpose {
+  SERVICE
+  DELIVERY
+
+  @@schema("bridge_ai")
+}
+
+enum MembershipTier {
+  LOCAL
+  REGIONAL
+  NATIONWIDE
+
+  @@schema("bridge_ai")
+}
+
+enum FulfilmentMode {
+  SERVICE
+  INSTALLATION
+  SUPPLY_ONLY
+  DELIVERY
+  COLLECTION
+
+  @@schema("bridge_ai")
+}
+
 enum SupplierCapacityStatus {
   AVAILABLE
   LIMITED
   URGENT_ONLY
   FULL
   PAUSED
+  HOLIDAY
+  NOT_ACCEPTING
 
   @@schema("bridge_ai")
 }
@@ -360,48 +387,56 @@ model AdministratorPermission {
 }
 
 model SupplierCompany {
-  id                   String                    @id @default(cuid())
-  legalName            String
-  tradingName          String?
-  companyNumber        String?
-  directorName         String?
-  vatNumber            String?
-  websiteUrl           String?
-  logoUrl              String?
-  summary              String?
-  contactEmail         String
-  contactPhone         String
-  addressLine1         String?
-  addressLine2         String?
-  city                 String?
-  county               String?
-  postcode             String?
-  businessHours        Json?
-  status               SupplierStatus            @default(PENDING)
-  foundingMemberNumber Int?                      @unique
-  approvedAt           DateTime?
-  approvedById         String?                   @db.Uuid
-  suspendedAt          DateTime?
-  suspensionNote       String?
-  createdAt            DateTime                  @default(now())
-  updatedAt            DateTime                  @updatedAt
-  approvedBy           User?                     @relation("SupplierApprover", fields: [approvedById], references: [id], onDelete: SetNull)
-  memberships          SupplierTeamMembership[]
-  invitations          SupplierInvite[]
-  coverageAreas        CoverageArea[]
-  categories           SupplierProductCategory[]
-  capabilities         SupplierCapability[]
-  matchDecisions       SupplierMatchDecision[]
-  assignments          SupplierAssignment[]
-  quotations           SupplierQuotation[]
-  subscription         Subscription?
-  notifications        Notification[]
-  notificationPrefs    NotificationPreference[]
-  auditLogs            AuditLog[]
-  attachments          Attachment[]
-  successFees          SupplierSuccessFee[]
-  contactAccess        ContactAccessGrant[]
-  accreditations       SupplierAccreditation[]
+  id                                 String                    @id @default(cuid())
+  legalName                          String
+  tradingName                        String?
+  companyNumber                      String?
+  directorName                       String?
+  vatNumber                          String?
+  websiteUrl                         String?
+  logoUrl                            String?
+  summary                            String?
+  contactEmail                       String
+  contactPhone                       String
+  addressLine1                       String?
+  addressLine2                       String?
+  city                               String?
+  county                             String?
+  postcode                           String?
+  geographicOriginPostcode           String?
+  geographicOriginLatitude           Decimal?                  @db.Decimal(9, 6)
+  geographicOriginLongitude          Decimal?                  @db.Decimal(9, 6)
+  membershipTierOverride             MembershipTier?
+  maximumActiveOpportunitiesOverride Int?
+  maximumServiceRadiusOverride       Int?
+  maximumDeliveryRadiusOverride      Int?
+  businessHours                      Json?
+  status                             SupplierStatus            @default(PENDING)
+  foundingMemberNumber               Int?                      @unique
+  approvedAt                         DateTime?
+  approvedById                       String?                   @db.Uuid
+  suspendedAt                        DateTime?
+  suspensionNote                     String?
+  createdAt                          DateTime                  @default(now())
+  updatedAt                          DateTime                  @updatedAt
+  approvedBy                         User?                     @relation("SupplierApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  memberships                        SupplierTeamMembership[]
+  invitations                        SupplierInvite[]
+  coverageAreas                      CoverageArea[]
+  collectionLocations                CollectionLocation[]
+  categories                         SupplierProductCategory[]
+  capabilities                       SupplierCapability[]
+  matchDecisions                     SupplierMatchDecision[]
+  assignments                        SupplierAssignment[]
+  quotations                         SupplierQuotation[]
+  subscription                       Subscription?
+  notifications                      Notification[]
+  notificationPrefs                  NotificationPreference[]
+  auditLogs                          AuditLog[]
+  attachments                        Attachment[]
+  successFees                        SupplierSuccessFee[]
+  contactAccess                      ContactAccessGrant[]
+  accreditations                     SupplierAccreditation[]
 
   @@index([status])
   @@index([postcode])
@@ -620,28 +655,37 @@ model SupplierProductCategory {
 }
 
 model SupplierCapability {
-  id                   String                 @id @default(cuid())
-  supplierCompanyId    String
-  productCategoryId    String
-  manufacturerNames    String[]               @default([])
-  systemNames          String[]               @default([])
-  colourNames          String[]               @default([])
-  finishNames          String[]               @default([])
-  minimumOrderValue    Decimal?               @db.Decimal(12, 2)
-  minimumOrderQuantity Int?
-  standardLeadTimeDays Int
-  urgentLeadTimeDays   Int?
-  collectionAvailable  Boolean                @default(false)
-  deliveryDays         Int[]                  @default([])
-  capacityStatus       SupplierCapacityStatus @default(AVAILABLE)
-  shortageNote         String?
-  shortageUntil        DateTime?
-  active               Boolean                @default(true)
-  lastConfirmedAt      DateTime               @default(now())
-  createdAt            DateTime               @default(now())
-  updatedAt            DateTime               @updatedAt
-  supplierCompany      SupplierCompany        @relation(fields: [supplierCompanyId], references: [id], onDelete: Cascade)
-  productCategory      ProductCategory        @relation(fields: [productCategoryId], references: [id], onDelete: Cascade)
+  id                      String                 @id @default(cuid())
+  supplierCompanyId       String
+  productCategoryId       String
+  manufacturerNames       String[]               @default([])
+  systemNames             String[]               @default([])
+  colourNames             String[]               @default([])
+  finishNames             String[]               @default([])
+  minimumOrderValue       Decimal?               @db.Decimal(12, 2)
+  minimumOrderQuantity    Int?
+  standardLeadTimeDays    Int
+  urgentLeadTimeDays      Int?
+  currentLeadTimeDays     Int?
+  supportsSupplyOnly      Boolean                @default(true)
+  supportsDelivery        Boolean                @default(true)
+  supportsInstallation    Boolean                @default(false)
+  supportsService         Boolean                @default(false)
+  collectionAvailable     Boolean                @default(false)
+  deliveryDays            Int[]                  @default([])
+  capacityStatus          SupplierCapacityStatus @default(AVAILABLE)
+  capacityLastConfirmedAt DateTime               @default(now())
+  leadTimeLastConfirmedAt DateTime               @default(now())
+  restrictedProducts      String[]               @default([])
+  deliveryDelayDays       Int?
+  shortageNote            String?
+  shortageUntil           DateTime?
+  active                  Boolean                @default(true)
+  lastConfirmedAt         DateTime               @default(now())
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+  supplierCompany         SupplierCompany        @relation(fields: [supplierCompanyId], references: [id], onDelete: Cascade)
+  productCategory         ProductCategory        @relation(fields: [productCategoryId], references: [id], onDelete: Cascade)
 
   @@unique([supplierCompanyId, productCategoryId])
   @@index([productCategoryId, active, capacityStatus])
@@ -668,6 +712,7 @@ model QuoteRequest {
   requiredFinish                String?
   requiredBy                    DateTime?
   collectionRequired            Boolean                 @default(false)
+  fulfilmentMode                FulfilmentMode          @default(DELIVERY)
   currency                      String                  @default("GBP") @db.VarChar(3)
   status                        QuoteRequestStatus      @default(DRAFT)
   distributionLimit             Int                     @default(3)
@@ -704,6 +749,10 @@ model SupplierMatchDecision {
   selected           Boolean              @default(false)
   reasons            Json
   capabilitySnapshot Json?
+  membershipTier     MembershipTier?
+  coveragePurpose    CoveragePurpose?
+  distanceMiles      Decimal?             @db.Decimal(8, 2)
+  rankingSnapshot    Json?
   decidedAt          DateTime             @default(now())
   quoteRequest       QuoteRequest         @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
   supplierCompany    SupplierCompany      @relation(fields: [supplierCompanyId], references: [id], onDelete: Cascade)
@@ -753,19 +802,23 @@ model QuoteRequestItem {
 }
 
 model SupplierAssignment {
-  id                String             @id @default(cuid())
+  id                String               @id @default(cuid())
   quoteRequestId    String
   supplierCompanyId String
-  status            AssignmentStatus   @default(PENDING)
-  assignedAt        DateTime           @default(now())
+  status            AssignmentStatus     @default(PENDING)
+  assignedAt        DateTime             @default(now())
   viewedAt          DateTime?
   respondedAt       DateTime?
   expiresAt         DateTime
   declinedReason    String?
-  assignedById      String?            @db.Uuid
-  quoteRequest      QuoteRequest       @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
-  supplierCompany   SupplierCompany    @relation(fields: [supplierCompanyId], references: [id], onDelete: Cascade)
-  assignedBy        User?              @relation("AssignmentCreator", fields: [assignedById], references: [id], onDelete: SetNull)
+  assignedById      String?              @db.Uuid
+  invitationRank    Int                  @default(1)
+  replacementForId  String?
+  quoteRequest      QuoteRequest         @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
+  supplierCompany   SupplierCompany      @relation(fields: [supplierCompanyId], references: [id], onDelete: Cascade)
+  assignedBy        User?                @relation("AssignmentCreator", fields: [assignedById], references: [id], onDelete: SetNull)
+  replacementFor    SupplierAssignment?  @relation("AssignmentReplacement", fields: [replacementForId], references: [id], onDelete: SetNull)
+  replacements      SupplierAssignment[] @relation("AssignmentReplacement")
   quotation         SupplierQuotation?
 
   @@unique([quoteRequestId, supplierCompanyId])
@@ -893,6 +946,7 @@ model CoverageArea {
   id                String          @id @default(cuid())
   supplierCompanyId String
   type              CoverageType
+  purpose           CoveragePurpose @default(DELIVERY)
   label             String
   postcodePrefix    String?
   centrePostcode    String?
@@ -904,8 +958,89 @@ model CoverageArea {
   updatedAt         DateTime        @updatedAt
   supplierCompany   SupplierCompany @relation(fields: [supplierCompanyId], references: [id], onDelete: Cascade)
 
-  @@index([supplierCompanyId, active])
+  @@index([supplierCompanyId, purpose, active])
   @@index([postcodePrefix])
+  @@schema("bridge_ai")
+}
+
+model CollectionLocation {
+  id                String          @id @default(cuid())
+  supplierCompanyId String
+  label             String
+  postcode          String
+  latitude          Decimal         @db.Decimal(9, 6)
+  longitude         Decimal         @db.Decimal(9, 6)
+  collectionDays    Int[]           @default([])
+  noticeRequired    Boolean         @default(false)
+  noticeHours       Int?
+  active            Boolean         @default(true)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  supplierCompany   SupplierCompany @relation(fields: [supplierCompanyId], references: [id], onDelete: Cascade)
+
+  @@index([supplierCompanyId, active])
+  @@index([postcode])
+  @@schema("bridge_ai")
+}
+
+model MembershipPlan {
+  id                         String         @id @default(cuid())
+  code                       String         @unique
+  name                       String
+  tier                       MembershipTier @unique
+  description                String?
+  monthlyPricePence          Int
+  currency                   String         @default("GBP") @db.VarChar(3)
+  maximumRadiusMiles         Int?
+  nationwideAllowed          Boolean        @default(false)
+  maximumActiveOpportunities Int
+  taxEnabled                 Boolean        @default(false)
+  providerProductId          String?        @unique
+  providerPriceId            String?        @unique
+  active                     Boolean        @default(true)
+  displayOrder               Int            @default(0)
+  createdAt                  DateTime       @default(now())
+  updatedAt                  DateTime       @updatedAt
+  subscriptions              Subscription[]
+
+  @@index([active, displayOrder])
+  @@schema("bridge_ai")
+}
+
+model MatchingConfiguration {
+  id                              String   @id @default("default")
+  maximumSuppliersPerRequest      Int      @default(3)
+  capacityStaleDays               Int      @default(7)
+  leadTimeStaleDays               Int      @default(14)
+  responseDeadlineHours           Int      @default(8)
+  automaticNextSupplierInvitation Boolean  @default(true)
+  serviceMatchingEnabled          Boolean  @default(true)
+  deliveryMatchingEnabled         Boolean  @default(true)
+  matchingWeights                 Json
+  updatedById                     String?  @db.Uuid
+  createdAt                       DateTime @default(now())
+  updatedAt                       DateTime @updatedAt
+
+  @@schema("bridge_ai")
+}
+
+model MembershipPromotion {
+  id                         String         @id @default(cuid())
+  name                       String
+  eligiblePlanCodes          String[]
+  promotionalPricePence      Int
+  durationMonths             Int
+  subscriberLimit            Int?
+  startsAt                   DateTime
+  endsAt                     DateTime?
+  existingSubscribersQualify Boolean        @default(false)
+  active                     Boolean        @default(false)
+  providerCouponIds          Json?
+  createdAt                  DateTime       @default(now())
+  updatedAt                  DateTime       @updatedAt
+  subscriptions              Subscription[]
+
+  @@index([active, startsAt, endsAt])
   @@schema("bridge_ai")
 }
 
@@ -917,6 +1052,8 @@ model Subscription {
   providerSubscriptionId        String?                  @unique
   providerScheduleId            String?                  @unique
   planCode                      String
+  membershipPlanId              String?
+  promotionId                   String?
   status                        SubscriptionStatus
   accessSource                  SubscriptionAccessSource @default(STRIPE)
   currentPeriodStart            DateTime?
@@ -932,10 +1069,14 @@ model Subscription {
   createdAt                     DateTime                 @default(now())
   updatedAt                     DateTime                 @updatedAt
   supplierCompany               SupplierCompany          @relation(fields: [supplierCompanyId], references: [id], onDelete: Cascade)
+  membershipPlan                MembershipPlan?          @relation(fields: [membershipPlanId], references: [id], onDelete: Restrict)
+  promotion                     MembershipPromotion?     @relation(fields: [promotionId], references: [id], onDelete: SetNull)
   complimentaryGrantedBy        User?                    @relation("ComplimentaryMembershipGrantor", fields: [complimentaryGrantedById], references: [id], onDelete: SetNull)
   complimentaryRevokedBy        User?                    @relation("ComplimentaryMembershipRevoker", fields: [complimentaryRevokedById], references: [id], onDelete: SetNull)
 
   @@index([status, currentPeriodEnd])
+  @@index([membershipPlanId, status])
+  @@index([promotionId, status])
   @@index([accessSource, status, currentPeriodEnd])
   @@index([complimentaryGrantedById])
   @@index([complimentaryRevokedById])

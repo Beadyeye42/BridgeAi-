@@ -1,53 +1,57 @@
-import { CreditCard, ShieldCheck } from "lucide-react";
+import { CheckCircle2, CreditCard, MapPin, ShieldCheck } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { requireSupplierPage } from "@/lib/auth/guards";
 import { PortalPage, identity } from "@/components/dashboard/portal-page";
 import { CheckoutButton } from "@/components/billing/checkout-button";
 import { stripeConfigured } from "@/lib/stripe/server";
-import { FOUNDING_SUPPLIER_LIMIT, isComplimentaryMembership, isFoundingSupplier, isMembershipActive } from "@/lib/billing/pricing";
+import { isComplimentaryMembership, isMembershipActive } from "@/lib/billing/pricing";
+import { formatPlanPrice, planTaxLabel } from "@/lib/billing/membership-plans";
 
 export const dynamic = "force-dynamic";
 
 export default async function SubscriptionPage() {
   const { session, companyId } = await requireSupplierPage();
-  const company = await prisma.supplierCompany.findUniqueOrThrow({ where: { id: companyId }, include: { subscription: true } });
+  const company = await prisma.supplierCompany.findUniqueOrThrow({ where: { id: companyId }, include: { subscription: { include: { membershipPlan: true } } } });
+  const plans = await prisma.membershipPlan.findMany({ where: { active: true }, orderBy: { displayOrder: "asc" } });
   const sub = company.subscription;
   const configured = stripeConfigured();
-  const eligible = isFoundingSupplier(company.foundingMemberNumber);
   const active = isMembershipActive(sub);
   const complimentary = isComplimentaryMembership(sub);
+  const currentPlan = sub?.membershipPlan;
   const displayStatus = active ? "ACTIVE" : sub?.status === "ACTIVE" ? "EXPIRED" : sub?.status ?? "NOT STARTED";
 
-  return <PortalPage {...identity(session, company)} eyebrow="Billing" title="Subscription" description="Founding supplier membership with simple monthly pricing and no introduction or winning fees.">
-    <div className="management-grid">
-      <section className="panel subscription-detail">
-        <span className="large-icon"><CreditCard size={24}/></span>
-        <p className="eyebrow">{complimentary ? "Bridge AI promotional access" : "Founding supplier membership"}</p>
-        <h2>{complimentary ? "Complimentary membership" : "£29.99 / month"}</h2>
-        <p className="body-copy">{complimentary ? `No payment is due for this access period${sub?.complimentaryReason ? `: ${sub.complimentaryReason}` : "."}` : "For your first six billing months, then £49.99 per month. No VAT is currently charged."}</p>
-        <span className={`status-pill ${displayStatus.toLowerCase().replaceAll(" ", "-")}`}>{displayStatus}</span>
-        <dl>
-          <div><dt>Founding place</dt><dd>{company.foundingMemberNumber ? `#${company.foundingMemberNumber} of ${FOUNDING_SUPPLIER_LIMIT}` : company.status === "APPROVED" ? "Not allocated" : "Allocated on approval"}</dd></div>
-          <div><dt>Introduction fees</dt><dd>None</dd></div>
-          <div><dt>Winning fees</dt><dd>None</dd></div>
-          <div><dt>Current period</dt><dd>{sub?.currentPeriodStart?.toLocaleDateString("en-GB") ?? "—"} – {sub?.currentPeriodEnd?.toLocaleDateString("en-GB") ?? "—"}</dd></div>
-          <div><dt>Renewal</dt><dd>{complimentary ? "Ends automatically" : sub?.cancelAtPeriodEnd ? "Cancels at period end" : "Automatic when active"}</dd></div>
-        </dl>
-      </section>
-      <section className="panel form-section">
-        <div className="section-heading"><div><p className="eyebrow">{complimentary && active ? "Membership access" : "Billing controls"}</p><h2>{complimentary && active ? "Granted by Bridge AI" : "Managed securely by Stripe"}</h2></div><ShieldCheck size={20}/></div>
-        <p className="body-copy">{complimentary && active ? `Your complimentary access remains active until ${sub?.currentPeriodEnd?.toLocaleDateString("en-GB")}. No card details are required and no payment will be taken.` : "Bridge AI never stores card details. Stripe securely manages payment details and automatically changes the monthly price after the sixth billing month."}</p>
-        <div className="honesty-note">Founding membership is strictly limited to the first {FOUNDING_SUPPLIER_LIMIT} approved suppliers.</div>
-        {complimentary && active
-          ? <div className="honesty-note">When the complimentary period ends, an owner or manager can start a paid membership here to continue quoting.</div>
-          : active && sub?.providerCustomerId
-          ? <a className="button button-dark" href="/api/billing/portal">Open billing portal</a>
-          : !eligible
-            ? <div className="honesty-note">A founding place is allocated when Bridge AI approves your supplier account. Checkout remains unavailable until approval.</div>
-            : configured
-              ? <CheckoutButton endpoint="/api/billing/subscription/checkout">Start founding membership</CheckoutButton>
-              : <div className="honesty-note">Stripe is not configured in this environment, so checkout is unavailable. Add both server-only monthly Price IDs and the Stripe secret before accepting payments.</div>}
-      </section>
+  return <PortalPage {...identity(session, company)} eyebrow="Membership" title="Choose your reach" description="Your plan sets the largest area you may choose and how many live opportunities you can hold. Exact product, capability, capacity and deadline matching still applies on every tier.">
+    <section className="panel subscription-detail">
+      <span className="large-icon"><CreditCard size={24}/></span>
+      <p className="eyebrow">Current access</p>
+      <h2>{currentPlan?.name ?? (complimentary ? "Complimentary membership" : "No active membership")}</h2>
+      <p className="body-copy">{complimentary ? `Promotional access${sub?.complimentaryReason ? `: ${sub.complimentaryReason}` : ""}. No card details are required and no payment will be taken during this period.` : currentPlan ? `${formatPlanPrice(currentPlan.monthlyPricePence, currentPlan.currency)} ${planTaxLabel(currentPlan)}` : "Select a plan after your supplier account is approved."}</p>
+      <span className={`status-pill ${displayStatus.toLowerCase().replaceAll(" ", "-")}`}>{displayStatus}</span>
+      <dl>
+        <div><dt>Geographic eligibility</dt><dd>{currentPlan?.nationwideAllowed ? "Great Britain" : currentPlan?.maximumRadiusMiles ? `Up to ${currentPlan.maximumRadiusMiles} miles` : "—"}</dd></div>
+        <div><dt>Live opportunity limit</dt><dd>{currentPlan?.maximumActiveOpportunities ?? "—"}</dd></div>
+        <div><dt>Introduction fees</dt><dd>None</dd></div>
+        <div><dt>Winning fees</dt><dd>None</dd></div>
+        <div><dt>Current period ends</dt><dd>{sub?.currentPeriodEnd?.toLocaleDateString("en-GB") ?? "—"}</dd></div>
+      </dl>
+      {active && sub?.providerCustomerId && !complimentary && <a className="button button-outline" href="/api/billing/portal">Manage payment details</a>}
+    </section>
+    <div className="pricing-grid">
+      {plans.map((plan) => {
+        const selected = currentPlan?.id === plan.id && active;
+        return <section className={`panel form-section ${selected ? "selected-plan" : ""}`} key={plan.id}>
+          <div className="section-heading"><div><p className="eyebrow">{plan.tier.toLowerCase()} partner</p><h2>{plan.name}</h2></div>{selected ? <CheckCircle2 size={22}/> : <MapPin size={22}/>}</div>
+          <h3>{formatPlanPrice(plan.monthlyPricePence, plan.currency)} <small>{planTaxLabel(plan)}</small></h3>
+          <p className="body-copy">{plan.description}</p>
+          <div className="entity-list">
+            <div className="entity-row"><div><b>{plan.nationwideAllowed ? "Great Britain eligibility" : `Choose 1–${plan.maximumRadiusMiles} miles`}</b><small>Your actual selected radius may be smaller.</small></div></div>
+            <div className="entity-row"><div><b>Up to {plan.maximumActiveOpportunities} live opportunities</b><small>No open public job board.</small></div></div>
+            <div className="entity-row"><div><b>Strict capability matching</b><small>Product, system, colour, capacity and deadline still required.</small></div></div>
+          </div>
+          {selected ? <div className="honesty-note">This is your active plan.</div> : company.status !== "APPROVED" ? <div className="honesty-note">Supplier approval is required before checkout.</div> : complimentary && active ? <div className="honesty-note">An administrator can change the tier of active complimentary access.</div> : configured ? <CheckoutButton endpoint="/api/billing/subscription/checkout" body={{ membershipPlanId: plan.id }}>{active ? `Change to ${plan.name}` : `Choose ${plan.name}`}</CheckoutButton> : <div className="honesty-note">Stripe is not configured in this environment.</div>}
+        </section>;
+      })}
     </div>
+    <section className="panel form-section"><div className="section-heading"><div><p className="eyebrow">Secure billing</p><h2>Managed by Stripe</h2></div><ShieldCheck size={20}/></div><p className="body-copy">Bridge AI never stores card details. Plan prices and geographic limits are controlled centrally. VAT collection remains disabled unless Ironbridge Group Ltd becomes VAT registered and an administrator enables tax for a plan.</p></section>
   </PortalPage>;
 }
