@@ -15,7 +15,7 @@ import {
   STANDARD_COLOUR_OPTIONS,
 } from "@/lib/capabilities/options";
 
-type CapacityStatus = "AVAILABLE" | "LIMITED" | "URGENT_ONLY" | "FULL" | "PAUSED";
+type CapacityStatus = "AVAILABLE" | "LIMITED" | "URGENT_ONLY" | "FULL" | "PAUSED" | "HOLIDAY" | "NOT_ACCEPTING";
 
 type Capability = {
   productCategoryId: string;
@@ -31,9 +31,16 @@ type Capability = {
   minimumOrderQuantity: number | null;
   standardLeadTimeDays: number;
   urgentLeadTimeDays: number | null;
+  currentLeadTimeDays: number | null;
+  supportsSupplyOnly: boolean;
+  supportsDelivery: boolean;
+  supportsInstallation: boolean;
+  supportsService: boolean;
   collectionAvailable: boolean;
   deliveryDays: number[];
   capacityStatus: CapacityStatus;
+  restrictedProducts: string[];
+  deliveryDelayDays: number | null;
   shortageNote: string | null;
   shortageUntil: string | null;
   active: boolean;
@@ -118,9 +125,16 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
         minimumOrderQuantity: nullableNumber(form.get(`${prefix}:minimumQuantity`)),
         standardLeadTimeDays: Number(form.get(`${prefix}:standardLead`)),
         urgentLeadTimeDays: nullableNumber(form.get(`${prefix}:urgentLead`)),
+        currentLeadTimeDays: nullableNumber(form.get(`${prefix}:currentLead`)),
+        supportsSupplyOnly: form.has(`${prefix}:supplyOnly`),
+        supportsDelivery: form.has(`${prefix}:delivery`),
+        supportsInstallation: form.has(`${prefix}:installation`),
+        supportsService: form.has(`${prefix}:service`),
         collectionAvailable: form.has(`${prefix}:collection`),
         deliveryDays: dayOptions.filter(([day]) => form.has(`${prefix}:day:${day}`)).map(([day]) => day),
         capacityStatus: String(form.get(`${prefix}:capacity`)),
+        restrictedProducts: splitList(form.get(`${prefix}:restrictedProducts`)),
+        deliveryDelayDays: nullableNumber(form.get(`${prefix}:deliveryDelay`)),
         shortageNote: String(form.get(`${prefix}:shortageNote`) ?? "").trim() || null,
         shortageUntil: String(form.get(`${prefix}:shortageUntil`) ?? "").trim() ? new Date(`${String(form.get(`${prefix}:shortageUntil`))}T23:59:59.000Z`).toISOString() : null,
         active: form.has(`${prefix}:active`),
@@ -242,9 +256,16 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
               <Field name={`${prefix}:minimumQuantity`} label="Minimum order quantity" value={capability.minimumOrderQuantity ?? ""} type="number" min="1" />
               <Field name={`${prefix}:minimumValue`} label="Minimum order value (£)" value={capability.minimumOrderValue ?? ""} type="number" min="0" step="0.01" />
               <Field name={`${prefix}:standardLead`} label="Standard lead time (days)" value={capability.standardLeadTimeDays} type="number" min="1" required />
+              <Field name={`${prefix}:currentLead`} label="Current lead time (days)" value={capability.currentLeadTimeDays ?? capability.standardLeadTimeDays} type="number" min="1" />
               <Field name={`${prefix}:urgentLead`} label="Urgent lead time (days)" value={capability.urgentLeadTimeDays ?? ""} type="number" min="1" />
-              <label className="form-control"><span>Current capacity</span><select name={`${prefix}:capacity`} value={capacityByCategory[prefix]} onChange={(event) => setCapacityByCategory((current) => ({ ...current, [prefix]: event.target.value as CapacityStatus }))}><option value="AVAILABLE">Available</option><option value="LIMITED">Limited</option><option value="URGENT_ONLY">Urgent work only</option><option value="FULL">Temporarily full</option><option value="PAUSED">Paused</option></select></label>
+              <label className="form-control"><span>Current capacity</span><select name={`${prefix}:capacity`} value={capacityByCategory[prefix]} onChange={(event) => setCapacityByCategory((current) => ({ ...current, [prefix]: event.target.value as CapacityStatus }))}><option value="AVAILABLE">Available</option><option value="LIMITED">Limited</option><option value="URGENT_ONLY">Urgent work only</option><option value="FULL">Temporarily full</option><option value="PAUSED">Paused</option><option value="HOLIDAY">Holiday</option><option value="NOT_ACCEPTING">Not accepting new work</option></select></label>
+              <label className="toggle-row"><span><b>Supply only</b><small>You supply products without installation</small></span><input type="checkbox" name={`${prefix}:supplyOnly`} defaultChecked={capability.supportsSupplyOnly}/></label>
+              <label className="toggle-row"><span><b>Delivery available</b><small>You can deliver products to the buyer</small></span><input type="checkbox" name={`${prefix}:delivery`} defaultChecked={capability.supportsDelivery}/></label>
+              <label className="toggle-row"><span><b>Installation available</b><small>Your team can install this product on site</small></span><input type="checkbox" name={`${prefix}:installation`} defaultChecked={capability.supportsInstallation}/></label>
+              <label className="toggle-row"><span><b>On-site service</b><small>Your staff or engineers travel to site</small></span><input type="checkbox" name={`${prefix}:service`} defaultChecked={capability.supportsService}/></label>
               <label className="toggle-row"><span><b>Collection available</b><small>Customers may collect from you</small></span><input type="checkbox" name={`${prefix}:collection`} defaultChecked={capability.collectionAvailable}/></label>
+              <Field name={`${prefix}:restrictedProducts`} label="Temporarily restricted products" value={capability.restrictedProducts.join(", ")} placeholder="Comma-separated products you cannot currently supply" />
+              <Field name={`${prefix}:deliveryDelay`} label="Current delivery delay (days)" value={capability.deliveryDelayDays ?? ""} type="number" min="0" />
               <Field name={`${prefix}:shortageNote`} label="Temporary shortage" value={capability.shortageNote ?? ""} placeholder="Leave blank when there is no shortage" />
               <Field name={`${prefix}:shortageUntil`} label="Shortage expected until" value={capability.shortageUntil?.slice(0, 10) ?? ""} type="date" />
             </div>

@@ -102,6 +102,10 @@ export async function rematchOpenRequestsForSupplier({
           selected,
           reasons: evaluation.reasons,
           capabilitySnapshot: evaluation.capabilitySnapshot,
+          membershipTier: evaluation.membershipTier,
+          coveragePurpose: evaluation.coveragePurpose,
+          distanceMiles: evaluation.distanceMiles,
+          rankingSnapshot: evaluation.rankingSnapshot,
         },
         update: {
           outcome: evaluation.outcome,
@@ -109,6 +113,10 @@ export async function rematchOpenRequestsForSupplier({
           selected,
           reasons: evaluation.reasons,
           capabilitySnapshot: evaluation.capabilitySnapshot,
+          membershipTier: evaluation.membershipTier,
+          coveragePurpose: evaluation.coveragePurpose,
+          distanceMiles: evaluation.distanceMiles,
+          rankingSnapshot: evaluation.rankingSnapshot,
           decidedAt: new Date(),
         },
       });

@@ -13,6 +13,8 @@ import { analyzeQuoteAttachment, quoteAttachmentAnalysisSchema, type QuoteAttach
 import { extractQuoteIntake, quoteDraftSchema, type QuoteDraft } from "@/lib/ai/quote-intake";
 import { lookupPostcode, PostcodeLookupError } from "@/lib/location/postcodes";
 import { evaluateSupplierMatches } from "@/lib/matching/suppliers";
+import { expireAndReplaceSupplierInvitations } from "@/lib/matching/replacements";
+import { notifySuppliersWithStaleCapacity } from "@/lib/matching/stale-capacity";
 import { runProductionMonitoringSafely } from "@/lib/monitoring/operational-alerts";
 import { addSupplierResponseHours } from "@/lib/quotes/response-clock";
 import { selectQuotationForCustomer } from "@/lib/quotes/selection";
@@ -713,6 +715,7 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
       });
       return { request: existing, assignmentCount };
     }
+    const matchingConfiguration = await tx.matchingConfiguration.findUnique({ where: { id: "default" } });
     const request = await tx.quoteRequest.create({
       data: {
         reference,
@@ -732,6 +735,7 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
         requiredFinish: draft.requiredFinish,
         requiredBy: draft.requiredBy ? new Date(draft.requiredBy) : null,
         collectionRequired: draft.collectionRequired,
+        fulfilmentMode: draft.fulfilmentMode ?? (draft.collectionRequired ? "COLLECTION" : "DELIVERY"),
         status: "OPEN",
         distributionLimit,
         responseDueAt: addSupplierResponseHours(now, quoteResponseHours),
@@ -760,7 +764,7 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
     );
     const matches = evaluations
       .filter((evaluation) => evaluation.outcome === "MATCHED")
-      .slice(0, Math.min(distributionLimit, 3));
+      .slice(0, Math.min(distributionLimit, matchingConfiguration?.maximumSuppliersPerRequest ?? 3, 3));
     const selectedSupplierIds = new Set(matches.map((match) => match.id));
     for (const evaluation of evaluations) {
       await tx.supplierMatchDecision.upsert({
@@ -778,6 +782,10 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
           selected: selectedSupplierIds.has(evaluation.id),
           reasons: evaluation.reasons,
           capabilitySnapshot: evaluation.capabilitySnapshot,
+          membershipTier: evaluation.membershipTier,
+          coveragePurpose: evaluation.coveragePurpose,
+          distanceMiles: evaluation.distanceMiles,
+          rankingSnapshot: evaluation.rankingSnapshot,
         },
         update: {
           outcome: evaluation.outcome,
@@ -785,19 +793,25 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
           selected: selectedSupplierIds.has(evaluation.id),
           reasons: evaluation.reasons,
           capabilitySnapshot: evaluation.capabilitySnapshot,
+          membershipTier: evaluation.membershipTier,
+          coveragePurpose: evaluation.coveragePurpose,
+          distanceMiles: evaluation.distanceMiles,
+          rankingSnapshot: evaluation.rankingSnapshot,
           decidedAt: now,
         },
       });
     }
     const assignedSupplierIds: string[] = [];
-    for (const match of matches) {
+    const invitationDeadline = addSupplierResponseHours(now, matchingConfiguration?.responseDeadlineHours ?? 8);
+    for (const [index, match] of matches.entries()) {
       const assignment = await tx.supplierAssignment.create({
         data: {
           quoteRequestId: request.id,
           supplierCompanyId: match.id,
           status: "PENDING",
-          expiresAt: request.responseDueAt,
+          expiresAt: invitationDeadline < request.responseDueAt ? invitationDeadline : request.responseDueAt,
           assignedById: null,
+          invitationRank: index + 1,
         },
       });
       assignedSupplierIds.push(assignment.supplierCompanyId);
@@ -1761,10 +1775,14 @@ export async function processWhatsAppJobs({ limit = 5 }: { limit?: number } = {}
   // Vercel Hobby cron jobs can run only once per day. Recovering these durable
   // queues after normal WhatsApp activity keeps winner emails and operational
   // alerts moving without weakening idempotency or sending duplicate messages.
-  await Promise.all([
-    processSupplierWinnerEmailsSafely({ limit: 10 }),
-    runProductionMonitoringSafely(),
-  ]);
+  await expireAndReplaceSupplierInvitations({ limit: 25 }).catch((error) => {
+    console.error("Expired supplier invitation recovery failed", error);
+  });
+  await notifySuppliersWithStaleCapacity({ limit: 50 }).catch((error) => {
+    console.error("Stale supplier capacity reminder failed", error);
+  });
+  await processSupplierWinnerEmailsSafely({ limit: 10 });
+  await runProductionMonitoringSafely();
 
   return processed;
 }

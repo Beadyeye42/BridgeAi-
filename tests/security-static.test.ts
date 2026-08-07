@@ -302,9 +302,10 @@ describe("security foundation static controls", () => {
     expect(assignmentRoute).toContain("findSupplierMatches(tx");
     expect(matching).toContain('status: "APPROVED"');
     expect(matching).toContain('status: "ACTIVE"');
-    expect(matching).toContain("{ categories: { some: { productCategoryId: request.categoryId } } }");
-    expect(matching).toContain("productCategory: { parentId: request.categoryId }");
-    expect(matching).toContain("children: { some: { id: request.categoryId } }");
+    expect(matching).toContain("const categoryEligible");
+    expect(matching).toContain("Supplier has not selected this product category");
+    expect(matching).toContain("membershipPlan: true");
+    expect(matching).toContain("active opportunity limit");
     expect(matching).toContain("bestCoverageMatch");
     expect(matching).toContain("matches.slice(0, options.limit)");
     expect(coverageRoute).toContain('action: "COVERAGE.CREATED"');
@@ -349,7 +350,7 @@ describe("security foundation static controls", () => {
     const processor = read("lib/whatsapp/processor.ts");
     const migration = read("supabase/migrations/20260805130054_whatsapp_auto_distribution.sql");
     expect(processor).toContain("evaluateSupplierMatches(");
-    expect(processor).toContain("Math.min(distributionLimit, 3)");
+    expect(processor).toContain("Math.min(distributionLimit, matchingConfiguration?.maximumSuppliersPerRequest ?? 3, 3)");
     expect(processor).toContain("supplierMatchDecision.upsert");
     expect(processor).toContain('action: "WHATSAPP.REQUEST_AUTO_ASSIGNED"');
     expect(processor).toContain("automaticAssignmentCount");

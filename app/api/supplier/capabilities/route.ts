@@ -48,6 +48,9 @@ export async function PATCH(request: Request) {
         standardLeadTimeDays: 14,
         deliveryDays: [1, 2, 3, 4, 5],
         lastConfirmedAt: confirmedAt,
+        capacityLastConfirmedAt: confirmedAt,
+        leadTimeLastConfirmedAt: confirmedAt,
+        currentLeadTimeDays: 14,
       },
       update: {
         active: true,
@@ -55,6 +58,8 @@ export async function PATCH(request: Request) {
         shortageNote: null,
         shortageUntil: null,
         lastConfirmedAt: confirmedAt,
+        capacityLastConfirmedAt: confirmedAt,
+        leadTimeLastConfirmedAt: confirmedAt,
       },
       select: {
         active: true,
@@ -122,6 +127,8 @@ export async function PUT(request: Request) {
         minimumOrderValue: capability.minimumOrderValue,
         shortageUntil: capability.shortageUntil ? new Date(capability.shortageUntil) : null,
         lastConfirmedAt: confirmedAt,
+        capacityLastConfirmedAt: confirmedAt,
+        leadTimeLastConfirmedAt: confirmedAt,
       };
       await tx.supplierCapability.upsert({
         where: { supplierCompanyId_productCategoryId: { supplierCompanyId: auth.companyId, productCategoryId: capability.productCategoryId } },

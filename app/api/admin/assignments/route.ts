@@ -53,6 +53,10 @@ export async function POST(request: Request) {
             selected: true,
             reasons: match.reasons,
             capabilitySnapshot: match.capabilitySnapshot,
+            membershipTier: match.membershipTier,
+            coveragePurpose: match.coveragePurpose,
+            distanceMiles: match.distanceMiles,
+            rankingSnapshot: match.rankingSnapshot,
           },
           update: {
             outcome: "MATCHED",
@@ -60,6 +64,10 @@ export async function POST(request: Request) {
             selected: true,
             reasons: match.reasons,
             capabilitySnapshot: match.capabilitySnapshot,
+            membershipTier: match.membershipTier,
+            coveragePurpose: match.coveragePurpose,
+            distanceMiles: match.distanceMiles,
+            rankingSnapshot: match.rankingSnapshot,
             decidedAt: new Date(),
           },
         });

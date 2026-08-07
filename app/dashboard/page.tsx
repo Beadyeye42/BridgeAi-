@@ -27,7 +27,7 @@ export default async function DashboardPage() {
     initials: `${session.user.firstName[0] ?? ""}${session.user.lastName[0] ?? ""}`,
     unreadNotificationCount: dashboard.unreadNotificationCount,
     subscription: {
-      plan: dashboard.company.subscription?.planCode ?? "Starter",
+      plan: dashboard.company.subscription?.membershipPlan?.name ?? dashboard.company.subscription?.planCode ?? "Not selected",
       status: dashboard.company.subscription?.status ?? "Not started",
       renewal:
         dashboard.company.subscription?.currentPeriodEnd?.toLocaleDateString(
@@ -51,6 +51,7 @@ export default async function DashboardPage() {
       title: latestWonQuotation.quoteRequest.title,
       value: formatQuoteValue(latestWonQuotation.price, latestWonQuotation.currency),
     } : undefined,
+    upgradeInsight: dashboard.upgradeInsight,
     requests: dashboard.assignments.map((assignment) => {
       const quoteRequest = assignment.quoteRequest;
       return {

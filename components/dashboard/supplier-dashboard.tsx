@@ -36,6 +36,12 @@ export function SupplierDashboard({ data, demo = false, onboarding, supplierStat
           <Link href="/dashboard/requests" className="button button-dark">View leads <ArrowUpRight size={16} /></Link>
         </section> : null}
 
+        {data.upgradeInsight && data.upgradeInsight.tier !== "NATIONWIDE" && data.upgradeInsight.geographicMisses > 0 ? <section className="attention-card upgrade-insight">
+          <div className="attention-icon"><MapPin size={21}/></div>
+          <div><b>{data.upgradeInsight.geographicMisses} otherwise suitable opportunit{data.upgradeInsight.geographicMisses === 1 ? "y was" : "ies were"} outside your chosen coverage in the last 30 days</b><p>{data.upgradeInsight.regionalBandMisses > 0 ? `${data.upgradeInsight.regionalBandMisses} were between 40 and 100 miles from your company base. ` : ""}Only anonymous totals are shown—no customer details or specifications are revealed.</p></div>
+          <Link href="/dashboard/subscription" className="button button-outline">Compare coverage plans <ArrowUpRight size={16}/></Link>
+        </section> : null}
+
         <section className="stats-grid" aria-label="Supplier overview">
           <Stat label="Matched leads" value={String(data.stats.newRequests).padStart(2, "0")} helper={demo ? "2 added today" : "Assigned to your company"} icon={<FileText size={19} />} tone="amber" />
           <Stat label="Quotes in progress" value={String(data.stats.openQuotes).padStart(2, "0")} helper={demo ? "£86.4k total value" : "Submitted and awaiting a decision"} icon={<CircleGauge size={19} />} tone="blue" />

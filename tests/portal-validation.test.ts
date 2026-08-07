@@ -3,8 +3,8 @@ import { accreditationReviewSchema, accreditationUploadSchema, adminAssignmentSc
 
 describe("supplier portal validation", () => {
   it("normalises postcode coverage prefixes", () => {
-    expect(coverageAreaSchema.parse({ type: "POSTCODE", label: "Coventry", postcodePrefix: "cv" })).toEqual({ type: "POSTCODE", label: "Coventry", postcodePrefix: "CV" });
-    expect(coverageAreaSchema.parse({ type: "POSTCODE", postcodePrefix: "gl52 6td" })).toEqual({ type: "POSTCODE", postcodePrefix: "GL52 6TD" });
+    expect(coverageAreaSchema.parse({ type: "POSTCODE", label: "Coventry", postcodePrefix: "cv" })).toEqual({ type: "POSTCODE", purpose: "DELIVERY", label: "Coventry", postcodePrefix: "CV" });
+    expect(coverageAreaSchema.parse({ type: "POSTCODE", postcodePrefix: "gl52 6td" })).toEqual({ type: "POSTCODE", purpose: "DELIVERY", postcodePrefix: "GL52 6TD" });
   });
 
   it("rejects excessive distance coverage", () => {
@@ -14,7 +14,7 @@ describe("supplier portal validation", () => {
   it("accepts preset, custom and nationwide coverage rules", () => {
     expect(coverageAreaSchema.safeParse({ type: "DISTANCE", centrePostcode: "B1 1AA", radiusMiles: 40 }).success).toBe(true);
     expect(coverageAreaSchema.safeParse({ type: "DISTANCE", centrePostcode: "B1 1AA", radiusMiles: 100 }).success).toBe(true);
-    expect(coverageAreaSchema.parse({ type: "NATIONWIDE" })).toEqual({ type: "NATIONWIDE" });
+    expect(coverageAreaSchema.parse({ type: "NATIONWIDE" })).toEqual({ type: "NATIONWIDE", purpose: "DELIVERY" });
   });
 
   it("validates one-click product activation without accepting extra control fields", () => {

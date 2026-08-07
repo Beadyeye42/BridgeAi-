@@ -95,9 +95,16 @@ export const supplierCapabilitySchema = z.object({
   minimumOrderQuantity: z.number().int().min(1).max(1_000_000).nullable(),
   standardLeadTimeDays: z.number().int().min(1).max(730),
   urgentLeadTimeDays: z.number().int().min(1).max(730).nullable(),
+  currentLeadTimeDays: z.number().int().min(1).max(730).nullable(),
+  supportsSupplyOnly: z.boolean(),
+  supportsDelivery: z.boolean(),
+  supportsInstallation: z.boolean(),
+  supportsService: z.boolean(),
   collectionAvailable: z.boolean(),
   deliveryDays: z.array(z.number().int().min(1).max(7)).max(7).transform((days) => [...new Set(days)].sort()),
-  capacityStatus: z.enum(["AVAILABLE", "LIMITED", "URGENT_ONLY", "FULL", "PAUSED"]),
+  capacityStatus: z.enum(["AVAILABLE", "LIMITED", "URGENT_ONLY", "FULL", "PAUSED", "HOLIDAY", "NOT_ACCEPTING"]),
+  restrictedProducts: capabilityNameList,
+  deliveryDelayDays: z.number().int().min(0).max(365).nullable(),
   shortageNote: z.string().trim().max(500).nullable(),
   shortageUntil: z.string().datetime().nullable(),
   active: z.boolean(),
@@ -122,11 +129,77 @@ export const supplierCapabilityActivationSchema = z.object({
 });
 
 const optionalCoverageLabel = z.string().trim().min(2).max(100).optional();
+const coveragePurpose = z.enum(["SERVICE", "DELIVERY"]).default("DELIVERY");
 export const coverageAreaSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("POSTCODE"), label: optionalCoverageLabel, postcodePrefix: z.string().trim().min(1).max(8).regex(/^[A-Za-z][A-Za-z0-9 ]{0,7}$/, "Enter a UK postcode or postcode area, such as GL52 6TD, B or CV").transform((v) => v.toUpperCase()) }),
-  z.object({ type: z.literal("DISTANCE"), label: optionalCoverageLabel, centrePostcode: z.string().trim().min(3).max(16).transform((v) => v.toUpperCase()), radiusMiles: z.coerce.number().int().min(1).max(500) }),
-  z.object({ type: z.literal("NATIONWIDE"), label: optionalCoverageLabel }),
+  z.object({ type: z.literal("POSTCODE"), purpose: coveragePurpose, label: optionalCoverageLabel, postcodePrefix: z.string().trim().min(1).max(8).regex(/^[A-Za-z][A-Za-z0-9 ]{0,7}$/, "Enter a UK postcode or postcode area, such as GL52 6TD, B or CV").transform((v) => v.toUpperCase()) }),
+  z.object({ type: z.literal("DISTANCE"), purpose: coveragePurpose, label: optionalCoverageLabel, centrePostcode: z.string().trim().min(3).max(16).transform((v) => v.toUpperCase()), radiusMiles: z.coerce.number().int().min(1).max(500) }),
+  z.object({ type: z.literal("NATIONWIDE"), purpose: coveragePurpose, label: optionalCoverageLabel }),
 ]);
+
+export const collectionLocationSchema = z.object({
+  label: z.string().trim().min(2).max(100),
+  postcode: z.string().trim().min(3).max(16).transform((value) => value.toUpperCase()),
+  collectionDays: z.array(z.number().int().min(1).max(7)).max(7).transform((days) => [...new Set(days)].sort()),
+  noticeRequired: z.boolean(),
+  noticeHours: z.coerce.number().int().min(1).max(720).nullable(),
+}).superRefine((value, context) => {
+  if (value.noticeRequired && value.noticeHours === null) context.addIssue({ code: "custom", path: ["noticeHours"], message: "Enter the collection notice required" });
+  if (!value.noticeRequired && value.noticeHours !== null) context.addIssue({ code: "custom", path: ["noticeHours"], message: "Turn on notice required before setting hours" });
+});
+
+export const membershipCheckoutSchema = z.object({ membershipPlanId: z.string().min(1).max(64) });
+
+export const membershipPlanAdminSchema = z.object({
+  name: z.string().trim().min(2).max(100),
+  description: z.string().trim().max(500).nullable(),
+  monthlyPricePence: z.coerce.number().int().min(100).max(1_000_000),
+  maximumRadiusMiles: z.coerce.number().int().min(1).max(500).nullable(),
+  nationwideAllowed: z.boolean(),
+  maximumActiveOpportunities: z.coerce.number().int().min(1).max(100),
+  taxEnabled: z.boolean(),
+  active: z.boolean(),
+});
+
+export const matchingConfigurationAdminSchema = z.object({
+  maximumSuppliersPerRequest: z.coerce.number().int().min(1).max(3),
+  capacityStaleDays: z.coerce.number().int().min(1).max(90),
+  leadTimeStaleDays: z.coerce.number().int().min(1).max(90),
+  responseDeadlineHours: z.coerce.number().int().min(1).max(168),
+  automaticNextSupplierInvitation: z.boolean(),
+  serviceMatchingEnabled: z.boolean(),
+  deliveryMatchingEnabled: z.boolean(),
+  matchingWeights: z.object({
+    capability: z.coerce.number().min(0).max(100),
+    leadTime: z.coerce.number().min(0).max(100),
+    capacity: z.coerce.number().min(0).max(100),
+    coverage: z.coerce.number().min(0).max(100),
+    locality: z.coerce.number().min(0).max(100),
+    response: z.coerce.number().min(0).max(100),
+    completion: z.coerce.number().min(0).max(100),
+    reliability: z.coerce.number().min(0).max(100),
+  }).refine((weights) => Object.values(weights).some((weight) => weight > 0), "At least one matching weight must be greater than zero"),
+});
+
+export const adminSupplierGeographySchema = z.object({
+  membershipTierOverride: z.enum(["LOCAL", "REGIONAL", "NATIONWIDE"]).nullable(),
+  maximumActiveOpportunitiesOverride: z.coerce.number().int().min(1).max(100).nullable(),
+  maximumServiceRadiusOverride: z.coerce.number().int().min(1).max(500).nullable(),
+  maximumDeliveryRadiusOverride: z.coerce.number().int().min(1).max(500).nullable(),
+});
+
+export const membershipPromotionAdminSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  eligiblePlanCodes: z.array(z.string().trim().min(1).max(100)).min(1).max(3),
+  promotionalPricePence: z.coerce.number().int().min(100).max(1_000_000),
+  durationMonths: z.coerce.number().int().min(1).max(36),
+  subscriberLimit: z.coerce.number().int().min(1).max(100_000).nullable(),
+  startsAt: z.coerce.date(),
+  endsAt: z.coerce.date().nullable(),
+  existingSubscribersQualify: z.boolean(),
+  active: z.boolean(),
+}).superRefine((value, context) => {
+  if (value.endsAt && value.endsAt <= value.startsAt) context.addIssue({ code: "custom", path: ["endsAt"], message: "Promotion end must be after its start" });
+});
 
 export const notificationPreferenceSchema = z.object({
   emailNewRequests: z.boolean(), emailRequestReminders: z.boolean(), emailQuotationUpdates: z.boolean(),
@@ -146,6 +219,7 @@ export const adminComplimentaryMembershipSchema = z.discriminatedUnion("action",
     action: z.literal("GRANT"),
     durationDays: z.coerce.number().int().min(1, "Choose at least one day").max(366, "Complimentary access cannot exceed 366 days"),
     reason: z.string().trim().min(3, "Enter a promotional or testing reason").max(500),
+    membershipPlanId: z.string().min(1).max(64),
   }),
   z.object({
     action: z.literal("REVOKE"),

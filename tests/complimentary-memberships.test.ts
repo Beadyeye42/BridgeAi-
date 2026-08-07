@@ -7,7 +7,7 @@ const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.ur
 
 describe("administrator complimentary memberships", () => {
   it("accepts bounded grants and requires reasons for grants and revocations", () => {
-    const grant = adminComplimentaryMembershipSchema.parse({ action: "GRANT", durationDays: "30", reason: "Launch partner testing" });
+    const grant = adminComplimentaryMembershipSchema.parse({ action: "GRANT", durationDays: "30", reason: "Launch partner testing", membershipPlanId: "plan_local_partner" });
     expect(grant.action).toBe("GRANT");
     if (grant.action !== "GRANT") throw new Error("Expected a grant");
     expect(grant.durationDays).toBe(30);
