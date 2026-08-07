@@ -1,10 +1,12 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireAdminApi } from "@/lib/auth/api";
 import { adminAssignmentSchema, validationError } from "@/lib/auth/validation";
 import { writeAuditLog } from "@/lib/audit";
 import { findSupplierMatches, resolveDeliveryLocation } from "@/lib/matching/suppliers";
+import { queueSupplierAssignmentNotifications } from "@/lib/notifications/assignment-notifications";
+import { processSupplierEmailsSafely } from "@/lib/notifications/email-worker";
 
 export async function POST(request: Request) {
   const auth = await requireAdminApi();
@@ -73,6 +75,12 @@ export async function POST(request: Request) {
         });
       }
       await tx.quoteRequest.update({ where: { id: quote.id }, data: { status: "MATCHING" } });
+      await queueSupplierAssignmentNotifications(tx, {
+        supplierCompanyIds: unique,
+        reference: quote.reference,
+        title: quote.title,
+        responseDueAt: quote.responseDueAt,
+      });
       await writeAuditLog({
         actorUserId: auth.session.userId,
         action: "ADMIN.REQUEST_ASSIGNED",
@@ -89,6 +97,7 @@ export async function POST(request: Request) {
       }, tx);
       return result.count;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5_000, timeout: 10_000 });
+    after(() => processSupplierEmailsSafely({ limit: 25 }));
     return NextResponse.json({ ok: true, created }, { status: 201 });
   } catch (error) {
     const code = error instanceof Error ? error.message : "";

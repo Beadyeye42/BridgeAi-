@@ -1,11 +1,16 @@
-import { buildSupplierWinnerEmail, type SupplierWinnerEmailInput } from "@/lib/notifications/winner-email";
+import {
+  buildSupplierNotificationEmail,
+  buildSupplierWinnerEmail,
+  type SupplierNotificationEmailInput,
+  type SupplierWinnerEmailInput,
+} from "@/lib/notifications/winner-email";
 
 export async function sendTeamInvitationEmail(email: string, invitationUrl: string) {
   if (!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM) {
     if (process.env.NODE_ENV === "development") console.info(`[Bridge AI] Team invitation for ${email}: ${invitationUrl}`);
     return { delivered: false as const, reason: "provider_not_configured" as const };
   }
-  const response = await fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ from: process.env.EMAIL_FROM, to: [email], subject: "Join your supplier team on Bridge AI", text: `You have been invited to a Bridge AI supplier workspace. Accept the invitation: ${invitationUrl}\n\nThis link expires in seven days.` }) });
+  const response = await fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ from: process.env.EMAIL_FROM, to: [email], subject: "Join your supplier team on Bridge AI", text: `You have been invited to a Bridge AI supplier workspace. Accept the invitation: ${invitationUrl}\n\nThis link expires in seven days.` }), signal: AbortSignal.timeout(10_000) });
   if (!response.ok) throw new Error(`Team invitation email failed with status ${response.status}`);
   return { delivered: true as const };
 }
@@ -56,6 +61,7 @@ export async function sendOperationalAlertEmail(
   ].join("\n");
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
+    signal: AbortSignal.timeout(10_000),
     headers: {
       Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
       "Content-Type": "application/json",
@@ -85,6 +91,7 @@ export async function sendSupplierWinnerEmail(
   const email = buildSupplierWinnerEmail(input);
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
+    signal: AbortSignal.timeout(10_000),
     headers: {
       Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
       "Content-Type": "application/json",
@@ -99,6 +106,35 @@ export async function sendSupplierWinnerEmail(
     }),
   });
   if (!response.ok) throw new Error(`Supplier winner email failed with status ${response.status}`);
+  const payload = await response.json().catch(() => null) as { id?: string } | null;
+  return { delivered: true as const, providerEmailId: payload?.id ?? null };
+}
+
+export async function sendSupplierNotificationEmail(
+  recipientEmail: string,
+  input: SupplierNotificationEmailInput,
+  idempotencyKey: string,
+) {
+  const config = supplierEmailConfiguration();
+  if (!config.configured) throw new Error(`SUPPLIER_EMAIL_NOT_CONFIGURED: ${config.reason}`);
+  const email = buildSupplierNotificationEmail(input);
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    signal: AbortSignal.timeout(10_000),
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+      "Idempotency-Key": idempotencyKey,
+    },
+    body: JSON.stringify({
+      from: process.env.EMAIL_FROM,
+      to: [recipientEmail],
+      subject: email.subject,
+      text: email.text,
+      html: email.html,
+    }),
+  });
+  if (!response.ok) throw new Error(`Supplier notification email failed with status ${response.status}`);
   const payload = await response.json().catch(() => null) as { id?: string } | null;
   return { delivered: true as const, providerEmailId: payload?.id ?? null };
 }

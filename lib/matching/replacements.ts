@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { runAsDatabaseWorker } from "@/lib/db";
 import { evaluateSupplierMatches, resolveDeliveryLocation } from "@/lib/matching/suppliers";
 import { addSupplierResponseHours } from "@/lib/quotes/response-clock";
+import { queueSupplierAssignmentNotifications } from "@/lib/notifications/assignment-notifications";
 
 const ACTIVE_ASSIGNMENT_STATUSES = ["PENDING", "VIEWED", "ACCEPTED"] as const;
 const VALID_QUOTATION_STATUSES = ["SUBMITTED", "SELECTED_PENDING_PAYMENT", "ACCEPTED"] as const;
@@ -44,8 +45,12 @@ export async function inviteNextEligibleSupplier(quoteRequestId: string, replace
     const assignment = await tx.supplierAssignment.create({
       data: { quoteRequestId, supplierCompanyId: next.id, status: "PENDING", expiresAt: replacementDeadline < quote.responseDueAt ? replacementDeadline : quote.responseDueAt, assignedById: null, invitationRank: totalInvitations + 1, replacementForId: replacementForId ?? null },
     });
-    const recipients = await tx.supplierTeamMembership.findMany({ where: { supplierCompanyId: next.id, status: "ACTIVE" }, select: { userId: true } });
-    if (recipients.length) await tx.notification.createMany({ data: recipients.map((recipient) => ({ userId: recipient.userId, supplierCompanyId: next.id, type: "NEW_QUOTE_REQUEST" as const, channel: "IN_APP" as const, title: `New matched request ${quote.reference}`, body: `${quote.title} matches your confirmed capability, capacity and geographic eligibility.`, actionUrl: `/dashboard/requests/${quote.reference}` })) });
+    await queueSupplierAssignmentNotifications(tx, {
+      supplierCompanyIds: [next.id],
+      reference: quote.reference,
+      title: quote.title,
+      responseDueAt: assignment.expiresAt,
+    });
     await tx.auditLog.create({ data: { supplierCompanyId: next.id, action: "MATCHING.REPLACEMENT_SUPPLIER_INVITED", entityType: "SupplierAssignment", entityId: assignment.id, summary: "Next-ranked eligible supplier invited automatically", metadata: { quoteRequestId, invitationRank: assignment.invitationRank, replacementForId: replacementForId ?? null, score: next.score, reasons: next.reasons } as Prisma.InputJsonValue } });
     return { invited: true, supplierCompanyId: next.id, assignmentId: assignment.id, invitationRank: assignment.invitationRank };
   });

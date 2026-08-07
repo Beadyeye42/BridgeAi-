@@ -18,7 +18,8 @@ import { notifySuppliersWithStaleCapacity } from "@/lib/matching/stale-capacity"
 import { runProductionMonitoringSafely } from "@/lib/monitoring/operational-alerts";
 import { addSupplierResponseHours } from "@/lib/quotes/response-clock";
 import { selectQuotationForCustomer } from "@/lib/quotes/selection";
-import { processSupplierWinnerEmailsSafely } from "@/lib/notifications/email-worker";
+import { processSupplierEmailsSafely } from "@/lib/notifications/email-worker";
+import { queueSupplierAssignmentNotifications } from "@/lib/notifications/assignment-notifications";
 import { decryptPrivateValue, encryptPrivateValue } from "@/lib/security/encryption";
 import { sanitizeCustomerImage } from "@/lib/security/customer-image";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
@@ -833,29 +834,12 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
       });
     }
     if (assignedSupplierIds.length > 0) {
-      const members = await tx.supplierTeamMembership.findMany({
-        where: { supplierCompanyId: { in: assignedSupplierIds }, status: "ACTIVE" },
-        select: { userId: true, supplierCompanyId: true },
+      await queueSupplierAssignmentNotifications(tx, {
+        supplierCompanyIds: assignedSupplierIds,
+        reference: request.reference,
+        title: request.title,
+        responseDueAt: invitationDeadline < request.responseDueAt ? invitationDeadline : request.responseDueAt,
       });
-      const disabledPreferences = await tx.notificationPreference.findMany({
-        where: { supplierCompanyId: { in: assignedSupplierIds }, inAppEnabled: false },
-        select: { userId: true, supplierCompanyId: true },
-      });
-      const disabled = new Set(disabledPreferences.map((item) => `${item.userId}:${item.supplierCompanyId}`));
-      const recipients = members.filter((item) => !disabled.has(`${item.userId}:${item.supplierCompanyId}`));
-      if (recipients.length > 0) {
-        await tx.notification.createMany({
-          data: recipients.map((member) => ({
-            userId: member.userId,
-            supplierCompanyId: member.supplierCompanyId,
-            type: "NEW_QUOTE_REQUEST" as const,
-            channel: "IN_APP" as const,
-            title: `New quote request ${request.reference}`,
-            body: `${request.title} is available for review until the recorded response deadline.`,
-            actionUrl: `/dashboard/requests/${request.reference}`,
-          })),
-        });
-      }
       await tx.quoteRequest.update({
         where: { id: request.id },
         data: { status: "MATCHING" },
@@ -1329,7 +1313,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     }
     const grant = await selectQuotationForCustomer({ quotationId: selected.id, evidence: `WhatsApp message ${inbound.externalMessageId}` });
     await enqueueContactUnlock(grant.id);
-    await processSupplierWinnerEmailsSafely({ limit: 10 });
+    await processSupplierEmailsSafely({ limit: 10 });
     await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
       await tx.conversation.update({ where: { id: refreshed.conversation!.id }, data: { aiStage: "SELECTION_RECORDED" } });
       await writeWhatsAppAudit(tx, {
@@ -1781,7 +1765,7 @@ export async function processWhatsAppJobs({ limit = 5 }: { limit?: number } = {}
   await notifySuppliersWithStaleCapacity({ limit: 50 }).catch((error) => {
     console.error("Stale supplier capacity reminder failed", error);
   });
-  await processSupplierWinnerEmailsSafely({ limit: 10 });
+  await processSupplierEmailsSafely({ limit: 25 });
   await runProductionMonitoringSafely();
 
   return processed;

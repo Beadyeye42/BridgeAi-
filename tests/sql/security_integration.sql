@@ -720,15 +720,18 @@ BEGIN
   WHERE schemaname='bridge_ai'
     AND policyname IN (
       'whatsapp_ai_winner_email_insert',
+      'whatsapp_ai_new_request_email_insert',
       'supplier_email_notification_select',
       'supplier_email_notification_update',
       'supplier_email_active_profile_select',
       'supplier_email_audit_insert',
-      'supplier_email_system_event_insert'
+      'supplier_email_audit_select',
+      'supplier_email_system_event_insert',
+      'supplier_email_system_event_select'
     )
     AND roles @> ARRAY['authenticated']::name[]
     AND coalesce(with_check, qual) LIKE '%is_trusted_worker%';
-  IF visible_count <> 6 THEN
+  IF visible_count <> 9 THEN
     RAISE EXCEPTION 'supplier email worker policies are incomplete';
   END IF;
   IF NOT EXISTS (
@@ -737,6 +740,20 @@ BEGIN
       AND "entityType"='SecurityConfiguration'
   ) THEN
     RAISE EXCEPTION 'supplier winner email security configuration audit is missing';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM bridge_ai."AuditLog"
+    WHERE action='SYSTEM.SUPPLIER_OPPORTUNITY_EMAIL_ENABLED'
+      AND "entityType"='SecurityConfiguration'
+  ) THEN
+    RAISE EXCEPTION 'supplier opportunity email security configuration audit is missing';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM bridge_ai."AuditLog"
+    WHERE action='SYSTEM.SUPPLIER_EMAIL_RETURNING_POLICIES_ENABLED'
+      AND "entityType"='SecurityConfiguration'
+  ) THEN
+    RAISE EXCEPTION 'supplier email returning-policy security audit is missing';
   END IF;
 END
 $test$;
