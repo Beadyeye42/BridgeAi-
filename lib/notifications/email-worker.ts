@@ -1,7 +1,7 @@
 import "server-only";
 import { applicationOrigin } from "@/lib/config";
 import { runAsDatabaseWorker } from "@/lib/db";
-import { sendSupplierWinnerEmail, supplierEmailConfiguration } from "@/lib/email";
+import { sendSupplierNotificationEmail, supplierEmailConfiguration } from "@/lib/email";
 
 const MAX_DELIVERY_ATTEMPTS = 5;
 const STALE_LOCK_MS = 10 * 60_000;
@@ -11,6 +11,7 @@ type ClaimedNotification = {
   id: string;
   userId: string;
   supplierCompanyId: string | null;
+  type: "NEW_QUOTE_REQUEST" | "QUOTATION_ACCEPTED";
   title: string;
   body: string;
   actionUrl: string | null;
@@ -22,13 +23,13 @@ function portalOrigin() {
   return applicationOrigin(process.env.APP_URL || "http://localhost:3000");
 }
 
-async function claimWinnerEmailBatch(limit: number, now = new Date()): Promise<ClaimedNotification[]> {
+async function claimSupplierEmailBatch(limit: number, now = new Date()): Promise<ClaimedNotification[]> {
   const staleLockBefore = new Date(now.getTime() - STALE_LOCK_MS);
   return runAsDatabaseWorker("supplier_email", async (tx) => {
     await tx.notification.updateMany({
       where: {
         channel: "EMAIL",
-        type: "QUOTATION_ACCEPTED",
+        type: { in: ["NEW_QUOTE_REQUEST", "QUOTATION_ACCEPTED"] },
         sentAt: null,
         lockedAt: { lt: staleLockBefore },
         deliveryAttempts: { lt: MAX_DELIVERY_ATTEMPTS },
@@ -40,7 +41,7 @@ async function claimWinnerEmailBatch(limit: number, now = new Date()): Promise<C
       FROM bridge_ai."Notification" notification
       JOIN bridge_ai.portal_profiles profile ON profile.id = notification."userId"
       WHERE notification.channel = 'EMAIL'
-        AND notification.type = 'QUOTATION_ACCEPTED'
+        AND notification.type IN ('NEW_QUOTE_REQUEST', 'QUOTATION_ACCEPTED')
         AND notification."sentAt" IS NULL
         AND notification."availableAt" <= ${now}
         AND notification."deliveryAttempts" < ${MAX_DELIVERY_ATTEMPTS}
@@ -56,12 +57,13 @@ async function claimWinnerEmailBatch(limit: number, now = new Date()): Promise<C
       where: { id: { in: ids }, sentAt: null, lockedAt: null },
       data: { lockedAt: now, lastAttemptAt: now, deliveryAttempts: { increment: 1 }, failedAt: null, failureReason: null },
     });
-    return tx.notification.findMany({
+    const notifications = await tx.notification.findMany({
       where: { id: { in: ids }, lockedAt: now },
       select: {
         id: true,
         userId: true,
         supplierCompanyId: true,
+        type: true,
         title: true,
         body: true,
         actionUrl: true,
@@ -70,10 +72,16 @@ async function claimWinnerEmailBatch(limit: number, now = new Date()): Promise<C
       },
       orderBy: { createdAt: "asc" },
     });
+    return notifications.flatMap((notification) =>
+      notification.type === "NEW_QUOTE_REQUEST" || notification.type === "QUOTATION_ACCEPTED"
+        ? [{ ...notification, type: notification.type }]
+        : [],
+    );
   });
 }
 
-async function markWinnerEmailSent(notification: ClaimedNotification, providerMessageId: string | null) {
+async function markSupplierEmailSent(notification: ClaimedNotification, providerMessageId: string | null) {
+  const isOpportunity = notification.type === "NEW_QUOTE_REQUEST";
   await runAsDatabaseWorker("supplier_email", async (tx) => {
     await tx.notification.update({
       where: { id: notification.id },
@@ -81,18 +89,19 @@ async function markWinnerEmailSent(notification: ClaimedNotification, providerMe
     });
     await tx.auditLog.create({ data: {
       supplierCompanyId: notification.supplierCompanyId,
-      action: "NOTIFICATION.SUPPLIER_WINNER_EMAIL_SENT",
+      action: isOpportunity ? "NOTIFICATION.SUPPLIER_OPPORTUNITY_EMAIL_SENT" : "NOTIFICATION.SUPPLIER_WINNER_EMAIL_SENT",
       entityType: "Notification",
       entityId: notification.id,
-      summary: "Supplier winner email delivered through Resend",
-      metadata: { providerMessageId, deliveryAttempts: notification.deliveryAttempts },
+      summary: isOpportunity ? "Supplier opportunity email delivered through Resend" : "Supplier winner email delivered through Resend",
+      metadata: { notificationType: notification.type, providerMessageId, deliveryAttempts: notification.deliveryAttempts },
     } });
   });
 }
 
-async function markWinnerEmailFailed(notification: ClaimedNotification, error: unknown) {
+async function markSupplierEmailFailed(notification: ClaimedNotification, error: unknown) {
   const message = error instanceof Error ? error.message.slice(0, 500) : "Unknown supplier email delivery failure";
   const terminal = notification.deliveryAttempts >= MAX_DELIVERY_ATTEMPTS;
+  const subject = notification.type === "NEW_QUOTE_REQUEST" ? "SUPPLIER_OPPORTUNITY_EMAIL" : "SUPPLIER_WINNER_EMAIL";
   const retryDelayMs = Math.min(6 * 60 * 60_000, Math.max(60_000, 2 ** notification.deliveryAttempts * 60_000));
   await runAsDatabaseWorker("supplier_email", async (tx) => {
     await tx.notification.update({
@@ -106,55 +115,61 @@ async function markWinnerEmailFailed(notification: ClaimedNotification, error: u
     });
     await tx.auditLog.create({ data: {
       supplierCompanyId: notification.supplierCompanyId,
-      action: terminal ? "NOTIFICATION.SUPPLIER_WINNER_EMAIL_EXHAUSTED" : "NOTIFICATION.SUPPLIER_WINNER_EMAIL_RETRY_SCHEDULED",
+      action: terminal ? `NOTIFICATION.${subject}_EXHAUSTED` : `NOTIFICATION.${subject}_RETRY_SCHEDULED`,
       entityType: "Notification",
       entityId: notification.id,
-      summary: terminal ? "Supplier winner email exhausted automatic retries" : "Supplier winner email failed and was scheduled for retry",
-      metadata: { deliveryAttempts: notification.deliveryAttempts, failure: message },
+      summary: terminal ? "Supplier email exhausted automatic retries" : "Supplier email failed and was scheduled for retry",
+      metadata: { notificationType: notification.type, deliveryAttempts: notification.deliveryAttempts, failure: message },
     } });
     if (terminal) {
       await tx.systemEvent.create({ data: {
         severity: "ERROR",
         status: "OPEN",
         source: "RESEND",
-        code: "SUPPLIER_WINNER_EMAIL_FAILED",
-        message: "A supplier winner notification could not be delivered after five attempts",
-        context: { notificationId: notification.id, supplierCompanyId: notification.supplierCompanyId },
+        code: "SUPPLIER_EMAIL_FAILED",
+        message: "A supplier notification email could not be delivered after five attempts",
+        context: { notificationId: notification.id, notificationType: notification.type, supplierCompanyId: notification.supplierCompanyId },
       } });
     }
   });
 }
 
-export async function processSupplierWinnerEmails(input: { limit?: number } = {}) {
+export async function processSupplierEmails(input: { limit?: number } = {}) {
   const config = supplierEmailConfiguration();
   if (!config.configured) return { configured: false as const, processed: 0, sent: 0, failed: 0, reason: config.reason };
-  const notifications = await claimWinnerEmailBatch(input.limit ?? DEFAULT_BATCH_SIZE);
+  const notifications = await claimSupplierEmailBatch(input.limit ?? DEFAULT_BATCH_SIZE);
   let sent = 0;
   let failed = 0;
   for (const notification of notifications) {
     try {
       const relativeActionUrl = notification.actionUrl?.startsWith("/") ? notification.actionUrl : "/dashboard/requests";
-      const result = await sendSupplierWinnerEmail(notification.user.email, {
+      const result = await sendSupplierNotificationEmail(notification.user.email, {
+        kind: notification.type,
         recipientFirstName: notification.user.firstName,
         title: notification.title,
         body: notification.body,
         portalUrl: new URL(relativeActionUrl, portalOrigin()).toString(),
-      }, `bridge-ai-supplier-winner-${notification.id}`);
-      await markWinnerEmailSent(notification, result.providerEmailId);
+      }, notification.type === "QUOTATION_ACCEPTED"
+        ? `bridge-ai-supplier-winner-${notification.id}`
+        : `bridge-ai-supplier-opportunity-${notification.id}`);
+      await markSupplierEmailSent(notification, result.providerEmailId);
       sent += 1;
     } catch (error) {
-      await markWinnerEmailFailed(notification, error);
+      await markSupplierEmailFailed(notification, error);
       failed += 1;
     }
   }
   return { configured: true as const, processed: notifications.length, sent, failed, reason: null };
 }
 
-export async function processSupplierWinnerEmailsSafely(input: { limit?: number } = {}) {
+export async function processSupplierEmailsSafely(input: { limit?: number } = {}) {
   try {
-    return await processSupplierWinnerEmails(input);
+    return await processSupplierEmails(input);
   } catch (error) {
-    console.error("Supplier winner email processing failed", error);
+    console.error("Supplier email processing failed", error);
     return { configured: true as const, processed: 0, sent: 0, failed: 1, reason: "Supplier email processing failed" };
   }
 }
+
+export const processSupplierWinnerEmails = processSupplierEmails;
+export const processSupplierWinnerEmailsSafely = processSupplierEmailsSafely;

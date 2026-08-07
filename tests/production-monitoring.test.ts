@@ -59,7 +59,7 @@ describe("production monitoring", () => {
     const monitoring = readFileSync("lib/monitoring/operational-alerts.ts", "utf8");
     const processor = readFileSync("lib/whatsapp/processor.ts", "utf8");
     expect(monitoring).toContain('NOT: { errorCode: { startsWith: "SUPERSEDED_" } }');
-    expect(processor).toContain("processSupplierWinnerEmailsSafely({ limit: 10 })");
+    expect(processor).toContain("processSupplierEmailsSafely({ limit: 25 })");
     expect(processor).toContain("runProductionMonitoringSafely()");
   });
 });

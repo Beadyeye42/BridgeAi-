@@ -1,9 +1,10 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentSession, getPrimarySupplierCompanyId } from "@/lib/auth/session";
 import { assignmentDecisionSchema, validationError } from "@/lib/auth/validation";
 import { writeAuditLog } from "@/lib/audit";
 import { inviteNextEligibleSupplier } from "@/lib/matching/replacements";
+import { processSupplierEmailsSafely } from "@/lib/notifications/email-worker";
 
 export const runtime = "nodejs";
 
@@ -50,6 +51,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
   if (nextStatus === "DECLINED") {
     await inviteNextEligibleSupplier(assignment.quoteRequestId, assignment.id).catch((error) => console.error("Automatic replacement invitation failed", error));
+    after(() => processSupplierEmailsSafely({ limit: 10 }));
   }
   return NextResponse.json({ ok: true, status: nextStatus });
 }

@@ -1,10 +1,11 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSupplierApi } from "@/lib/auth/api";
 import { supplierCapabilitiesSchema, supplierCapabilityActivationSchema, validationError } from "@/lib/auth/validation";
 import { writeAuditLog } from "@/lib/audit";
 import { rematchOpenRequestsForSupplier } from "@/lib/matching/rematch";
 import { launchedSupplierCategoryWhere } from "@/lib/categories/catalogue";
+import { processSupplierEmailsSafely } from "@/lib/notifications/email-worker";
 
 export const runtime = "nodejs";
 
@@ -91,6 +92,8 @@ export async function PATCH(request: Request) {
     actorUserId: auth.session.userId,
   });
 
+  if (rematch.matched > 0) after(() => processSupplierEmailsSafely({ limit: 10 }));
+
   return NextResponse.json({ ok: true, capability, rematch });
 }
 
@@ -156,5 +159,6 @@ export async function PUT(request: Request) {
     categoryIds: parsed.data.capabilities.filter((item) => item.active).map((item) => item.productCategoryId),
     actorUserId: auth.session.userId,
   });
+  if (rematch.matched > 0) after(() => processSupplierEmailsSafely({ limit: 10 }));
   return NextResponse.json({ ok: true, confirmedAt: confirmedAt.toISOString(), rematch });
 }

@@ -1,6 +1,7 @@
 import "server-only";
 import { runAsDatabaseWorker } from "@/lib/db";
 import { evaluateSupplierMatches, resolveDeliveryLocation } from "@/lib/matching/suppliers";
+import { queueSupplierAssignmentNotifications } from "@/lib/notifications/assignment-notifications";
 
 const MAX_AUTOMATIC_SUPPLIERS = 3;
 const MAX_REQUESTS_PER_RECHECK = 50;
@@ -135,29 +136,12 @@ export async function rematchOpenRequestsForSupplier({
       });
       if (!created.count) return { outcome: "SKIPPED" as const, reasons: [] as string[] };
 
-      const members = await tx.supplierTeamMembership.findMany({
-        where: { supplierCompanyId, status: "ACTIVE" },
-        select: { userId: true },
+      await queueSupplierAssignmentNotifications(tx, {
+        supplierCompanyIds: [supplierCompanyId],
+        reference: quote.reference,
+        title: quote.title,
+        responseDueAt: quote.responseDueAt,
       });
-      const disabledPreferences = await tx.notificationPreference.findMany({
-        where: { supplierCompanyId, inAppEnabled: false },
-        select: { userId: true },
-      });
-      const disabledUserIds = new Set(disabledPreferences.map((item) => item.userId));
-      const recipients = members.filter((item) => !disabledUserIds.has(item.userId));
-      if (recipients.length) {
-        await tx.notification.createMany({
-          data: recipients.map((member) => ({
-            userId: member.userId,
-            supplierCompanyId,
-            type: "NEW_QUOTE_REQUEST" as const,
-            channel: "IN_APP" as const,
-            title: `New quote request ${quote.reference}`,
-            body: `${quote.title} is available for review until the recorded response deadline.`,
-            actionUrl: `/dashboard/requests/${quote.reference}`,
-          })),
-        });
-      }
       await tx.quoteRequest.update({ where: { id: quote.id }, data: { status: "MATCHING" } });
       await tx.$queryRaw`
         SELECT bridge_private.write_whatsapp_audit(
