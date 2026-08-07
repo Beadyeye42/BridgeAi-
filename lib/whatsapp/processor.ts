@@ -56,8 +56,11 @@ import {
   conversationProgress,
   enforceTradeClarification,
   industrySelectionPrompt,
+  isNumberedIntakeReply,
+  numberedIntakeChoice,
   pheSpecificationDecision,
   pheSpecificationPrompt,
+  productSelectionPrompt,
   quoteDraftFingerprint,
   repeatClarification,
   requiredQuestionKey,
@@ -68,6 +71,13 @@ import {
 
 const MAX_ATTEMPTS = 3;
 const STALE_LOCK_MS = 5 * 60_000;
+
+type IntakeCategory = {
+  slug: string;
+  name: string;
+  description: string | null;
+  parent: { slug: string } | null;
+};
 
 type LoadedJob = NonNullable<Awaited<ReturnType<typeof loadJob>>>;
 
@@ -86,6 +96,57 @@ async function writeWhatsAppAudit(
 function errorCode(error: unknown) {
   const raw = error instanceof Error ? error.message : "UNKNOWN";
   return raw.replace(/[^A-Z0-9_:-]/gi, "_").slice(0, 120) || "UNKNOWN";
+}
+
+function emptyQuoteDraft(categorySlug: string): QuoteDraft {
+  return quoteDraftSchema.parse({
+    customerName: null,
+    deliveryPostcode: null,
+    categorySlug,
+    title: null,
+    summary: null,
+    customerBudget: null,
+    requiredManufacturer: null,
+    requiredSystem: null,
+    requiredColour: null,
+    requiredFinish: null,
+    requiredBy: null,
+    collectionRequired: false,
+    fulfilmentMode: "DELIVERY",
+    items: [],
+  });
+}
+
+function industryChoices(categories: IntakeCategory[]) {
+  return categories
+    .filter((category) => !category.parent)
+    .map(({ slug, name }) => ({ slug, name }));
+}
+
+function productChoices(categories: IntakeCategory[], industrySlug: string) {
+  return categories
+    .filter((category) => category.parent?.slug === industrySlug)
+    .map(({ slug, name }) => ({ slug, name }));
+}
+
+function selectedIndustry(categories: IntakeCategory[], categorySlug: string | null | undefined) {
+  if (!categorySlug) return null;
+  const category = categories.find((candidate) => candidate.slug === categorySlug);
+  if (!category) return null;
+  return category.parent
+    ? categories.find((candidate) => candidate.slug === category.parent?.slug) ?? null
+    : category;
+}
+
+function replaceLatestNumberedReply(
+  messages: Array<{ direction: "INBOUND" | "OUTBOUND"; text: string }>,
+  rawReply: string,
+  replacement: string,
+) {
+  const index = messages.findLastIndex((message) => (
+    message.direction === "INBOUND" && message.text.trim() === rawReply.trim()
+  ));
+  if (index >= 0) messages[index] = { direction: "INBOUND", text: replacement };
 }
 
 async function claimJob() {
@@ -552,7 +613,7 @@ export function formatConfirmation(draft: QuoteDraft, categoryName: string, atta
     items,
     attachmentCount > 0
       ? `Files: ${attachmentCount} received securely and added to this job`
-      : "For the most accurate pricing, send a photo, drawing or PDF now if you have one. You can still continue without a file.",
+      : "Supporting file: None yet. Most suppliers quote faster and more confidently from a clear photo, survey, drawing, schedule or PDF, and requests without one may receive fewer responses. Send one now if you can, or continue with your description if you do not have one.",
     draft.customerBudget === null ? null : `Budget: £${draft.customerBudget.toLocaleString("en-GB", { maximumFractionDigits: 2 })}`,
     responsibilityNotice,
     "Reply YES or CONFIRM to send it, or tell me what to change.",
@@ -929,6 +990,19 @@ async function quoteHistoryReply(conversation: LoadedJob["conversation"]) {
   ].filter(Boolean).join("\n\n");
 }
 
+async function loadIndustryChoices() {
+  return runAsDatabaseWorker("whatsapp_ai", (tx) => tx.productCategory.findMany({
+    where: {
+      active: true,
+      parentId: null,
+      children: { some: { active: true } },
+    },
+    orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
+    select: { slug: true, name: true },
+    take: 20,
+  }));
+}
+
 async function startNewQuote(
   job: WhatsAppJob,
   conversation: NonNullable<LoadedJob["conversation"]>,
@@ -946,7 +1020,7 @@ async function startNewQuote(
         aiSessionStartedAt: startedAt,
         aiDraftEncrypted: null,
         aiDraftFingerprint: null,
-        aiLastQuestionKey: null,
+        aiLastQuestionKey: announce ? "INDUSTRY" : null,
         aiUnproductiveTurns: 0,
         aiLastProgressAt: startedAt,
         closedAt: null,
@@ -975,9 +1049,10 @@ async function startNewQuote(
     return next;
   });
   if (announce) {
+    const prompt = industrySelectionPrompt(await loadIndustryChoices());
     await sendReply(job, updated, conversation.aiDraftEncrypted
-      ? "Done — I’ve cleared the previous unsent draft so the jobs cannot get mixed together. No confirmed request was changed. Which industry and product is the new quote for? You can type the details or send a photo, drawing, schedule or PDF."
-      : "Brilliant — let’s price another job. Which industry and product is it for? You can type the details or send a photo, drawing, schedule or PDF.");
+      ? `Done — I’ve cleared the previous unsent draft so the jobs cannot get mixed together. No confirmed request was changed.\n\n${prompt}`
+      : `Brilliant — let’s price another job.\n\n${prompt}`);
   }
   return updated;
 }
@@ -1015,7 +1090,7 @@ async function cancelQuoteDrafts(
         aiSessionStartedAt: startedAt,
         aiDraftEncrypted: null,
         aiDraftFingerprint: null,
-        aiLastQuestionKey: null,
+        aiLastQuestionKey: "INDUSTRY",
         aiUnproductiveTurns: 0,
         aiLastProgressAt: startedAt,
         closedAt: null,
@@ -1055,7 +1130,7 @@ async function cancelQuoteDrafts(
   await sendReply(
     job,
     result.next,
-    `${cleared} No confirmed or live quote requests were changed.\n\nWhich industry and product would you like a new quote for? You can type the details or send a photo, drawing, schedule or PDF.`,
+    `${cleared} No confirmed or live quote requests were changed.\n\n${industrySelectionPrompt(await loadIndustryChoices())}`,
   );
   return result.next;
 }
@@ -1070,6 +1145,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   let nameCapturedThisTurn = false;
   const text = inbound.bodyEncrypted ? decryptPrivateValue(inbound.bodyEncrypted) : "";
   const selectionIntent = quoteSelectionIntent(text);
+  const numberedIntakeReply = isNumberedIntakeReply(text, conversation.aiLastQuestionKey);
 
   const controlMessage = isConversationOptOut(text)
     || isConsent(text)
@@ -1165,7 +1241,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     return undefined;
   }
 
-  if (conversation.aiStage !== "AWAITING_SELECTION" && isNewQuoteRequest(text)) {
+  if (conversation.aiStage !== "AWAITING_SELECTION" && !numberedIntakeReply && isNewQuoteRequest(text)) {
     const includesJobDetails = newQuoteDetails(text) !== null || Boolean(inbound.mediaIdEncrypted);
     conversation = await startNewQuote(job, conversation, inbound, !includesJobDetails);
     if (!includesJobDetails) return undefined;
@@ -1211,7 +1287,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   if (!refreshed?.conversation) throw new Error("CONVERSATION_NOT_FOUND");
   const stage = refreshed.conversation.aiStage;
   const decryptedDraft = decryptDraft(refreshed.conversation.aiDraftEncrypted);
-  const draft = decryptedDraft
+  let draft = decryptedDraft
     ? { ...decryptedDraft, categorySlug: normalizeLaunchCategorySlug(decryptedDraft.categorySlug) }
     : null;
 
@@ -1335,7 +1411,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     return undefined;
   }
 
-  const categories = await runAsDatabaseWorker("whatsapp_ai", (tx) => tx.productCategory.findMany({
+  const categories: IntakeCategory[] = await runAsDatabaseWorker("whatsapp_ai", (tx) => tx.productCategory.findMany({
     where: launchedIntakeCategoryWhere(),
     orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
     select: { slug: true, name: true, description: true, parent: { select: { slug: true } } },
@@ -1372,6 +1448,87 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
       }
       return parts;
     });
+  const availableIndustries = industryChoices(categories);
+  const expectedQuestion = refreshed.conversation.aiLastQuestionKey;
+  if (!draft?.categorySlug) {
+    const industry = expectedQuestion === "INDUSTRY"
+      ? numberedIntakeChoice(text, availableIndustries)
+      : null;
+    if (!industry) {
+      await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
+        await tx.conversation.update({
+          where: { id: refreshed.conversation!.id },
+          data: { aiStage: "COLLECTING", aiLastQuestionKey: "INDUSTRY" },
+        });
+        await writeWhatsAppAudit(tx, {
+          action: "WHATSAPP.INDUSTRY_CHOICE_REQUESTED",
+          entityType: "Conversation",
+          entityId: refreshed.conversation!.id,
+          summary: "Customer was asked to choose a launched industry by number",
+          metadata: { jobId: job.id, availableIndustrySlugs: availableIndustries.map((choice) => choice.slug) },
+        });
+      });
+      const prefix = expectedQuestion === "INDUSTRY" && /^\d{1,2}$/.test(text.trim())
+        ? "That number is not available."
+        : null;
+      await sendReply(
+        job,
+        refreshed.conversation,
+        [prefix, industrySelectionPrompt(availableIndustries)].filter(Boolean).join("\n\n"),
+      );
+      return undefined;
+    }
+    draft = emptyQuoteDraft(industry.slug);
+    replaceLatestNumberedReply(messages, text, `[Customer selected industry: ${industry.name}.]`);
+  }
+
+  let activeIndustry = selectedIndustry(categories, draft.categorySlug);
+  if (!activeIndustry) {
+    const unavailableCategorySlug = draft?.categorySlug ?? null;
+    await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
+      await tx.conversation.update({
+        where: { id: refreshed.conversation!.id },
+        data: {
+          aiStage: "COLLECTING",
+          aiDraftEncrypted: null,
+          aiDraftFingerprint: null,
+          aiLastQuestionKey: "INDUSTRY",
+          aiUnproductiveTurns: 0,
+        },
+      });
+      await writeWhatsAppAudit(tx, {
+        action: "WHATSAPP.UNAVAILABLE_DRAFT_INDUSTRY_CLEARED",
+        entityType: "Conversation",
+        entityId: refreshed.conversation!.id,
+        summary: "An unfinished draft was cleared after its industry became unavailable",
+        metadata: { jobId: job.id, unavailableCategorySlug },
+      });
+    });
+    await sendReply(
+      job,
+      refreshed.conversation,
+      `That industry is no longer open for new quotes, so I’ve safely cleared this unfinished draft. No confirmed request was changed.\n\n${industrySelectionPrompt(availableIndustries)}`,
+    );
+    return undefined;
+  }
+  const availableProducts = productChoices(categories, activeIndustry.slug);
+  if (expectedQuestion === "PRODUCT" && /^\d{1,2}$/.test(text.trim())) {
+    const product = numberedIntakeChoice(text, availableProducts);
+    if (!product) {
+      await sendReply(
+        job,
+        refreshed.conversation,
+        `That number is not available.\n\n${productSelectionPrompt(activeIndustry.name, availableProducts)}`,
+      );
+      return undefined;
+    }
+    draft = { ...draft, categorySlug: product.slug };
+    replaceLatestNumberedReply(messages, text, `[Customer selected product: ${product.name}.]`);
+    activeIndustry = selectedIndustry(categories, product.slug);
+  }
+  const intakeCategories = categories.filter((category) => (
+    category.slug === activeIndustry?.slug || category.parent?.slug === activeIndustry?.slug
+  ));
   const unavailableCatalogue = unavailableCatalogueForConversation(
     messages.filter((message) => message.direction === "INBOUND").map((message) => message.text).join("\n"),
     categories.map((category) => category.slug),
@@ -1390,7 +1547,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   const { result, telemetry } = await extractQuoteIntake({
     messages,
     currentDraft: draft,
-    categories,
+    categories: intakeCategories,
     safetyIdentifier: refreshed.conversation.customerContact.phoneHash,
   });
   if (result.draft.deliveryPostcode) {
@@ -1513,18 +1670,28 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     ? attachmentInterpretation(currentAttachmentAnalyses.map((analysis) => analysis.summary))
       ?? `I’ve securely received and read ${currentAttachmentCount === 1 ? "that file" : `those ${currentAttachmentCount} files`} and added the useful details.`
     : null;
+  const resultIndustry = selectedIndustry(categories, result.draft.categorySlug);
+  const numberedQuestionPrompt = !ready && questionKey === "INDUSTRY"
+    ? industrySelectionPrompt(availableIndustries)
+    : !ready && questionKey === "PRODUCT" && resultIndustry
+      ? productSelectionPrompt(resultIndustry.name, productChoices(categories, resultIndustry.slug))
+      : null;
   const repeatedClarification = !ready && progress.repeatedQuestion && !progress.progressed
     ? questionKey === "INDUSTRY"
-      ? industrySelectionPrompt(categories.filter((item) => !item.parent).map((item) => item.name))
-      : repeatClarification(questionKey)
+      ? industrySelectionPrompt(availableIndustries)
+      : questionKey === "PRODUCT" && resultIndustry
+        ? productSelectionPrompt(resultIndustry.name, productChoices(categories, resultIndustry.slug))
+        : repeatClarification(questionKey)
     : null;
   const tradeClarification = !ready && questionKey === "SPECIFICATION"
     ? tradeSpecificationClarification(result.tradeClarification, result.draft.items[0]?.description)
     : null;
   const enforcedClarification = !ready && questionKey !== result.nextQuestionKey
     ? questionKey === "INDUSTRY"
-      ? industrySelectionPrompt(categories.filter((item) => !item.parent).map((item) => item.name))
-      : repeatClarification(questionKey)
+      ? industrySelectionPrompt(availableIndustries)
+      : questionKey === "PRODUCT" && resultIndustry
+        ? productSelectionPrompt(resultIndustry.name, productChoices(categories, resultIndustry.slug))
+        : repeatClarification(questionKey)
     : null;
   const reply = ready && category
       ? formatConfirmation(
@@ -1534,7 +1701,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
         preferredFirstName,
         categoryResponsibilityNotice(category.slug, category.parent?.slug),
       )
-      : `${mediaAcknowledgement ? `${mediaAcknowledgement}\n\n` : ""}${compositeDoorPhoto.shouldAsk ? compositeDoorStylePhotoPrompt() : roofGlazingSpecification.shouldAsk ? roofGlazingSpecificationPrompt(roofGlazingSpecification) : pheSpecification.shouldAsk ? pheSpecificationPrompt(pheSpecification.categorySlug) : tradeClarification ?? repeatedClarification ?? enforcedClarification ?? result.reply}${rejectedMedia ? "\n\nOne uploaded file could not be accepted. Please send a genuine JPG, PNG or PDF within the size limit." : ""}`;
+      : `${mediaAcknowledgement ? `${mediaAcknowledgement}\n\n` : ""}${compositeDoorPhoto.shouldAsk ? compositeDoorStylePhotoPrompt() : roofGlazingSpecification.shouldAsk ? roofGlazingSpecificationPrompt(roofGlazingSpecification) : pheSpecification.shouldAsk ? pheSpecificationPrompt(pheSpecification.categorySlug) : tradeClarification ?? numberedQuestionPrompt ?? repeatedClarification ?? enforcedClarification ?? result.reply}${rejectedMedia ? "\n\nOne uploaded file could not be accepted. Please send a genuine JPG, PNG or PDF within the size limit." : ""}`;
   await sendReply(
     job,
     refreshed.conversation,

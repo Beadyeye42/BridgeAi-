@@ -37,6 +37,7 @@ export function firstContactConsentReply(input: FirstContactReplyInput) {
     "You can start naturally — say “Hi”, “Can I have a quote please?”, describe the job, or send a photo, drawing or PDF.",
     received,
     "I’ll turn the useful details into a clear request for approved suppliers, then bring their prices and lead times back here.",
+    "I’ll first ask you to choose the correct industry using a number. Clear photos, surveys, drawings, schedules and PDFs usually lead to faster, more confident supplier quotes.",
     "Your contact details stay private until you accept a quote and the selected supplier completes the secure contact unlock.",
     `Privacy: ${input.privacyUrl}`,
     "Reply CONTINUE to let Bridge AI use automated processing for this enquiry, or STOP to end.",
@@ -139,7 +140,7 @@ export function quoteMenu(hasDraft = false) {
     "1 — NEW QUOTE\nStart a fresh job, including a separate job for another customer.",
     "2 — MY QUOTES\nCheck your recent requests.",
     "3 — CANCEL DRAFT\nClear the unfinished job and start again. Confirmed requests stay safe.",
-    "You can type the product you need or send a photo, drawing or PDF.",
+    "You can type the product you need or send a photo, drawing or PDF; a survey or schedule is welcome too. Requests with useful files usually receive faster, more confident responses.",
     hasDraft ? "One unsent draft is open. Continue describing it, reply YES when the summary is right, or reply CANCEL DRAFT to clear it." : "There is no unfinished draft open.",
   ].filter(Boolean).join("\n\n");
 }

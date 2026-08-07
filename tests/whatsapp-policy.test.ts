@@ -122,6 +122,7 @@ describe("WhatsApp messaging policy", () => {
     expect(reply).toContain("say “Hi”");
     expect(reply).toContain("Can I have a quote please?");
     expect(reply).toContain("photo, drawing or PDF");
+    expect(reply).toContain("choose the correct industry using a number");
     expect(reply).toContain("securely received your file");
     expect(reply).toContain("won’t analyse it until you choose to continue");
     expect(reply).toContain("Reply CONTINUE");

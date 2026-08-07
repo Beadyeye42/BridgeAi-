@@ -6,11 +6,14 @@ import {
   enforceTradeClarification,
   industrySelectionPrompt,
   isRecognisedIndustryColour,
+  isNumberedIntakeReply,
+  numberedIntakeChoice,
   pheSpecificationDecision,
   pheSpecificationPrompt,
   quoteDraftFingerprint,
   repeatClarification,
   requiredQuestionKey,
+  productSelectionPrompt,
   roofGlazingSpecificationDecision,
   roofGlazingSpecificationPrompt,
   tradeSpecificationClarification,
@@ -37,10 +40,35 @@ describe("WhatsApp intake conversation state", () => {
     expect(requiredQuestionKey({ ...completeDraft, categorySlug: "windows" }, "NONE")).toBe("PRODUCT");
     expect(requiredQuestionKey({ ...completeDraft, categorySlug: "plumbing-heating-mechanical" }, "NONE")).toBe("PRODUCT");
     expect(repeatClarification("INDUSTRY")).toContain("Which industry");
-    expect(industrySelectionPrompt(["Windows, doors and glazing", "Plumbing, heating and mechanical"]))
-      .toContain("Windows, doors and glazing or Plumbing, heating and mechanical");
-    expect(industrySelectionPrompt(["Windows, doors and glazing"]))
+    expect(industrySelectionPrompt([
+      { slug: "windows", name: "Windows, doors and glazing" },
+      { slug: "plumbing-heating-mechanical", name: "Plumbing, heating and mechanical" },
+    ])).toContain("2 — Plumbing, heating and mechanical");
+    expect(industrySelectionPrompt([{ slug: "windows", name: "Windows, doors and glazing" }]))
       .not.toContain("Plumbing");
+  });
+
+  it("uses deterministic numbered industry and product choices", () => {
+    const industries = [
+      { slug: "windows", name: "Windows, doors and glazing" },
+      { slug: "plumbing-heating-mechanical", name: "Plumbing, heating and mechanical" },
+    ];
+    expect(industrySelectionPrompt(industries)).toContain("Reply with just the number");
+    expect(numberedIntakeChoice(" 2 ", industries)).toEqual(industries[1]);
+    expect(numberedIntakeChoice("3", industries)).toBeNull();
+    expect(numberedIntakeChoice("windows", industries)).toBeNull();
+    expect(isNumberedIntakeReply("1", "INDUSTRY")).toBe(true);
+    expect(isNumberedIntakeReply("1", "PRODUCT")).toBe(true);
+    expect(isNumberedIntakeReply("1", null)).toBe(false);
+
+    const products = [
+      { slug: "upvc-windows", name: "uPVC windows and doors" },
+      { slug: "aluminium-windows", name: "Aluminium windows and bifolds" },
+    ];
+    const prompt = productSelectionPrompt("Windows, doors and glazing", products);
+    expect(prompt).toContain("1 — uPVC windows and doors");
+    expect(prompt).toContain("photo, survey, drawing, schedule or PDF");
+    expect(numberedIntakeChoice("1", products)).toEqual(products[0]);
   });
 
   it("does not allow unresolved trade material or colour to reach confirmation", () => {

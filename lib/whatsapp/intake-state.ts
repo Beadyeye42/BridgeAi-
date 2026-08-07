@@ -303,15 +303,55 @@ export function tradeSpecificationClarification(input: TradeClarification, produ
   return null;
 }
 
-export function industrySelectionPrompt(industryNames: string[] = [
-  "Windows, doors and glazing",
-  "Plumbing, heating and mechanical",
+export type NumberedIntakeChoice = {
+  slug: string;
+  name: string;
+};
+
+function uniqueChoices(choices: NumberedIntakeChoice[]) {
+  return choices.filter((choice, index, all) => (
+    choice.slug.trim()
+    && choice.name.trim()
+    && all.findIndex((candidate) => candidate.slug === choice.slug) === index
+  ));
+}
+
+export function numberedIntakeChoice(value: string, choices: NumberedIntakeChoice[]) {
+  const match = /^(\d{1,2})$/.exec(value.trim());
+  if (!match) return null;
+  const position = Number(match[1]);
+  return uniqueChoices(choices)[position - 1] ?? null;
+}
+
+export function isNumberedIntakeReply(value: string, questionKey: string | null | undefined) {
+  return /^\d{1,2}$/.test(value.trim()) && (questionKey === "INDUSTRY" || questionKey === "PRODUCT");
+}
+
+export function industrySelectionPrompt(industries: NumberedIntakeChoice[] = [
+  { slug: "windows", name: "Windows, doors and glazing" },
+  { slug: "plumbing-heating-mechanical", name: "Plumbing, heating and mechanical" },
 ]) {
-  const launched = [...new Set(industryNames.map((name) => name.trim()).filter(Boolean))];
-  const choices = launched.length
-    ? new Intl.ListFormat("en-GB", { style: "long", type: "disjunction" }).format(launched)
-    : "the industry and product you need";
-  return `Which industry is this quote for — ${choices}? You can include the product details now, or send a photo, drawing, schedule or PDF.`;
+  const launched = uniqueChoices(industries);
+  const options = launched.length
+    ? launched.map((industry, index) => `${index + 1} — ${industry.name}`).join("\n")
+    : "No industries are currently open for automated quoting.";
+  return [
+    "Which industry is this quote for?",
+    options,
+    launched.length ? "Reply with just the number." : null,
+    "You can send photos, drawings, schedules or PDFs after choosing. They usually help suppliers quote faster and more accurately.",
+  ].filter(Boolean).join("\n\n");
+}
+
+export function productSelectionPrompt(industryName: string, products: NumberedIntakeChoice[]) {
+  const launched = uniqueChoices(products);
+  const options = launched.map((product, index) => `${index + 1} — ${product.name}`).join("\n");
+  return [
+    `What do you need in ${industryName}?`,
+    options || "Please describe the product you need.",
+    options ? "Reply with just the number, or describe the product if you are unsure." : null,
+    "A clear photo, survey, drawing, schedule or PDF is strongly recommended, but you can continue with a description if you do not have one.",
+  ].filter(Boolean).join("\n\n");
 }
 
 export function repeatClarification(questionKey: IntakeQuestionKey) {
