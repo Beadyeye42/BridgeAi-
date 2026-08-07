@@ -52,6 +52,9 @@ import {
   compositeDoorStylePhotoPrompt,
   conversationProgress,
   enforceTradeClarification,
+  industrySelectionPrompt,
+  pheSpecificationDecision,
+  pheSpecificationPrompt,
   quoteDraftFingerprint,
   repeatClarification,
   requiredQuestionKey,
@@ -691,7 +694,7 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
     where: { slug: draft.categorySlug ?? "" },
     select: { id: true, name: true, active: true, parent: { select: { active: true } } },
   }));
-  if (!category?.active || category.parent?.active === false || !draftIsComplete(draft)) throw new Error("QUOTE_DRAFT_INCOMPLETE");
+  if (!category?.active || !category.parent?.active || !draftIsComplete(draft)) throw new Error("QUOTE_DRAFT_INCOMPLETE");
   const delivery = await lookupPostcode(draft.deliveryPostcode!);
   const now = new Date();
   const { quoteResponseHours, distributionLimit } = whatsappConciergeConfig();
@@ -975,8 +978,8 @@ async function startNewQuote(
   });
   if (announce) {
     await sendReply(job, updated, conversation.aiDraftEncrypted
-      ? "Done — I’ve cleared the previous unsent draft so the jobs cannot get mixed together. No confirmed request was changed. What product do you need for the new quote? You can type the details or send a photo, drawing or PDF."
-      : "Brilliant — let’s price another job. What product do you need? You can type the details or send a photo, drawing or PDF.");
+      ? "Done — I’ve cleared the previous unsent draft so the jobs cannot get mixed together. No confirmed request was changed. Which industry and product is the new quote for? You can type the details or send a photo, drawing, schedule or PDF."
+      : "Brilliant — let’s price another job. Which industry and product is it for? You can type the details or send a photo, drawing, schedule or PDF.");
   }
   return updated;
 }
@@ -1054,7 +1057,7 @@ async function cancelQuoteDrafts(
   await sendReply(
     job,
     result.next,
-    `${cleared} No confirmed or live quote requests were changed.\n\nWhat product would you like a new quote for? You can type the details or send a photo, drawing or PDF.`,
+    `${cleared} No confirmed or live quote requests were changed.\n\nWhich industry and product would you like a new quote for? You can type the details or send a photo, drawing, schedule or PDF.`,
   );
   return result.next;
 }
@@ -1419,18 +1422,28 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   }
   const compositeDoorPhoto = compositeDoorPhotoDecision(result.draft, messages);
   const roofGlazingSpecification = roofGlazingSpecificationDecision(result.draft, messages);
+  const pheSpecification = pheSpecificationDecision(result.draft, messages);
+  const category = result.draft.categorySlug ? categories.find((item) => item.slug === result.draft.categorySlug) : undefined;
+  const isIndustryRoot = Boolean(category && !category.parent);
   if (compositeDoorPhoto.handled && result.nextQuestionKey === "COMPOSITE_STYLE") {
     result.nextQuestionKey = "NONE";
   }
   if (!roofGlazingSpecification.shouldAsk && result.nextQuestionKey === "ROOF_GLAZING_SPECIFICATION") {
     result.nextQuestionKey = "NONE";
   }
+  if (!pheSpecification.shouldAsk && result.nextQuestionKey === "PHE_SPECIFICATION") {
+    result.nextQuestionKey = "NONE";
+  }
   const questionKey = compositeDoorPhoto.shouldAsk
     ? "COMPOSITE_STYLE"
     : roofGlazingSpecification.shouldAsk
       ? "ROOF_GLAZING_SPECIFICATION"
-      : requiredQuestionKey(result.draft, result.nextQuestionKey, result.tradeClarification);
-  const ready = result.readyForConfirmation && questionKey === "NONE" && draftIsComplete(result.draft);
+      : isIndustryRoot
+        ? "PRODUCT"
+        : pheSpecification.shouldAsk
+          ? "PHE_SPECIFICATION"
+          : requiredQuestionKey(result.draft, result.nextQuestionKey, result.tradeClarification);
+  const ready = result.readyForConfirmation && Boolean(category?.parent) && questionKey === "NONE" && draftIsComplete(result.draft);
   const fingerprint = quoteDraftFingerprint(result.draft);
   const progress = conversationProgress({
     previousFingerprint: refreshed.conversation.aiDraftFingerprint,
@@ -1468,7 +1481,6 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     await sendReply(job, refreshed.conversation, "I’m sorry, I can’t safely interpret that detail without risking an incorrect quote request. I’ve paused this enquiry for a Bridge AI administrator to review.");
     return telemetry;
   }
-  const category = result.draft.categorySlug ? categories.find((item) => item.slug === result.draft.categorySlug) : undefined;
   await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
     await tx.conversation.update({
       where: { id: refreshed.conversation!.id },
@@ -1504,13 +1516,17 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
       ?? `I’ve securely received and read ${currentAttachmentCount === 1 ? "that file" : `those ${currentAttachmentCount} files`} and added the useful details.`
     : null;
   const repeatedClarification = !ready && progress.repeatedQuestion && !progress.progressed
-    ? repeatClarification(questionKey)
+    ? questionKey === "INDUSTRY"
+      ? industrySelectionPrompt(categories.filter((item) => !item.parent).map((item) => item.name))
+      : repeatClarification(questionKey)
     : null;
   const tradeClarification = !ready && questionKey === "SPECIFICATION"
     ? tradeSpecificationClarification(result.tradeClarification, result.draft.items[0]?.description)
     : null;
   const enforcedClarification = !ready && questionKey !== result.nextQuestionKey
-    ? repeatClarification(questionKey)
+    ? questionKey === "INDUSTRY"
+      ? industrySelectionPrompt(categories.filter((item) => !item.parent).map((item) => item.name))
+      : repeatClarification(questionKey)
     : null;
   const reply = ready && category
       ? formatConfirmation(
@@ -1520,7 +1536,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
         preferredFirstName,
         categoryResponsibilityNotice(category.slug, category.parent?.slug),
       )
-      : `${mediaAcknowledgement ? `${mediaAcknowledgement}\n\n` : ""}${compositeDoorPhoto.shouldAsk ? compositeDoorStylePhotoPrompt() : roofGlazingSpecification.shouldAsk ? roofGlazingSpecificationPrompt(roofGlazingSpecification) : tradeClarification ?? repeatedClarification ?? enforcedClarification ?? result.reply}${rejectedMedia ? "\n\nOne uploaded file could not be accepted. Please send a genuine JPG, PNG or PDF within the size limit." : ""}`;
+      : `${mediaAcknowledgement ? `${mediaAcknowledgement}\n\n` : ""}${compositeDoorPhoto.shouldAsk ? compositeDoorStylePhotoPrompt() : roofGlazingSpecification.shouldAsk ? roofGlazingSpecificationPrompt(roofGlazingSpecification) : pheSpecification.shouldAsk ? pheSpecificationPrompt(pheSpecification.categorySlug) : tradeClarification ?? repeatedClarification ?? enforcedClarification ?? result.reply}${rejectedMedia ? "\n\nOne uploaded file could not be accepted. Please send a genuine JPG, PNG or PDF within the size limit." : ""}`;
   await sendReply(
     job,
     refreshed.conversation,

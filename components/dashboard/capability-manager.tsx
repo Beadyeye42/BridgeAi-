@@ -7,6 +7,9 @@ import {
   isRalCode,
   isRalColourMarker,
   isStandardColour,
+  isPheCapabilityCategory,
+  PHE_MANUFACTURER_OPTIONS_BY_CATEGORY,
+  PHE_SYSTEM_OPTIONS_BY_CATEGORY,
   PROFILE_SYSTEM_OPTIONS_BY_CATEGORY,
   RAL_COLOUR_MARKER,
   STANDARD_COLOUR_OPTIONS,
@@ -18,6 +21,8 @@ type Capability = {
   productCategoryId: string;
   categoryName: string;
   categorySlug: string;
+  industryName: string;
+  industrySlug: string;
   manufacturerNames: string[];
   systemNames: string[];
   colourNames: string[];
@@ -96,11 +101,13 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
     const payload = capabilities.map((capability) => {
       const prefix = capability.productCategoryId;
       const selectedProfiles = stringList(form.getAll(`${prefix}:profile`));
+      const selectedManufacturers = stringList(form.getAll(`${prefix}:manufacturer`));
+      const selectedSystems = stringList(form.getAll(`${prefix}:system`));
       const selectedColours = stringList(form.getAll(`${prefix}:colour`));
       return {
         productCategoryId: prefix,
-        manufacturerNames: uniqueList([...selectedProfiles, ...splitList(form.get(`${prefix}:manufacturers`))]),
-        systemNames: uniqueList([...selectedProfiles, ...splitList(form.get(`${prefix}:systems`))]),
+        manufacturerNames: uniqueList([...selectedProfiles, ...selectedManufacturers, ...splitList(form.get(`${prefix}:manufacturers`))]),
+        systemNames: uniqueList([...selectedProfiles, ...selectedSystems, ...splitList(form.get(`${prefix}:systems`))]),
         colourNames: uniqueList([
           ...selectedColours,
           ...splitList(form.get(`${prefix}:ralCodes`)),
@@ -141,26 +148,30 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
   if (!capabilities.length) return <section className="panel form-section"><div className="empty-state">Select your product categories in Company profile before configuring capability and capacity.</div></section>;
 
   const activeCount = Object.values(activeByCategory).filter(Boolean).length;
+  const industryNames = [...new Set(capabilities.map((capability) => capability.industryName))];
   return <form className="management-form" onSubmit={submit}>
     <section className="panel form-section capability-quick-setup">
       <div className="section-heading">
         <div><p className="eyebrow">Simple setup</p><h2>Activate the products you supply</h2></div>
         <span className="status-pill active">{activeCount} active</span>
       </div>
-      <p className="body-copy capability-intro">Press one button for each product you want to receive general enquiries for. The change saves immediately. Add systems, colours and lead times under Advanced matching when you want more precise opportunities.</p>
-      <div className="capability-quick-grid">
-        {capabilities.map((capability) => {
-          const active = activeByCategory[capability.productCategoryId];
-          const isActivating = activatingId === capability.productCategoryId;
-          return <article className={`capability-quick-card ${active ? "is-active" : ""}`} key={capability.productCategoryId}>
-            <span className="capability-quick-icon">{active ? <CheckCircle2 size={18}/> : <Sparkles size={18}/>}</span>
-            <div><b>{capability.categoryName}</b><small>{active ? "Active for quote matching" : "Not receiving matching enquiries"}</small></div>
-            {active
-              ? <div className="inline-actions"><span className="status-pill active">Active</span><button className="button button-secondary capability-recheck-button" type="button" disabled={Boolean(activatingId) || busy} onClick={() => activate(capability)}>{isActivating ? <LoaderCircle className="spin" size={14}/> : null}{isActivating ? "Checking…" : "Re-check quotes"}</button></div>
-              : <button className="button capability-activate-button" type="button" disabled={Boolean(activatingId) || busy} onClick={() => activate(capability)}>{isActivating ? <LoaderCircle className="spin" size={14}/> : null}{isActivating ? "Activating…" : "Activate for quotes"}</button>}
-          </article>;
-        })}
-      </div>
+      <p className="body-copy capability-intro">Press one button for each product you want to receive general enquiries for. The change saves immediately. Advanced matching then shows the brands and technical options relevant to each industry.</p>
+      {industryNames.map((industryName) => <div className="capability-industry-group" key={industryName}>
+        <div className="capability-option-heading"><b>{industryName}</b><small>Only products selected in your company profile appear here.</small></div>
+        <div className="capability-quick-grid">
+          {capabilities.filter((capability) => capability.industryName === industryName).map((capability) => {
+            const active = activeByCategory[capability.productCategoryId];
+            const isActivating = activatingId === capability.productCategoryId;
+            return <article className={`capability-quick-card ${active ? "is-active" : ""}`} key={capability.productCategoryId}>
+              <span className="capability-quick-icon">{active ? <CheckCircle2 size={18}/> : <Sparkles size={18}/>}</span>
+              <div><b>{capability.categoryName}</b><small>{active ? "Active for quote matching" : "Not receiving matching enquiries"}</small></div>
+              {active
+                ? <div className="inline-actions"><span className="status-pill active">Active</span><button className="button button-secondary capability-recheck-button" type="button" disabled={Boolean(activatingId) || busy} onClick={() => activate(capability)}>{isActivating ? <LoaderCircle className="spin" size={14}/> : null}{isActivating ? "Checking…" : "Re-check quotes"}</button></div>
+                : <button className="button capability-activate-button" type="button" disabled={Boolean(activatingId) || busy} onClick={() => activate(capability)}>{isActivating ? <LoaderCircle className="spin" size={14}/> : null}{isActivating ? "Activating…" : "Activate for quotes"}</button>}
+            </article>;
+          })}
+        </div>
+      </div>)}
     </section>
 
     <div className="honesty-note">Advanced details make matching safer and more accurate. Exact requests for a particular system, colour or deadline are only sent when your saved details confirm you can meet them. Confirm availability whenever it changes.</div>
@@ -168,13 +179,16 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
     {capabilities.map((capability) => {
       const prefix = capability.productCategoryId;
       const active = activeByCategory[prefix];
+      const isPhe = isPheCapabilityCategory(capability.categorySlug);
       const profileOptions = PROFILE_SYSTEM_OPTIONS_BY_CATEGORY[capability.categorySlug] ?? [];
+      const manufacturerOptions = PHE_MANUFACTURER_OPTIONS_BY_CATEGORY[capability.categorySlug] ?? [];
+      const systemOptions = PHE_SYSTEM_OPTIONS_BY_CATEGORY[capability.categorySlug] ?? [];
       const knownProfileValues = [...capability.manufacturerNames, ...capability.systemNames];
       const selectedRal = capability.colourNames.some(isRalColourMarker);
       const ralCodes = capability.colourNames.filter(isRalCode);
       const otherColours = capability.colourNames.filter((value) => !isStandardColour(value) && !isRalColourMarker(value) && !isRalCode(value));
-      const otherSystems = capability.systemNames.filter((value) => !profileOptions.some((option) => includesCapabilityValue([value], option)));
-      const otherManufacturers = capability.manufacturerNames.filter((value) => !profileOptions.some((option) => includesCapabilityValue([value], option)));
+      const otherSystems = capability.systemNames.filter((value) => ![...profileOptions, ...systemOptions].some((option) => includesCapabilityValue([value], option)));
+      const otherManufacturers = capability.manufacturerNames.filter((value) => ![...profileOptions, ...manufacturerOptions].some((option) => includesCapabilityValue([value], option)));
       return <section className="panel capability-advanced-card" key={prefix}>
         <details>
           <summary>
@@ -192,11 +206,27 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
                 <Field name={`${prefix}:systems`} label="Other profile systems (optional)" value={otherSystems.join(", ")} placeholder="Add any other systems, separated by commas" />
                 <Field name={`${prefix}:manufacturers`} label="Other manufacturers (optional)" value={otherManufacturers.join(", ")} placeholder="Add any other manufacturers" />
               </div>
-            </div> : <div className="form-grid capability-fields">
+            </div> : isPhe ? <>
+              <div className="honesty-note">This setup is specific to plumbing, heating and mechanical procurement. Select only brands and system types you can supply; Bridge AI will use them as mandatory filters when a buyer names one.</div>
+              <div className="capability-option-section">
+                <div className="capability-option-heading"><b>Manufacturers and brands</b><small>Tick every listed brand your company can quote.</small></div>
+                <div className="capability-option-grid">
+                  {manufacturerOptions.map((option) => <OptionCard key={option} name={`${prefix}:manufacturer`} value={option} checked={includesCapabilityValue(capability.manufacturerNames, option)} />)}
+                </div>
+                <Field name={`${prefix}:manufacturers`} label="Other manufacturers (optional)" value={otherManufacturers.join(", ")} placeholder="Add other manufacturers, separated by commas" />
+              </div>
+              <div className="capability-option-section">
+                <div className="capability-option-heading"><b>Product and system types</b><small>Select the technical systems you actively supply.</small></div>
+                <div className="capability-option-grid">
+                  {systemOptions.map((option) => <OptionCard key={option} name={`${prefix}:system`} value={option} checked={includesCapabilityValue(capability.systemNames, option)} />)}
+                </div>
+                <Field name={`${prefix}:systems`} label="Other systems (optional)" value={otherSystems.join(", ")} placeholder="Add other system types, separated by commas" />
+              </div>
+            </> : <div className="form-grid capability-fields">
               <Field name={`${prefix}:manufacturers`} label="Manufacturers" value={capability.manufacturerNames.join(", ")} placeholder="Add manufacturers, separated by commas" />
               <Field name={`${prefix}:systems`} label="Systems or brands" value={capability.systemNames.join(", ")} placeholder="Add systems or brands, separated by commas" />
             </div>}
-            <div className="capability-option-section">
+            {!isPhe ? <div className="capability-option-section">
               <div className="capability-option-heading"><b>Colours supplied</b><small>Tick every standard colour you supply. Tick RAL colours only if you can supply RAL-specified finishes.</small></div>
               <div className="capability-option-grid capability-colour-grid">
                 {STANDARD_COLOUR_OPTIONS.map((option) => <OptionCard key={option} name={`${prefix}:colour`} value={option} checked={includesCapabilityValue(capability.colourNames, option)} />)}
@@ -206,9 +236,9 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
                 <Field name={`${prefix}:ralCodes`} label="Specific RAL codes (optional)" value={ralCodes.join(", ")} placeholder="For example RAL 7016, RAL 9005" />
                 <Field name={`${prefix}:otherColours`} label="Other named colours (optional)" value={otherColours.join(", ")} placeholder="Add other colours, separated by commas" />
               </div>
-            </div>
+            </div> : null}
             <div className="form-grid capability-fields">
-              <Field name={`${prefix}:finishes`} label="Finishes supplied" value={capability.finishNames.join(", ")} placeholder="Foil, powder coat, anodised" />
+              <Field name={`${prefix}:finishes`} label={isPhe ? "Technical variants or specifications" : "Finishes supplied"} value={capability.finishNames.join(", ")} placeholder={isPhe ? "For example low-temperature, potable-water, commercial duty" : "Foil, powder coat, anodised"} />
               <Field name={`${prefix}:minimumQuantity`} label="Minimum order quantity" value={capability.minimumOrderQuantity ?? ""} type="number" min="1" />
               <Field name={`${prefix}:minimumValue`} label="Minimum order value (£)" value={capability.minimumOrderValue ?? ""} type="number" min="0" step="0.01" />
               <Field name={`${prefix}:standardLead`} label="Standard lead time (days)" value={capability.standardLeadTimeDays} type="number" min="1" required />

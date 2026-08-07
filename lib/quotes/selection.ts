@@ -21,6 +21,12 @@ export async function selectQuotationForCustomer(input: {
 }) {
   const selectedAt = new Date();
   const selectInTransaction = async (tx: Prisma.TransactionClient) => {
+    const located = await tx.supplierQuotation.findUnique({
+      where: { id: input.quotationId },
+      select: { quoteRequestId: true },
+    });
+    if (!located) throw new Error("QUOTATION_NOT_FOUND");
+    await tx.$queryRaw`SELECT id FROM bridge_ai."QuoteRequest" WHERE id = ${located.quoteRequestId} FOR UPDATE`;
     await tx.$queryRaw`SELECT id FROM bridge_ai."SupplierQuotation" WHERE id = ${input.quotationId} FOR UPDATE`;
     const quotation = await tx.supplierQuotation.findUnique({
       where: { id: input.quotationId },
@@ -45,8 +51,20 @@ export async function selectQuotationForCustomer(input: {
       data: { status: "ACCEPTED", decidedAt: selectedAt },
     });
     await tx.supplierQuotation.updateMany({
-      where: { quoteRequestId: quotation.quoteRequestId, id: { not: quotation.id }, status: "SUBMITTED" },
+      where: {
+        quoteRequestId: quotation.quoteRequestId,
+        id: { not: quotation.id },
+        status: { in: ["DRAFT", "SUBMITTED", "SELECTED_PENDING_PAYMENT"] },
+      },
       data: { status: "REJECTED", decidedAt: selectedAt },
+    });
+    await tx.supplierAssignment.updateMany({
+      where: {
+        quoteRequestId: quotation.quoteRequestId,
+        id: { not: quotation.assignmentId },
+        status: { not: "WITHDRAWN" },
+      },
+      data: { status: "WITHDRAWN" },
     });
     await tx.quoteRequest.update({
       where: { id: quotation.quoteRequestId },

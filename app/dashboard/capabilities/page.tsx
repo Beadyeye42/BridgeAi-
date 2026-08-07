@@ -20,6 +20,7 @@ export default async function CapabilitiesPage() {
           ...launchedSupplierCategoryWhere(),
           id: { in: selectedCategoryIds },
         },
+        include: { parent: { select: { name: true, slug: true } } },
         orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
       })
     : [];
@@ -39,6 +40,8 @@ export default async function CapabilitiesPage() {
         productCategoryId: productCategory.id,
         categoryName: productCategory.name,
         categorySlug: productCategory.slug,
+        industryName: productCategory.parent?.name ?? "Other products",
+        industrySlug: productCategory.parent?.slug ?? productCategory.slug,
         manufacturerNames: saved?.manufacturerNames ?? [],
         systemNames: saved?.systemNames ?? [],
         colourNames: saved?.colourNames ?? [],

@@ -17,6 +17,39 @@ export const PROFILE_SYSTEM_OPTIONS_BY_CATEGORY: Record<string, readonly string[
   "aluminium-windows": ["Smart Systems", "AluK", "Origin"],
 };
 
+export const PHE_MANUFACTURER_OPTIONS_BY_CATEGORY: Record<string, readonly string[]> = {
+  "boilers-heating-packages": ["Worcester Bosch", "Vaillant", "Viessmann", "Ideal Heating", "Baxi", "Glow-worm", "Grant"],
+  "heat-pumps": ["Mitsubishi Electric", "Daikin", "Vaillant", "Samsung", "Panasonic", "NIBE", "Grant"],
+  "cylinders-hot-water-storage": ["Megaflo", "Gledhill", "Joule", "Kingspan", "OSO", "Telford"],
+  "underfloor-heating": ["Polypipe", "Uponor", "Nu-Heat", "Wavin", "JG Underfloor"],
+  "radiators-heat-emitters": ["Stelrad", "Myson", "Korado", "Jaga", "Kudox"],
+  "pipework-fittings": ["Pegler Yorkshire", "Geberit", "Wavin", "Polypipe", "Conex Bänninger", "Uponor"],
+  "valves-heating-controls": ["Danfoss", "Honeywell Home", "Drayton", "Caleffi", "ESBE", "Resideo"],
+  "pumps-pressurisation": ["Grundfos", "Wilo", "DAB", "Lowara", "Flamco"],
+  "mechanical-plant-packages": ["Grundfos", "Wilo", "Caleffi", "Flamco", "Hamworthy", "Remeha"],
+};
+
+export const PHE_SYSTEM_OPTIONS_BY_CATEGORY: Record<string, readonly string[]> = {
+  "boilers-heating-packages": ["Gas boiler", "Oil boiler", "Electric boiler", "Hybrid heating", "Commercial boiler cascade"],
+  "heat-pumps": ["Air source", "Ground source", "Monobloc", "Split", "Hybrid heat pump"],
+  "cylinders-hot-water-storage": ["Vented cylinder", "Unvented cylinder", "Thermal store", "Buffer vessel", "Direct", "Indirect"],
+  "underfloor-heating": ["Wet underfloor heating", "Electric underfloor heating", "Overlay system", "Screeded system", "Low-profile system"],
+  "radiators-heat-emitters": ["Panel radiators", "Designer radiators", "Towel rails", "Trench heating", "Fan convectors"],
+  "pipework-fittings": ["Copper", "PEX", "MLCP", "Plastic push-fit", "Carbon steel", "Stainless steel"],
+  "valves-heating-controls": ["Isolation valves", "TRVs", "Balancing valves", "Mixing valves", "Zone controls", "Smart controls"],
+  "pumps-pressurisation": ["Circulators", "Booster sets", "Pressurisation units", "Expansion vessels", "Condensate pumps"],
+  "mechanical-plant-packages": ["Packaged plantroom", "Heating skid", "DHW package", "Booster package", "Pressurisation package"],
+};
+
+export const PHE_CATEGORY_SLUGS = new Set([
+  ...Object.keys(PHE_MANUFACTURER_OPTIONS_BY_CATEGORY),
+  ...Object.keys(PHE_SYSTEM_OPTIONS_BY_CATEGORY),
+]);
+
+export function isPheCapabilityCategory(slug: string) {
+  return PHE_CATEGORY_SLUGS.has(slug);
+}
+
 const VALUE_ALIASES: Record<string, string> = {
   "smart": "smart systems",
   "smarts": "smart systems",
