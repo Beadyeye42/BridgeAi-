@@ -168,7 +168,7 @@ export const adminAssignmentSchema = z.object({
   quoteRequestId: z.string().min(1).max(64),
   supplierCompanyIds: z.array(z.string().min(1).max(64)).min(1).max(3),
 });
-export const productCategorySchema = z.object({ name: z.string().trim().min(2).max(100), slug: z.string().trim().min(2).max(100).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/), description: optionalText(500), active: z.boolean().default(true), parentId: z.string().nullable().optional() });
+export const productCategorySchema = z.object({ name: z.string().trim().min(2).max(100), slug: z.string().trim().min(2).max(100).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).optional(), description: optionalText(500), active: z.boolean().default(true), parentId: z.string().nullable().optional() });
 
 const optionalDate = z.union([z.literal(""), z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid date")]).transform((value) => value || null);
 

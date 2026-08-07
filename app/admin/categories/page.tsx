@@ -1,51 +1,68 @@
+import Link from "next/link";
+import { ArrowRight, Layers3 } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { requireAdminPage } from "@/lib/auth/guards";
 import { AdminHeading } from "@/components/admin/admin-shell";
-import { CategoryCreateForm, CategoryStatusButton } from "@/components/admin/admin-actions";
+import { CategoryStatusButton, IndustryCreateForm } from "@/components/admin/admin-actions";
+import { industryExperience, industryLaunchBlocker } from "@/lib/categories/industry-registry";
 
 export default async function CategoriesPage() {
   await requireAdminPage();
-  const categories = await prisma.productCategory.findMany({
+  const industries = await prisma.productCategory.findMany({
+    where: { parentId: null, adminVisible: true },
     include: {
-      parent: { select: { name: true, active: true } },
-      _count: { select: { suppliers: true, quoteRequests: true } },
+      children: {
+        select: {
+          id: true,
+          active: true,
+          _count: { select: { suppliers: true, quoteRequests: true } },
+        },
+        orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
+      },
     },
     orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
   });
-  const parents = categories
-    .filter((category) => category.parentId === null)
-    .map(({ id, name }) => ({ id, name }));
 
   return <>
     <AdminHeading
-      eyebrow="Matching taxonomy"
-      title="Product categories"
-      description="Prepare future catalogues privately, then launch each group when its supplier network and controls are ready."
+      eyebrow={`${industries.length} industries`}
+      title="Industries"
+      description="Launch or pause a whole industry here. Products and industry-specific settings stay inside their own workspace."
     />
-    <div className="management-grid">
-      <section className="panel form-section">
-        <div className="section-heading"><div><p className="eyebrow">{categories.length} categories</p><h2>Catalogue launch control</h2></div></div>
-        <div className="honesty-note">Launching a top-level group makes its enabled products available in supplier profiles and WhatsApp intake. Taking it offline stops new intake without deleting supplier choices or existing requests.</div>
-        <div className="entity-list">{categories.map((category) => {
-          const isGroup = category.parentId === null;
-          const publicNow = category.active && (isGroup || category.parent?.active === true);
-          const status = isGroup
-            ? category.active ? "PUBLIC" : "NOT LAUNCHED"
-            : !category.active ? "DISABLED" : publicNow ? "PUBLIC" : "READY — GROUP OFF";
-          const lockedReason = category.slug === "fire-doors" && !category.active
-            ? "Certification and product-data controls must be implemented before fire-door intake can be enabled."
-            : undefined;
-          return <article className="entity-row" key={category.id}>
-            <div>
-              <b>{category.parent ? `${category.parent.name} · ` : "Product group · "}{category.name}</b>
-              <small>{category.description || "No description"} · {category._count.suppliers} suppliers · {category._count.quoteRequests} requests</small>
-            </div>
-            <span className={`status-pill ${publicNow ? "approved" : category.active ? "pending" : "suspended"}`}>{status}</span>
-            <CategoryStatusButton id={category.id} active={category.active} isGroup={isGroup} lockedReason={lockedReason}/>
-          </article>;
-        })}</div>
-      </section>
-      <CategoryCreateForm parents={parents}/>
-    </div>
+    <section className="industry-admin-grid" aria-label="Industry launch controls">
+      {industries.map((industry) => {
+        const enabledProducts = industry.children.filter((product) => product.active).length;
+        const supplierSelections = industry.children.reduce((total, product) => total + product._count.suppliers, 0);
+        const requests = industry.children.reduce((total, product) => total + product._count.quoteRequests, 0);
+        const experience = industryExperience(industry.slug);
+        const launchBlocker = industry.active ? undefined : industryLaunchBlocker(industry.slug, enabledProducts) ?? undefined;
+        return <article className={`panel industry-admin-card${industry.active ? " is-live" : ""}`} key={industry.id}>
+          <div className="industry-card-top">
+            <span className="large-icon"><Layers3 size={20}/></span>
+            <span className={`status-pill ${industry.active ? "approved" : "suspended"}`}>{industry.active ? "LIVE" : "OFFLINE"}</span>
+          </div>
+          <div className="industry-card-copy">
+            <p className="eyebrow">Industry</p>
+            <h2>{industry.name}</h2>
+            <p>{industry.description || "No public description added yet."}</p>
+          </div>
+          <dl className="industry-card-stats">
+            <div><dt>Products ready</dt><dd>{enabledProducts} of {industry.children.length}</dd></div>
+            <div><dt>Supplier selections</dt><dd>{supplierSelections}</dd></div>
+            <div><dt>Requests</dt><dd>{requests}</dd></div>
+          </dl>
+          <div className={`industry-readiness ${experience.launchReady ? "is-ready" : ""}`}>
+            <b>{experience.launchReady ? "Specialist experience ready" : "Specialist experience required"}</b>
+            <small>{experience.supplierExperience}</small>
+            <small>{experience.whatsappExperience}</small>
+          </div>
+          <div className="industry-card-actions">
+            <CategoryStatusButton id={industry.id} active={industry.active} isGroup lockedReason={launchBlocker}/>
+            <Link className="button button-outline" href={`/admin/categories/${industry.id}`}>Manage industry <ArrowRight size={14}/></Link>
+          </div>
+        </article>;
+      })}
+    </section>
+    <IndustryCreateForm />
   </>;
 }

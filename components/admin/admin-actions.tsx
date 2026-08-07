@@ -9,7 +9,7 @@ export function RetryWhatsAppJobButton({id,retrySafe}:{id:string;retrySafe:boole
 export function SanitizeAttachmentButton({id}:{id:string}){const router=useRouter();const[busy,setBusy]=useState(false);const[message,setMessage]=useState("");return <div className="attachment-scan-action"><button className="button button-outline" disabled={busy} onClick={async()=>{setBusy(true);setMessage("");try{await call(`/api/admin/attachments/${id}/sanitize`,"POST",{});router.refresh()}catch(error){setMessage(error instanceof Error?error.message:"Image processing failed")}finally{setBusy(false)}}}>{busy?<LoaderCircle className="spin" size={13}/>:<ImageIcon size={13}/>}Make image available</button>{message&&<small className="error-text">{message}</small>}</div>}
 export function AssignmentForm({requestId,distributionLimit,currentCount,responseDueAt,suppliers}:{requestId:string;distributionLimit:number;currentCount:number;responseDueAt:string;suppliers:{id:string;name:string;postcode:string|null;matchDescription:string}[]}){const router=useRouter();const[busy,setBusy]=useState(false);const[message,setMessage]=useState("");async function submit(e:React.FormEvent<HTMLFormElement>){e.preventDefault();setBusy(true);const d=new FormData(e.currentTarget);try{const result=await call("/api/admin/assignments","POST",{quoteRequestId:requestId,supplierCompanyIds:d.getAll("supplierIds")});setMessage(`${result.created} supplier assignment(s) created.`);router.refresh()}catch(err){setMessage(err instanceof Error?err.message:"Assignment failed")}finally{setBusy(false)}}return <form className="assign-form" onSubmit={submit}><div className="assignment-limit"><b>{currentCount} / {Math.min(distributionLimit,3)}</b><span>supplier slots used · maximum three</span></div>{suppliers.length?<div className="choice-grid compact">{suppliers.map(s=><label className="choice-card" key={s.id}><input type="checkbox" name="supplierIds" value={s.id}/><span><b>{s.name}</b><small>{s.matchDescription}{s.postcode?` · office ${s.postcode}`:""}</small></span></label>)}</div>:<div className="empty-state">No supplier currently passes the capability, capacity, subscription and coverage checks.</div>}<div className="form-control"><span>Shared supplier response deadline</span><b>{responseDueAt}</b><small>Response time pauses Friday at 3:00 pm and resumes Monday at 8:00 am (UK time).</small></div><button className="button button-dark" disabled={busy||!suppliers.length||currentCount>=Math.min(distributionLimit,3)}>{busy?<LoaderCircle className="spin" size={14}/>:<Send size={14}/>}Assign selected</button>{message&&<p className="form-result">{message}</p>}</form>}
 export function RecordCustomerSelection({quotationId}:{quotationId:string}){const router=useRouter();const[busy,setBusy]=useState(false);const[message,setMessage]=useState("");async function select(){const evidence=window.prompt("Enter the WhatsApp message ID or a short audit reference proving the customer selected this quote")?.trim();if(!evidence)return;setBusy(true);setMessage("");try{await call(`/api/admin/quotations/${quotationId}/select`,"POST",{evidence});setMessage("Selection recorded. Both parties can now see the relevant contact details; no winning fee is due.");router.refresh()}catch(error){setMessage(error instanceof Error?error.message:"Selection failed")}finally{setBusy(false)}}return <div className="inline-actions"><button className="button button-dark" disabled={busy} onClick={select}>{busy?<LoaderCircle className="spin" size={14}/>:<Check size={14}/>}Record customer selection</button>{message&&<small>{message}</small>}</div>}
-export function CategoryCreateForm({ parents }: { parents: { id: string; name: string }[] }) {
+function CategoryCreateForm({ parentId, title, copy, successMessage }: { parentId: string | null; title: string; copy: string; successMessage: string }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -17,30 +17,44 @@ export function CategoryCreateForm({ parents }: { parents: { id: string; name: s
     event.preventDefault(); setBusy(true); setMessage("");
     const form = event.currentTarget;
     const data = new FormData(form);
-    const parentId = String(data.get("parentId") ?? "") || null;
     try {
       await call("/api/admin/categories", "POST", {
-        name: data.get("name"), slug: data.get("slug"), description: data.get("description"),
-        active: Boolean(parentId), parentId,
+        name: data.get("name"), description: data.get("description"), parentId,
       });
       form.reset();
-      setMessage(parentId ? "Product added to the group." : "Product group staged offline. Launch it when the supplier network is ready.");
+      setMessage(successMessage);
       router.refresh();
     } catch (error) { setMessage(error instanceof Error ? error.message : "Create failed"); }
     finally { setBusy(false); }
   }
-  return <form className="panel form-section" onSubmit={submit}>
-    <div className="section-heading"><div><p className="eyebrow">Catalogue</p><h2>Add category</h2></div><Plus size={20}/></div>
+  return <form className="panel form-section industry-create-form" onSubmit={submit}>
+    <div className="section-heading"><div><p className="eyebrow">Catalogue</p><h2>{title}</h2></div><Plus size={20}/></div>
     <div className="form-stack">
-      <div className="honesty-note">New top-level groups are created offline. Adding a product to an offline group prepares it without exposing it to suppliers or WhatsApp.</div>
-      <label className="form-control"><span>Product group</span><select name="parentId" defaultValue={parents[0]?.id ?? ""}><option value="">Create a new top-level group</option>{parents.map((parent) => <option value={parent.id} key={parent.id}>{parent.name}</option>)}</select></label>
+      <div className="honesty-note">{copy}</div>
       <label className="form-control"><span>Name</span><input name="name" required/></label>
-      <label className="form-control"><span>Slug</span><input name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required/></label>
       <label className="form-control"><span>Description</span><textarea name="description" rows={3}/></label>
-      <button className="button button-dark" disabled={busy}>{busy ? <LoaderCircle className="spin" size={14}/> : <Plus size={14}/>}Create category</button>
+      <button className="button button-dark" disabled={busy}>{busy ? <LoaderCircle className="spin" size={14}/> : <Plus size={14}/>}Create</button>
       {message && <p className="form-result">{message}</p>}
     </div>
   </form>;
+}
+
+export function IndustryCreateForm() {
+  return <CategoryCreateForm
+    parentId={null}
+    title="Add a new industry"
+    copy="New industries are always created offline. Build their products and specialist experience first, then launch the whole industry with one switch."
+    successMessage="Industry created offline. Open it to add products and prepare its specialist experience."
+  />;
+}
+
+export function ProductCreateForm({ parentId, industryName }: { parentId: string; industryName: string }) {
+  return <CategoryCreateForm
+    parentId={parentId}
+    title="Add a product"
+    copy={`This product will belong only to ${industryName} and starts turned off. Enable it after its questions and matching details are ready.`}
+    successMessage={`Product added to ${industryName} and kept offline until you turn it on.`}
+  />;
 }
 export function ResolveEventButton({id}:{id:string}){const router=useRouter();const[busy,setBusy]=useState(false);return <button className="button button-outline" disabled={busy} onClick={async()=>{setBusy(true);try{await call(`/api/admin/system/${id}/resolve`,"POST",{});router.refresh()}finally{setBusy(false)}}}>{busy?<LoaderCircle className="spin" size={14}/>:<Check size={14}/>}Resolve</button>}
 export function RunProductionMonitoringButton(){const router=useRouter();const[busy,setBusy]=useState(false);const[message,setMessage]=useState("");return <div className="status-control"><button className="button button-dark" disabled={busy} onClick={async()=>{setBusy(true);setMessage("");try{const result=await call("/api/admin/system/monitor","POST",{});setMessage(result.configured?`${result.sent} alert${result.sent===1?"":"s"} sent; ${result.queued} newly queued.`:`Alerts queued, but email delivery needs configuration.`);router.refresh()}catch(error){setMessage(error instanceof Error?error.message:"Monitoring check failed")}finally{setBusy(false)}}}>{busy?<LoaderCircle className="spin" size={14}/>:<Send size={14}/>}Run monitoring check</button>{message&&<small className="form-result">{message}</small>}</div>}
@@ -140,7 +154,7 @@ export function CategoryStatusButton({ id, active, isGroup, lockedReason }: { id
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const label = lockedReason ? "Controls required" : isGroup ? (active ? "Take offline" : "Launch group") : (active ? "Disable product" : "Enable product");
+  const label = lockedReason ? "Controls required" : isGroup ? (active ? "Take offline" : "Launch industry") : (active ? "Turn off" : "Turn on");
   return <div className="status-control">
     <button className="button button-outline" disabled={busy || Boolean(lockedReason)} title={lockedReason} onClick={async () => {
       setBusy(true); setMessage("");
