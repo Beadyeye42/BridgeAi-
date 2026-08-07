@@ -25,6 +25,7 @@ export async function getSupplierDashboard(supplierCompanyId: string, userId: st
         supplierCompanyId,
         status: { in: ["PENDING", "VIEWED", "ACCEPTED"] },
         expiresAt: { gt: now },
+        quoteRequest: { status: { in: ["OPEN", "MATCHING", "QUOTED"] }, responseDueAt: { gt: now } },
       },
       include: {
         quoteRequest: {
@@ -39,6 +40,7 @@ export async function getSupplierDashboard(supplierCompanyId: string, userId: st
         supplierCompanyId,
         status: { in: ["PENDING", "VIEWED", "ACCEPTED"] },
         expiresAt: { gt: now },
+        quoteRequest: { status: { in: ["OPEN", "MATCHING", "QUOTED"] }, responseDueAt: { gt: now } },
       },
     });
     const recentQuotations = await tx.supplierQuotation.findMany({
@@ -102,7 +104,11 @@ export async function getSupplierRequest(
   reference: string,
 ) {
   return prisma.supplierAssignment.findFirst({
-    where: { supplierCompanyId, quoteRequest: { reference } },
+    where: {
+      supplierCompanyId,
+      quoteRequest: { reference },
+      OR: [{ status: { not: "WITHDRAWN" } }, { quotation: { isNot: null } }],
+    },
     include: {
       quoteRequest: {
         include: { category: { include: { parent: { select: { slug: true } } } }, items: true, attachments: true },

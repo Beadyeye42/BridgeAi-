@@ -17,8 +17,14 @@ export async function POST(request: Request) {
   if (!parsed.success) return NextResponse.json({ error: validationError(parsed.error) }, { status: 400 });
   if (parsed.data.validUntil && parsed.data.validUntil <= new Date()) return NextResponse.json({ error: "Quotation validity must end in the future" }, { status: 400 });
 
-  const assignment = await prisma.supplierAssignment.findFirst({ where: { id: parsed.data.assignmentId, supplierCompanyId: companyId, status: "ACCEPTED", expiresAt: { gt: new Date() } } });
+  const assignment = await prisma.supplierAssignment.findFirst({
+    where: { id: parsed.data.assignmentId, supplierCompanyId: companyId, status: "ACCEPTED", expiresAt: { gt: new Date() } },
+    include: { quoteRequest: { select: { status: true, responseDueAt: true } } },
+  });
   if (!assignment) return NextResponse.json({ error: "Accepted request not found or response window has closed" }, { status: 404 });
+  if (!["OPEN", "MATCHING", "QUOTED"].includes(assignment.quoteRequest.status) || assignment.quoteRequest.responseDueAt <= new Date()) {
+    return NextResponse.json({ error: "This request has closed and can no longer receive quotations" }, { status: 409 });
+  }
   const company = await prisma.supplierCompany.findUnique({ where: { id: companyId }, select: { status: true, foundingMemberNumber: true } });
   const subscription = await prisma.subscription.findUnique({ where: { supplierCompanyId: companyId } });
   if (!company || company.status !== "APPROVED" || !isFoundingSupplier(company.foundingMemberNumber)) return NextResponse.json({ error: "An approved founding supplier account is required before submitting a quotation" }, { status: 403 });
@@ -28,6 +34,17 @@ export async function POST(request: Request) {
   let quotation;
   try {
     quotation = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM bridge_ai."QuoteRequest" WHERE id = ${assignment.quoteRequestId} FOR UPDATE`;
+      const currentAssignment = await tx.supplierAssignment.findFirst({
+        where: { id: assignment.id, supplierCompanyId: companyId },
+        include: { quoteRequest: { select: { status: true, responseDueAt: true } } },
+      });
+      if (!currentAssignment || currentAssignment.status !== "ACCEPTED" || currentAssignment.expiresAt <= submittedAt) {
+        throw new Error("ASSIGNMENT_CLOSED");
+      }
+      if (!["OPEN", "MATCHING", "QUOTED"].includes(currentAssignment.quoteRequest.status) || currentAssignment.quoteRequest.responseDueAt <= submittedAt) {
+        throw new Error("REQUEST_CLOSED");
+      }
       const saved = await tx.supplierQuotation.upsert({
         where: { assignmentId: assignment.id },
         update: { price: parsed.data.price, leadTimeDays: parsed.data.leadTimeDays, validUntil: parsed.data.validUntil, notes: parsed.data.notes, status: "SUBMITTED", submittedAt },
@@ -38,6 +55,10 @@ export async function POST(request: Request) {
       return saved;
     });
   } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("REQUEST_CLOSED") || message.includes("QUOTE_REQUEST_CLOSED") || message.includes("ASSIGNMENT_CLOSED")) {
+      return NextResponse.json({ error: "This request has closed and can no longer receive quotations" }, { status: 409 });
+    }
     console.error("Quotation submission failed", { assignmentId: assignment.id, error });
     await prisma.systemEvent.create({ data: { severity: "ERROR", source: "quotation", code: "QUOTATION_SUBMIT_FAILED", message: error instanceof Error ? error.message.slice(0, 1000) : "Quotation submission failed", context: { assignmentId: assignment.id, supplierCompanyId: companyId } } }).catch(() => undefined);
     return NextResponse.json({ error: "The quotation could not be submitted. Please try again." }, { status: 500 });

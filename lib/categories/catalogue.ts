@@ -1,6 +1,7 @@
 export const launchCategoryRootId = "category_windows";
 export const metalFabricationRootSlug = "bespoke-metal-fabrication";
 export const specialistDoorsRootSlug = "garage-industrial-specialist-doors";
+export const plumbingHeatingRootSlug = "plumbing-heating-mechanical";
 
 export function launchedSupplierCategoryWhere() {
   return {
@@ -36,13 +37,14 @@ export function normalizeLaunchCategorySlug(slug: string | null) {
 }
 
 type UnavailableCatalogue = {
-  code: "FIRE_DOORS_NOT_LAUNCHED" | "METAL_FABRICATION_NOT_LAUNCHED" | "SPECIALIST_DOORS_NOT_LAUNCHED" | "PRODUCT_NOT_LAUNCHED";
+  code: "FIRE_DOORS_NOT_LAUNCHED" | "METAL_FABRICATION_NOT_LAUNCHED" | "SPECIALIST_DOORS_NOT_LAUNCHED" | "PHE_NOT_LAUNCHED" | "PRODUCT_NOT_LAUNCHED";
   reply: string;
 };
 
 const fireDoorPattern = /\bfire[- ]?(?:rated[- ]?)?doors?(?:ets?)?\b/i;
 const metalFabricationPattern = /\b(?:bespoke metal fabrication|metal fabrication|steel beams?|lintels?|fabricated (?:steel |metal )?frames?|balustrades?|metal gates?|railings?|metal balconies|metal staircases?|structural steel|aluminium pressings?|powder[- ]coated (?:steel |metal |aluminium )?components?)\b/i;
 const specialistDoorPattern = /\b(?:garage doors?|roller shutters?|sectional doors?|communal entrance doors?|automatic doors?|steel security doors?|shopfronts?)\b/i;
+const plumbingHeatingPattern = /\b(?:plumbing|heating|mechanical|boilers?|heat pumps?|air[- ]source heat pumps?|ground[- ]source heat pumps?|hot[- ]water cylinders?|unvented cylinders?|thermal stores?|buffer vessels?|underfloor heating|radiators?|heat emitters?|pipework|pipe fittings?|valves?|heating controls?|circulator pumps?|booster sets?|pressurisation units?|expansion vessels?|mechanical plant)\b/i;
 const metalProducts: Array<{ slug: string; label: string; pattern: RegExp }> = [
   { slug: "steel-beams", label: "Steel beams", pattern: /\bsteel beams?\b/i },
   { slug: "lintels", label: "Lintels", pattern: /\blintels?\b/i },
@@ -64,6 +66,17 @@ const specialistDoorProducts: Array<{ slug: string; label: string; pattern: RegE
   { slug: "automatic-doors", label: "Automatic doors", pattern: /\bautomatic doors?\b/i },
   { slug: "steel-security-doors", label: "Steel security doors", pattern: /\bsteel security doors?\b/i },
   { slug: "shopfronts", label: "Shopfronts", pattern: /\bshopfronts?\b/i },
+];
+const plumbingHeatingProducts: Array<{ slug: string; label: string; pattern: RegExp }> = [
+  { slug: "boilers-heating-packages", label: "Boilers and heating packages", pattern: /\b(?:boilers?|heating packages?)\b/i },
+  { slug: "heat-pumps", label: "Heat pumps", pattern: /\b(?:air[- ]source|ground[- ]source|hybrid)?\s*heat pumps?\b/i },
+  { slug: "cylinders-hot-water-storage", label: "Cylinders and hot-water storage", pattern: /\b(?:hot[- ]water cylinders?|unvented cylinders?|thermal stores?|buffer vessels?)\b/i },
+  { slug: "underfloor-heating", label: "Underfloor heating", pattern: /\bunderfloor heating\b/i },
+  { slug: "radiators-heat-emitters", label: "Radiators and heat emitters", pattern: /\b(?:radiators?|heat emitters?|towel rails?|fan convectors?)\b/i },
+  { slug: "pipework-fittings", label: "Pipework and fittings", pattern: /\b(?:pipework|pipe fittings?|copper fittings?|pex|mlcp)\b/i },
+  { slug: "valves-heating-controls", label: "Valves and heating controls", pattern: /\b(?:valves?|trvs?|thermostats?|heating controls?|actuators?)\b/i },
+  { slug: "pumps-pressurisation", label: "Pumps and pressurisation", pattern: /\b(?:circulator pumps?|booster sets?|pressurisation units?|expansion vessels?|condensate pumps?)\b/i },
+  { slug: "mechanical-plant-packages", label: "Mechanical plant and packaged systems", pattern: /\b(?:mechanical plant|packaged heating systems?|plantroom packages?)\b/i },
 ];
 
 export function unavailableCatalogueForConversation(
@@ -103,6 +116,19 @@ export function unavailableCatalogueForConversation(
       reply: `${unavailableDoorProduct.label} quoting is temporarily offline. I don’t want to route this enquiry to unsuitable suppliers while that product is paused.`,
     };
   }
+  if (plumbingHeatingPattern.test(messageText) && !available.has(plumbingHeatingRootSlug)) {
+    return {
+      code: "PHE_NOT_LAUNCHED",
+      reply: "Plumbing, heating and mechanical quotes are temporarily offline. I don’t want to route a technical enquiry until the appropriate approved supplier network is available.",
+    };
+  }
+  const unavailablePlumbingHeatingProduct = plumbingHeatingProducts.find((product) => product.pattern.test(messageText) && !available.has(product.slug));
+  if (unavailablePlumbingHeatingProduct) {
+    return {
+      code: "PRODUCT_NOT_LAUNCHED",
+      reply: `${unavailablePlumbingHeatingProduct.label} quoting is temporarily offline. I don’t want to route this enquiry to unsuitable suppliers while that product is paused.`,
+    };
+  }
   return null;
 }
 
@@ -112,6 +138,9 @@ export function categoryResponsibilityNotice(slug: string, parentSlug?: string |
   }
   if (slug === "fire-doors") {
     return "Fire-door work requires verified certification, declared product performance, compatible ironmongery and the correct installation context. The supplier remains responsible for confirming the compliant doorset and installation requirements.";
+  }
+  if (slug === plumbingHeatingRootSlug || parentSlug === plumbingHeatingRootSlug) {
+    return "Bridge AI structures and routes the enquiry only. The supplier or installer remains responsible for final equipment selection, sizing, compatibility, design, commissioning and compliance with applicable building, gas, electrical, water and heat-pump requirements.";
   }
   return null;
 }

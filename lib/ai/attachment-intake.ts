@@ -72,6 +72,8 @@ export async function analyzeQuoteAttachment(input: {
         "Describe only what is visibly or explicitly present. Do not invent measurements, quantities, materials or compliance claims.",
         "Capture dimensions, quantities, product types, colours, materials, opening directions and annotations when legible.",
         "Distinguish uPVC, aluminium and timber only when the file states or clearly demonstrates the material. Recognise windows, doors, bifolds, composite doors, patio sliders, conservatories, roof lanterns and Juliet balconies.",
+        "Recognise plumbing, heating and mechanical schedules, schematics, heat-loss calculations and bills of quantities. Preserve named manufacturers and model references; boiler type, fuel and output; heat-pump type, design heat loss, output, flow temperature and phase; cylinder capacity and coil arrangement; underfloor-heating area, zones and floor build-up; radiator outputs and sizes; pipe, valve and fitting materials, sizes and quantities; and pump flow, head or duty only when explicitly legible.",
+        "Do not perform equipment sizing, heat-loss calculations, hydraulic design, product selection or regulatory assessment. If values conflict or safety/compliance-critical information is unclear, describe the conflict and require human review rather than resolving it yourself.",
         "Say when text or dimensions are unclear. Set needsHumanReview for unsafe content, identity documents, financial details, or files unrelated to a trade quotation.",
         "Do not include names, phone numbers, email addresses, postal addresses or other contact details in the summary or facts.",
       ].join("\n"),

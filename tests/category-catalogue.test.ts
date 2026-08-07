@@ -1,16 +1,26 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   categoryResponsibilityNotice,
   launchedIntakeCategoryWhere,
   launchedSupplierCategoryWhere,
   launchCategoryRootId,
   normalizeLaunchCategorySlug,
+  plumbingHeatingRootSlug,
   unavailableCatalogueForConversation,
 } from "../lib/categories/catalogue";
 
 describe("launch product catalogue", () => {
+  it("prevents a broad industry root from becoming a supplier-routable request", () => {
+    const processor = readFileSync(join(process.cwd(), "lib/whatsapp/processor.ts"), "utf8");
+    expect(processor).toContain("!category.parent?.active");
+    expect(processor).toContain("Boolean(category?.parent)");
+  });
+
   it("keeps one stable launch root", () => {
     expect(launchCategoryRootId).toBe("category_windows");
+    expect(plumbingHeatingRootSlug).toBe("plumbing-heating-mechanical");
   });
 
   it.each([
@@ -65,5 +75,20 @@ describe("launch product catalogue", () => {
     expect(categoryResponsibilityNotice("steel-beams", "bespoke-metal-fabrication"))
       .toContain("supplier remains responsible");
     expect(categoryResponsibilityNotice("fire-doors")).toContain("verified certification");
+    expect(unavailableCatalogueForConversation(
+      "I need an air source heat pump",
+      ["plumbing-heating-mechanical", "heat-pumps"],
+    )).toBeNull();
+    expect(categoryResponsibilityNotice("heat-pumps", "plumbing-heating-mechanical"))
+      .toContain("final equipment selection");
+  });
+
+  it("blocks PHE routing when its industry or requested product is offline", () => {
+    expect(unavailableCatalogueForConversation("I need an air source heat pump", ["windows"])?.code)
+      .toBe("PHE_NOT_LAUNCHED");
+    expect(unavailableCatalogueForConversation(
+      "I need an air source heat pump",
+      ["plumbing-heating-mechanical", "boilers-heating-packages"],
+    )?.code).toBe("PRODUCT_NOT_LAUNCHED");
   });
 });

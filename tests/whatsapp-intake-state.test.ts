@@ -4,7 +4,10 @@ import {
   compositeDoorStylePhotoPrompt,
   conversationProgress,
   enforceTradeClarification,
+  industrySelectionPrompt,
   isRecognisedIndustryColour,
+  pheSpecificationDecision,
+  pheSpecificationPrompt,
   quoteDraftFingerprint,
   repeatClarification,
   requiredQuestionKey,
@@ -15,7 +18,7 @@ import {
 
 const completeDraft = {
   deliveryPostcode: "GL52 6TD",
-  categorySlug: "windows",
+  categorySlug: "upvc-windows",
   title: "Five windows",
   summary: "Supply five white uPVC windows",
   items: [{ description: "Window", quantity: 5 }],
@@ -30,6 +33,14 @@ describe("WhatsApp intake conversation state", () => {
     expect(requiredQuestionKey({ ...completeDraft, items: [] }, "NONE")).toBe("PRODUCT");
     expect(requiredQuestionKey({ ...completeDraft, deliveryPostcode: null }, "NONE")).toBe("DELIVERY_POSTCODE");
     expect(requiredQuestionKey(completeDraft, "NONE")).toBe("NONE");
+    expect(requiredQuestionKey({ ...completeDraft, categorySlug: null, items: [] }, "NONE")).toBe("INDUSTRY");
+    expect(requiredQuestionKey({ ...completeDraft, categorySlug: "windows" }, "NONE")).toBe("PRODUCT");
+    expect(requiredQuestionKey({ ...completeDraft, categorySlug: "plumbing-heating-mechanical" }, "NONE")).toBe("PRODUCT");
+    expect(repeatClarification("INDUSTRY")).toContain("Which industry");
+    expect(industrySelectionPrompt(["Windows, doors and glazing", "Plumbing, heating and mechanical"]))
+      .toContain("Windows, doors and glazing or Plumbing, heating and mechanical");
+    expect(industrySelectionPrompt(["Windows, doors and glazing"]))
+      .not.toContain("Plumbing");
   });
 
   it("does not allow unresolved trade material or colour to reach confirmation", () => {
@@ -40,7 +51,7 @@ describe("WhatsApp intake conversation state", () => {
 
   it("deterministically catches olive windows even if the model misses the ambiguity", () => {
     const clarification = enforceTradeClarification(
-      { ...completeDraft, summary: "Supply six olive windows" },
+      { ...completeDraft, categorySlug: "windows", summary: "Supply six olive windows" },
       { materialNeeded: false, colourNeeded: false, colourTerm: null },
       ["I want 6 olive windows"],
     );
@@ -170,6 +181,41 @@ describe("WhatsApp intake conversation state", () => {
       colourNeeded: false,
       shouldAsk: false,
     });
+  });
+
+  it("asks one PHE-specific question when a heat-pump request lacks design information", () => {
+    const decision = pheSpecificationDecision({
+      categorySlug: "heat-pumps",
+      title: "Heat pump",
+      summary: "Supply one heat pump",
+      items: [{ description: "Heat pump" }],
+    }, [{ direction: "INBOUND", text: "I need a heat pump" }]);
+    expect(decision).toMatchObject({ isPhe: true, hasPricingSpecification: false, shouldAsk: true });
+    expect(pheSpecificationPrompt("heat-pumps")).toContain("design heat loss");
+  });
+
+  it("uses a PHE schedule and does not repeat the technical question", () => {
+    const draft = {
+      categorySlug: "mechanical-plant-packages",
+      title: "Plantroom package",
+      summary: "Supply the scheduled plantroom equipment",
+      items: [{ description: "Mechanical plant package", specification: "As attached schedule" }],
+    };
+    expect(pheSpecificationDecision(draft, [
+      { direction: "INBOUND", text: "[Customer attachment \"plant-schedule.pdf\": mechanical plant schedule]" },
+    ])).toMatchObject({ hasAttachment: true, shouldAsk: false });
+    expect(pheSpecificationDecision({ ...draft, categorySlug: "heat-pumps" }, [
+      { direction: "OUTBOUND", text: pheSpecificationPrompt("heat-pumps") },
+      { direction: "INBOUND", text: "I do not have that yet" },
+    ])).toMatchObject({ alreadyAsked: true, shouldAsk: false });
+  });
+
+  it("does not apply window colour questions to PHE categories", () => {
+    expect(enforceTradeClarification(
+      { ...completeDraft, categorySlug: "heat-pumps", summary: "Supply an air source heat pump" },
+      { materialNeeded: true, colourNeeded: true, colourTerm: "white" },
+      ["I need a heat pump"],
+    )).toEqual({ materialNeeded: false, colourNeeded: false, colourTerm: null });
   });
 
   it("does not mistake an external roof-glass measurement for the required internal size", () => {

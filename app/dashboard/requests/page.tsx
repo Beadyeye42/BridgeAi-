@@ -12,7 +12,12 @@ type View = typeof views[number];
 function viewFilter(view: View, now: Date): Prisma.SupplierAssignmentWhereInput {
   switch (view) {
     case "new":
-      return { status: { in: ["PENDING", "VIEWED", "ACCEPTED"] }, expiresAt: { gt: now }, quotation: null };
+      return {
+        status: { in: ["PENDING", "VIEWED", "ACCEPTED"] },
+        expiresAt: { gt: now },
+        quotation: null,
+        quoteRequest: { status: { in: ["OPEN", "MATCHING", "QUOTED"] }, responseDueAt: { gt: now } },
+      };
     case "submitted":
       return { quotation: { status: { in: ["SUBMITTED", "SELECTED_PENDING_PAYMENT"] } } };
     case "won":
@@ -22,7 +27,7 @@ function viewFilter(view: View, now: Date): Prisma.SupplierAssignmentWhereInput 
     case "expired":
       return { OR: [{ status: "EXPIRED" }, { expiresAt: { lte: now } }, { quotation: { status: "EXPIRED" } }, { quoteRequest: { status: "EXPIRED" } }] };
     default:
-      return {};
+      return { OR: [{ status: { not: "WITHDRAWN" } }, { quotation: { isNot: null } }] };
   }
 }
 
