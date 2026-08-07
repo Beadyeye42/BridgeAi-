@@ -589,6 +589,7 @@ model ProductCategory {
   slug          String                    @unique
   description   String?
   active        Boolean                   @default(true)
+  adminVisible  Boolean                   @default(true)
   parentId      String?
   displayOrder  Int                       @default(0)
   createdAt     DateTime                  @default(now())
@@ -602,6 +603,7 @@ model ProductCategory {
 
   @@unique([parentId, name])
   @@index([active, displayOrder])
+  @@index([adminVisible, parentId, displayOrder])
   @@schema("bridge_ai")
 }
 

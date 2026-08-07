@@ -3,20 +3,23 @@ import { prisma } from "@/lib/db";
 import { requireAdminApi } from "@/lib/auth/api";
 import { productCategorySchema, validationError } from "@/lib/auth/validation";
 import { writeAuditLog } from "@/lib/audit";
+import { categorySlugFromName } from "@/lib/categories/slug";
 export async function POST(request: Request) {
   const auth = await requireAdminApi();
   if ("error" in auth) return auth.error;
   const parsed = productCategorySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: validationError(parsed.error) }, { status: 400 });
   const parentId = parsed.data.parentId ?? null;
+  const slug = parsed.data.slug ?? categorySlugFromName(parsed.data.name);
+  if (slug.length < 2) return NextResponse.json({ error: "Enter a longer industry or product name" }, { status: 400 });
   if (parentId) {
-    const parent = await prisma.productCategory.findUnique({ where: { id: parentId }, select: { parentId: true } });
-    if (!parent || parent.parentId) return NextResponse.json({ error: "Choose a valid top-level product group" }, { status: 400 });
+    const parent = await prisma.productCategory.findUnique({ where: { id: parentId }, select: { parentId: true, adminVisible: true } });
+    if (!parent || parent.parentId || !parent.adminVisible) return NextResponse.json({ error: "Choose a visible top-level industry" }, { status: 400 });
   }
   try {
     const category = await prisma.$transaction(async (tx) => {
       const saved = await tx.productCategory.create({
-        data: { ...parsed.data, parentId, active: parentId ? parsed.data.active : false },
+        data: { ...parsed.data, slug, parentId, active: false },
       });
       await writeAuditLog({
         actorUserId: auth.session.userId,
