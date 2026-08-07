@@ -54,4 +54,12 @@ describe("production monitoring", () => {
     expect(manual).toContain("requireAdminApi()");
     expect(manual).toContain("ADMIN.PRODUCTION_MONITORING_RUN");
   });
+
+  it("ignores deliberately superseded WhatsApp failures and recovers durable queues during live traffic", () => {
+    const monitoring = readFileSync("lib/monitoring/operational-alerts.ts", "utf8");
+    const processor = readFileSync("lib/whatsapp/processor.ts", "utf8");
+    expect(monitoring).toContain('NOT: { errorCode: { startsWith: "SUPERSEDED_" } }');
+    expect(processor).toContain("processSupplierWinnerEmailsSafely({ limit: 10 })");
+    expect(processor).toContain("runProductionMonitoringSafely()");
+  });
 });

@@ -1757,5 +1757,14 @@ export async function processWhatsAppJobs({ limit = 5 }: { limit?: number } = {}
       if (terminal) await runProductionMonitoringSafely();
     }
   }
+
+  // Vercel Hobby cron jobs can run only once per day. Recovering these durable
+  // queues after normal WhatsApp activity keeps winner emails and operational
+  // alerts moving without weakening idempotency or sending duplicate messages.
+  await Promise.all([
+    processSupplierWinnerEmailsSafely({ limit: 10 }),
+    runProductionMonitoringSafely(),
+  ]);
+
   return processed;
 }
