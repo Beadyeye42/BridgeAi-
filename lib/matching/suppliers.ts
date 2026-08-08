@@ -263,7 +263,21 @@ export async function evaluateSupplierMatches(
     include: {
       coverageAreas: { where: { active: true }, orderBy: { createdAt: "asc" } },
       collectionLocations: { where: { active: true }, orderBy: { createdAt: "asc" } },
-      categories: { include: { productCategory: { select: { id: true, parentId: true, children: { select: { id: true } } } } } },
+      // ProductCategory is RLS-filtered to active rows for the WhatsApp worker.
+      // Never ask Prisma to hydrate the required relation for every historical
+      // supplier selection: an inactive legacy category is intentionally hidden
+      // by RLS and would otherwise make the entire match query fail.
+      categories: {
+        where: {
+          productCategory: { active: true },
+          OR: [
+            { productCategoryId: request.categoryId },
+            { productCategory: { parentId: request.categoryId } },
+            { productCategory: { children: { some: { id: request.categoryId, active: true } } } },
+          ],
+        },
+        select: { productCategoryId: true },
+      },
       memberships: true,
       subscription: { include: { membershipPlan: true } },
       capabilities: {
@@ -297,7 +311,7 @@ export async function evaluateSupplierMatches(
     if (!supplierOnboardingReadiness(supplier).ready) continue;
     const plan = supplier.subscription?.membershipPlan;
     const purpose = purposeForRequest;
-    const categoryEligible = supplier.categories.some(({ productCategory }) => productCategory.id === request.categoryId || productCategory.parentId === request.categoryId || productCategory.children.some((child) => child.id === request.categoryId));
+    const categoryEligible = supplier.categories.length > 0;
     const planLimits = plan ? effectiveMembershipLimits(plan, supplier) : null;
     const configuredRules = supplier.coverageAreas.filter((area) => area.purpose === purpose).map((area) => ({
       ...area,
