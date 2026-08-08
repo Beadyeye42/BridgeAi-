@@ -299,6 +299,11 @@ BEGIN
     SELECT 1 FROM bridge_ai."Conversation"
     WHERE id='security_conversation' AND "aiLastQuestionKey"='PREFERRED_NAME'
   ) THEN RAISE EXCEPTION 'preferred-name question state was not retained'; END IF;
+  UPDATE bridge_ai."Conversation" SET "aiLastQuestionKey"='QUOTE_OFFER' WHERE id='security_conversation';
+  IF NOT EXISTS (
+    SELECT 1 FROM bridge_ai."Conversation"
+    WHERE id='security_conversation' AND "aiLastQuestionKey"='QUOTE_OFFER'
+  ) THEN RAISE EXCEPTION 'industry quote-offer state was not retained'; END IF;
   UPDATE bridge_ai."Conversation" SET "aiLastQuestionKey"=NULL WHERE id='security_conversation';
   BEGIN
     UPDATE bridge_ai."Conversation" SET "aiUnproductiveTurns"=-1 WHERE id='security_conversation';

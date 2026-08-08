@@ -3,9 +3,12 @@ import {
   attachmentInterpretation,
   earliestInboundAt,
   firstContactConsentReply,
+  industryQuoteOfferReply,
   isCancelAllDraftsRequest,
   isCancelDraftRequest,
   isConversationOptOut,
+  isIndustryQuoteOfferAccepted,
+  isIndustryQuoteOfferDeclined,
   isMenuRequest,
   isNewQuoteRequest,
   isQuoteConfirmation,
@@ -141,6 +144,24 @@ describe("WhatsApp messaging policy", () => {
     expect(["YES", "yes please", "That's right", "correct", "go ahead", "send it"].every(isQuoteConfirmation)).toBe(true);
     expect(isQuoteConfirmation("maybe")).toBe(false);
     expect(isQuoteConfirmation("yes, but change the colour")).toBe(false);
+  });
+
+  it("offers a trusted-supplier quote after answering an industry question", () => {
+    const reply = industryQuoteOfferReply("Yes, roof lanterns are covered by our glazing supplier network.");
+    expect(reply).toContain("roof lanterns");
+    expect(reply).toContain("competitive quote from trusted, approved suppliers");
+    expect(reply).toContain("Reply YES");
+    expect(industryQuoteOfferReply("I can explain that. Would you like another service?")
+      .match(/Would you like/g)).toHaveLength(1);
+  });
+
+  it("understands natural acceptance and refusal of an industry quote offer", () => {
+    expect(["yes", "YES PLEASE", "yeah", "okay", "that would be great", "please do", "find me a quote", "quote please"]
+      .every(isIndustryQuoteOfferAccepted)).toBe(true);
+    expect(["no", "no thanks", "not now", "maybe later", "just asking"]
+      .every(isIndustryQuoteOfferDeclined)).toBe(true);
+    expect(isIndustryQuoteOfferAccepted("maybe")).toBe(false);
+    expect(isIndustryQuoteOfferDeclined("yes please")).toBe(false);
   });
 
   it("turns attachment analysis into a cautious customer-facing interpretation", () => {

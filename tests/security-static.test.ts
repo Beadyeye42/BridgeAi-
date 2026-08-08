@@ -193,7 +193,16 @@ describe("security foundation static controls", () => {
     expect(processor).toContain('action: "WHATSAPP.PREFERRED_FIRST_NAME_REQUESTED"');
     expect(processor).not.toContain("metadata: { messageId: inbound.id, source, firstName");
     expect(processor).toContain("isPreferredNameMessage");
-    expect(read("lib/ai/quote-intake.ts")).toContain("always leave draft.customerName null");
+    const quoteIntake = read("lib/ai/quote-intake.ts");
+    expect(quoteIntake).toContain("always leave draft.customerName null");
+    expect(quoteIntake).toContain("Classify a general question about, or interest in, any launched industry or product as QUESTION");
+    expect(quoteIntake).toContain("offered to find a competitive quote");
+    const quoteOfferState = read("supabase/migrations/20260808080738_whatsapp_industry_quote_offer.sql");
+    expect(quoteOfferState).toContain("'QUOTE_OFFER'");
+    expect(quoteOfferState).toContain("'INDUSTRY'");
+    expect(quoteOfferState).toContain("'PHE_SPECIFICATION'");
+    expect(processor).toContain('action: "WHATSAPP.INDUSTRY_QUOTE_OFFERED"');
+    expect(processor).toContain('action: "WHATSAPP.INDUSTRY_QUOTE_OFFER_DECLINED"');
   });
 
   it("cancels only encrypted WhatsApp drafts and preserves confirmed quote requests", () => {

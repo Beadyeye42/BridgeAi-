@@ -36,9 +36,12 @@ import {
   attachmentInterpretation,
   earliestInboundAt,
   firstContactConsentReply,
+  industryQuoteOfferReply,
   isCancelAllDraftsRequest,
   isCancelDraftRequest,
   isConversationOptOut,
+  isIndustryQuoteOfferAccepted,
+  isIndustryQuoteOfferDeclined,
   isMenuRequest,
   isNewQuoteRequest,
   isQuoteConfirmation,
@@ -1151,6 +1154,8 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     || isConsent(text)
     || isCancelAllDraftsRequest(text)
     || isCancelDraftRequest(text)
+    || isIndustryQuoteOfferAccepted(text)
+    || isIndustryQuoteOfferDeclined(text)
     || isQuoteConfirmation(text)
     || isQuoteRefresh(text)
     || isNewQuoteRequest(text)
@@ -1241,6 +1246,30 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     return undefined;
   }
 
+  if (conversation.aiLastQuestionKey === "QUOTE_OFFER" && isIndustryQuoteOfferDeclined(text)) {
+    await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
+      await tx.conversation.update({
+        where: { id: conversation.id },
+        data: {
+          aiStage: "COLLECTING",
+          aiDraftEncrypted: null,
+          aiDraftFingerprint: null,
+          aiLastQuestionKey: null,
+          aiUnproductiveTurns: 0,
+        },
+      });
+      await writeWhatsAppAudit(tx, {
+        action: "WHATSAPP.INDUSTRY_QUOTE_OFFER_DECLINED",
+        entityType: "Conversation",
+        entityId: conversation.id,
+        summary: "Customer declined an offer to begin a supplier quote request",
+        metadata: { messageId: inbound.id },
+      });
+    });
+    await sendReply(job, conversation, "No problem. If you would like prices later, just reply NEW QUOTE or describe what you need. I’m here when you’re ready.");
+    return undefined;
+  }
+
   if (conversation.aiStage !== "AWAITING_SELECTION" && !numberedIntakeReply && isNewQuoteRequest(text)) {
     const includesJobDetails = newQuoteDetails(text) !== null || Boolean(inbound.mediaIdEncrypted);
     conversation = await startNewQuote(job, conversation, inbound, !includesJobDetails);
@@ -1290,6 +1319,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   let draft = decryptedDraft
     ? { ...decryptedDraft, categorySlug: normalizeLaunchCategorySlug(decryptedDraft.categorySlug) }
     : null;
+  const beganWithoutDraft = !draft?.categorySlug;
 
   if (attachmentAnalyses.some((analysis) => analysis.needsHumanReview)) {
     await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
@@ -1432,7 +1462,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
         const isPreferredNameMessage = explicitPreferredFirstName(body) !== null
           || isPreferredNameOnly
           || body === "Before we start, what should I call you? Just your first name is fine.";
-        if (!(justConsented && message.id === inbound.id && isConsent(body))
+        if (!isConsent(body)
           && !isCancelAllDraftsRequest(body)
           && !isCancelDraftRequest(body)
           && !isPreferredNameMessage) {
@@ -1450,11 +1480,37 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     });
   const availableIndustries = industryChoices(categories);
   const expectedQuestion = refreshed.conversation.aiLastQuestionKey;
+  if (expectedQuestion === "QUOTE_OFFER" && isIndustryQuoteOfferAccepted(text)) {
+    replaceLatestNumberedReply(messages, text, "[Customer accepted the offer to find a competitive supplier quote.]");
+  }
+  let initialExtraction: Awaited<ReturnType<typeof extractQuoteIntake>> | null = null;
   if (!draft?.categorySlug) {
     const industry = expectedQuestion === "INDUSTRY"
       ? numberedIntakeChoice(text, availableIndustries)
       : null;
-    if (!industry) {
+    if (expectedQuestion === "INDUSTRY" && /^\d{1,2}$/.test(text.trim()) && !industry) {
+      await sendReply(
+        job,
+        refreshed.conversation,
+        `That number is not available.\n\n${industrySelectionPrompt(availableIndustries)}`,
+      );
+      return undefined;
+    }
+    if (industry) {
+      draft = emptyQuoteDraft(industry.slug);
+      replaceLatestNumberedReply(messages, text, `[Customer selected industry: ${industry.name}.]`);
+    } else {
+      initialExtraction = await extractQuoteIntake({
+        messages,
+        currentDraft: null,
+        categories,
+        safetyIdentifier: refreshed.conversation.customerContact.phoneHash,
+      });
+      draft = initialExtraction.result.draft.categorySlug
+        ? initialExtraction.result.draft
+        : null;
+    }
+    if (!draft?.categorySlug) {
       await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
         await tx.conversation.update({
           where: { id: refreshed.conversation!.id },
@@ -1468,18 +1524,13 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
           metadata: { jobId: job.id, availableIndustrySlugs: availableIndustries.map((choice) => choice.slug) },
         });
       });
-      const prefix = expectedQuestion === "INDUSTRY" && /^\d{1,2}$/.test(text.trim())
-        ? "That number is not available."
-        : null;
       await sendReply(
         job,
         refreshed.conversation,
-        [prefix, industrySelectionPrompt(availableIndustries)].filter(Boolean).join("\n\n"),
+        industrySelectionPrompt(availableIndustries),
       );
       return undefined;
     }
-    draft = emptyQuoteDraft(industry.slug);
-    replaceLatestNumberedReply(messages, text, `[Customer selected industry: ${industry.name}.]`);
   }
 
   let activeIndustry = selectedIndustry(categories, draft.categorySlug);
@@ -1544,12 +1595,44 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     await sendReply(job, refreshed.conversation, unavailableCatalogue.reply);
     return undefined;
   }
-  const { result, telemetry } = await extractQuoteIntake({
+  const { result, telemetry } = initialExtraction ?? await extractQuoteIntake({
     messages,
     currentDraft: draft,
     categories: intakeCategories,
     safetyIdentifier: refreshed.conversation.customerContact.phoneHash,
   });
+  if (beganWithoutDraft && initialExtraction && result.intent === "QUESTION") {
+    const offerFingerprint = quoteDraftFingerprint(result.draft);
+    await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
+      await tx.conversation.update({
+        where: { id: refreshed.conversation!.id },
+        data: {
+          aiStage: "COLLECTING",
+          aiDraftEncrypted: encryptPrivateValue(JSON.stringify(result.draft)),
+          aiDraftFingerprint: offerFingerprint,
+          aiLastQuestionKey: "QUOTE_OFFER",
+          aiUnproductiveTurns: 0,
+          aiLastProgressAt: new Date(),
+        },
+      });
+      await writeWhatsAppAudit(tx, {
+        action: "WHATSAPP.INDUSTRY_QUOTE_OFFERED",
+        entityType: "Conversation",
+        entityId: refreshed.conversation!.id,
+        summary: "Bridge AI recognised an industry question and offered trusted supplier quotes",
+        metadata: {
+          jobId: job.id,
+          categorySlug: result.draft.categorySlug,
+        },
+      });
+    });
+    await sendReply(
+      job,
+      refreshed.conversation,
+      personaliseOpening(industryQuoteOfferReply(result.reply), preferredFirstName, true),
+    );
+    return telemetry;
+  }
   if (result.draft.deliveryPostcode) {
     try {
       const delivery = await lookupPostcode(result.draft.deliveryPostcode);

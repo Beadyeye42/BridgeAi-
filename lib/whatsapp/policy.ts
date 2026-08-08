@@ -48,6 +48,28 @@ export function isQuoteConfirmation(value: string) {
   return /^(?:confirm|yes|yes please|yep|correct|yes,? (?:that(?:'s| is) right|correct)|that(?:'s| is) right|looks right|go ahead|send it)$/i.test(value.trim());
 }
 
+export function isIndustryQuoteOfferAccepted(value: string) {
+  return /^(?:yes|yes please|yep|yeah|sure|absolutely|ok|okay|please do|go ahead|sounds good|(?:yes,? )?(?:that would|that'd) be (?:great|good|helpful)|find (?:me|us) (?:a )?quote|get (?:me|us) (?:a )?quote|quote please)$/i.test(value.trim());
+}
+
+export function isIndustryQuoteOfferDeclined(value: string) {
+  return /^(?:no|nope|no thanks|no thank you|not now|not today|maybe later|just asking|information only)$/i.test(value.trim());
+}
+
+export function industryQuoteOfferReply(helpfulAnswer: string) {
+  const answer = helpfulAnswer
+    .replace(/[\r\n]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 900)
+    .replace(/\s*(?:would you like|shall I|can I)\b[\s\S]*$/i, "")
+    .trim();
+  return [
+    answer || "I can help with that.",
+    "Would you like me to find you a competitive quote from trusted, approved suppliers? Reply YES and I’ll get the right details together.",
+  ].join("\n\n");
+}
+
 export function attachmentInterpretation(summaries: string[]) {
   const safe = summaries
     .map((summary) => summary.replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 320))
