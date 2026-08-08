@@ -31,6 +31,7 @@ import {
   profileFirstName,
 } from "@/lib/whatsapp/customer-name";
 import { downloadMetaMedia, sendMetaTemplate, sendMetaText } from "@/lib/whatsapp/meta-client";
+import { attachmentAutomationDecision } from "@/lib/whatsapp/attachment-policy";
 import { writeWhatsAppSystemEvent } from "@/lib/whatsapp/system-events";
 import {
   attachmentInterpretation,
@@ -430,7 +431,12 @@ async function persistMedia(message: LoadedJob["whatsappMessage"], conversationI
   const existing = await runAsDatabaseWorker("whatsapp_ai", (tx) => tx.attachment.findFirst({
     where: { whatsappMessageId: message.id },
   }));
-  if (existing) return { stored: true, rejected: false, attachment: existing };
+  if (existing) {
+    if (["REJECTED", "FAILED"].includes(existing.scanStatus)) {
+      return { stored: true, rejected: true };
+    }
+    return { stored: true, rejected: false, attachment: existing };
+  }
   if (message.messageType === "AUDIO") return { stored: false, rejected: true };
 
   const mediaId = decryptPrivateValue(message.mediaIdEncrypted);
@@ -573,6 +579,41 @@ async function ensureAttachmentAnalysis(
     });
   });
   return result;
+}
+
+async function excludeAttachmentAutomatically(
+  attachment: Attachment,
+  analysis: QuoteAttachmentAnalysis,
+  input: { conversationId: string; jobId: string; messageId: string },
+) {
+  await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
+    await tx.attachment.updateMany({
+      where: { id: attachment.id, scanStatus: { notIn: ["REJECTED", "FAILED"] } },
+      data: { scanStatus: "REJECTED" },
+    });
+    await writeWhatsAppAudit(tx, {
+      action: "WHATSAPP.MEDIA_EXCLUDED_AUTOMATICALLY",
+      entityType: "Attachment",
+      entityId: attachment.id,
+      summary: "An unusable customer attachment was automatically excluded without pausing quote intake",
+      metadata: {
+        conversationId: input.conversationId,
+        jobId: input.jobId,
+        messageId: input.messageId,
+        usefulForQuote: analysis.usefulForQuote,
+        modelFlaggedForReview: analysis.needsHumanReview,
+      },
+    });
+  });
+  const removed = await getSupabaseAdmin().storage.from(PRIVATE_BUCKET).remove([attachment.storageKey]);
+  if (removed.error) {
+    await runAsDatabaseWorker("whatsapp_ai", (tx) => writeWhatsAppSystemEvent(tx, "whatsapp_ai", {
+      severity: "ERROR",
+      code: "CUSTOMER_ATTACHMENT_EXCLUSION_DELETE_FAILED",
+      message: "An excluded private customer attachment could not be removed from storage",
+      context: { attachmentId: attachment.id, conversationId: input.conversationId, jobId: input.jobId },
+    }));
+  }
 }
 
 function attachmentContext(fileName: string, analysis: QuoteAttachmentAnalysis) {
@@ -811,6 +852,7 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
     const linkedAttachments = await tx.attachment.updateMany({
       where: {
         quoteRequestId: null,
+        scanStatus: { notIn: ["REJECTED", "FAILED"] },
         whatsappMessage: {
           conversationId: loaded.conversation!.id,
           occurredAt: { gte: loaded.conversation!.aiSessionStartedAt },
@@ -1293,21 +1335,30 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     .slice(0, 10);
   let rejectedMedia = false;
   let currentAttachmentCount = 0;
-  const attachmentAnalyses: QuoteAttachmentAnalysis[] = [];
   const currentAttachmentAnalyses: QuoteAttachmentAnalysis[] = [];
   for (const message of mediaMessages) {
     const outcome = await persistMedia(message, conversation.id);
-    rejectedMedia ||= outcome.rejected;
+    const belongsToCurrentTurn = message.id === inbound.id || justConsented;
+    rejectedMedia ||= outcome.rejected && belongsToCurrentTurn;
     if (outcome.attachment) {
-      if (message.id === inbound.id || justConsented) currentAttachmentCount += 1;
       const analysis = await ensureAttachmentAnalysis(
         outcome.attachment,
         outcome.bytes,
         conversation.customerContact.phoneHash,
       );
       if (analysis) {
-        attachmentAnalyses.push(analysis);
-        if (message.id === inbound.id || justConsented) currentAttachmentAnalyses.push(analysis);
+        const decision = attachmentAutomationDecision(analysis);
+        if (decision.action === "EXCLUDE_AND_CONTINUE") {
+          await excludeAttachmentAutomatically(outcome.attachment, analysis, {
+            conversationId: conversation.id,
+            jobId: job.id,
+            messageId: message.id,
+          });
+          rejectedMedia ||= belongsToCurrentTurn;
+          continue;
+        }
+        if (belongsToCurrentTurn) currentAttachmentCount += 1;
+        if (belongsToCurrentTurn) currentAttachmentAnalyses.push(analysis);
       }
     }
   }
@@ -1320,20 +1371,6 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     ? { ...decryptedDraft, categorySlug: normalizeLaunchCategorySlug(decryptedDraft.categorySlug) }
     : null;
   const beganWithoutDraft = !draft?.categorySlug;
-
-  if (attachmentAnalyses.some((analysis) => analysis.needsHumanReview)) {
-    await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
-      await tx.conversation.update({ where: { id: refreshed.conversation!.id }, data: { aiStage: "HUMAN_REVIEW" } });
-      await writeWhatsAppSystemEvent(tx, "whatsapp_ai", {
-        severity: "WARNING",
-        code: "CUSTOMER_ATTACHMENT_REVIEW",
-        message: "A WhatsApp attachment requires administrator review",
-        context: { conversationId: refreshed.conversation!.id, jobId: job.id },
-      });
-    });
-    await sendReply(job, refreshed.conversation, "I’ve received your file, but it needs a Bridge AI administrator to review it before the quote request can continue.");
-    return undefined;
-  }
 
   if (stage === "AWAITING_CONFIRMATION" && isQuoteConfirmation(text)) {
     if (!draft) throw new Error("QUOTE_DRAFT_MISSING");
@@ -1470,6 +1507,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
         }
       }
       for (const attachment of message.attachments) {
+        if (["REJECTED", "FAILED"].includes(attachment.scanStatus)) continue;
         const analysis = decryptAttachmentAnalysis(attachment.aiSummaryEncrypted);
         if (analysis) parts.push({ direction: message.direction, text: attachmentContext(attachment.fileName, analysis) });
       }
@@ -1748,7 +1786,9 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   });
   const attachmentCount = refreshed.conversation.messages
     .filter((message) => message.occurredAt >= refreshed.conversation!.aiSessionStartedAt)
-    .reduce((count, message) => count + message.attachments.length, 0);
+    .reduce((count, message) => count + message.attachments.filter(
+      (attachment) => !["REJECTED", "FAILED"].includes(attachment.scanStatus),
+    ).length, 0);
   const mediaAcknowledgement = currentAttachmentCount > 0
     ? attachmentInterpretation(currentAttachmentAnalyses.map((analysis) => analysis.summary))
       ?? `I’ve securely received and read ${currentAttachmentCount === 1 ? "that file" : `those ${currentAttachmentCount} files`} and added the useful details.`
@@ -1784,7 +1824,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
         preferredFirstName,
         categoryResponsibilityNotice(category.slug, category.parent?.slug),
       )
-      : `${mediaAcknowledgement ? `${mediaAcknowledgement}\n\n` : ""}${compositeDoorPhoto.shouldAsk ? compositeDoorStylePhotoPrompt() : roofGlazingSpecification.shouldAsk ? roofGlazingSpecificationPrompt(roofGlazingSpecification) : pheSpecification.shouldAsk ? pheSpecificationPrompt(pheSpecification.categorySlug) : tradeClarification ?? numberedQuestionPrompt ?? repeatedClarification ?? enforcedClarification ?? result.reply}${rejectedMedia ? "\n\nOne uploaded file could not be accepted. Please send a genuine JPG, PNG or PDF within the size limit." : ""}`;
+      : `${mediaAcknowledgement ? `${mediaAcknowledgement}\n\n` : ""}${compositeDoorPhoto.shouldAsk ? compositeDoorStylePhotoPrompt() : roofGlazingSpecification.shouldAsk ? roofGlazingSpecificationPrompt(roofGlazingSpecification) : pheSpecification.shouldAsk ? pheSpecificationPrompt(pheSpecification.categorySlug) : tradeClarification ?? numberedQuestionPrompt ?? repeatedClarification ?? enforcedClarification ?? result.reply}${rejectedMedia ? "\n\nI couldn’t use one uploaded file for this quote, so I’ve safely left it out. Send another JPG, PNG or PDF, or describe the job here and I’ll keep going." : ""}`;
   await sendReply(
     job,
     refreshed.conversation,
