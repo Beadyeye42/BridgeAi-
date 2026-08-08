@@ -23,7 +23,7 @@ export function AuthForm({ mode, invitationToken }: { mode: Mode; invitationToke
       const response = await fetch(`/api/auth/${mode === "forgot" ? "forgot-password" : mode === "reset" ? "reset-password" : mode}`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
       });
-      const result = await response.json();
+      const result = await response.json().catch(() => ({} as { error?: string; redirectTo?: string; message?: string }));
       if (!response.ok) throw new Error(result.error ?? "Something went wrong");
       if (result.redirectTo) window.location.assign(result.redirectTo);
       else setMessage(result.message ?? "Done");

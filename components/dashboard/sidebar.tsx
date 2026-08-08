@@ -19,26 +19,34 @@ const management = [
   { label: "Subscription", icon: CreditCard, href: "/dashboard/subscription" },
 ];
 
-export function Sidebar({ companyName, initials, companyStatus, activeRequestCount = 0, unreadNotificationCount = 0 }: { companyName: string; initials: string; companyStatus: string; activeRequestCount?: number; unreadNotificationCount?: number }) {
+export function Sidebar({ companyName, initials, companyStatus, activeRequestCount = 0, unreadNotificationCount = 0, demo = false }: { companyName: string; initials: string; companyStatus: string; activeRequestCount?: number; unreadNotificationCount?: number; demo?: boolean }) {
   const pathname = usePathname();
+  const visiblePrimary = demo ? [
+    { label: "Overview", icon: LayoutDashboard, href: "/demo" },
+    { label: "Sample request", icon: FileText, href: "/requests/BA-2026-0842" },
+  ] : primary;
   return (
     <aside className="sidebar">
       <div className="sidebar-head"><BrandMark /></div>
       <nav className="sidebar-nav" aria-label="Supplier navigation">
         <p className="nav-label">Workspace</p>
-        {primary.map((item) => <NavItem key={item.label} {...item} badge={item.href === "/dashboard/requests" && activeRequestCount > 0 ? String(activeRequestCount) : undefined} active={item.href === "/dashboard" ? pathname === item.href : pathname.startsWith(item.href)} />)}
-        <p className="nav-label nav-label-spaced">Manage</p>
-        {management.map((item) => <NavItem key={item.label} {...item} active={pathname.startsWith(item.href)} />)}
+        {visiblePrimary.map((item) => <NavItem key={item.label} {...item} badge={!demo && item.href === "/dashboard/requests" && activeRequestCount > 0 ? String(activeRequestCount) : undefined} active={item.href === "/dashboard" || item.href === "/demo" ? pathname === item.href : pathname.startsWith(item.href)} />)}
+        {!demo && <><p className="nav-label nav-label-spaced">Manage</p>{management.map((item) => <NavItem key={item.label} {...item} active={pathname.startsWith(item.href)} />)}</>}
       </nav>
       <div className="sidebar-bottom">
-        <Link href="/dashboard/notifications" className={`sidebar-link${pathname.startsWith("/dashboard/notifications") ? " active" : ""}`}><Bell size={18} />Notifications{unreadNotificationCount > 0 && <span className="nav-dot" />}</Link>
-        <Link href="/dashboard/settings" className={`sidebar-link${pathname.startsWith("/dashboard/settings") ? " active" : ""}`}><Settings size={18} />Settings</Link>
+        {demo ? <>
+          <Link href="/login" className="sidebar-link"><Users size={18} />Supplier sign in</Link>
+          <Link href="/register" className="sidebar-link"><Building2 size={18} />Apply to join</Link>
+        </> : <>
+          <Link href="/dashboard/notifications" className={`sidebar-link${pathname.startsWith("/dashboard/notifications") ? " active" : ""}`}><Bell size={18} />Notifications{unreadNotificationCount > 0 && <span className="nav-dot" />}</Link>
+          <Link href="/dashboard/settings" className={`sidebar-link${pathname.startsWith("/dashboard/settings") ? " active" : ""}`}><Settings size={18} />Settings</Link>
+        </>}
         <Link href="/help" className="sidebar-link"><HelpCircle size={18} />Help centre</Link>
-        <LogoutButton />
+        {!demo && <LogoutButton />}
         <div className="company-switcher">
           <span className="avatar avatar-small">{initials}</span>
-          <span><b>{companyName}</b><small>{statusLabel(companyStatus)}</small></span>
-          <ChevronDown size={15} />
+          <span><b>{companyName}</b><small>{demo ? "Demonstration workspace" : statusLabel(companyStatus)}</small></span>
+          {!demo && <ChevronDown size={15} />}
         </div>
       </div>
     </aside>

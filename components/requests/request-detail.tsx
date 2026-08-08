@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, CalendarClock, Check, CheckCircle2, Clock3, Download, FileImage, FileText, LockKeyhole, MapPin, MessageSquareText, Paperclip, PoundSterling, Send, ShieldCheck, Truck, X } from "lucide-react";
+import { ArrowLeft, CalendarClock, Check, CheckCircle2, Clock3, FileImage, FileText, LockKeyhole, MapPin, MessageSquareText, Paperclip, PoundSterling, Send, ShieldCheck, Truck, X } from "lucide-react";
 import { BrandMark } from "@/components/brand-mark";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { demoDashboard, demoRequest } from "@/lib/demo-data";
@@ -13,17 +13,17 @@ export function RequestDetail({ demo = false }: { demo?: boolean }) {
 
   return (
     <div className="portal-shell">
-      <Sidebar companyName={demoDashboard.companyName} initials={demoDashboard.initials} companyStatus="APPROVED" activeRequestCount={demoDashboard.stats.newRequests} unreadNotificationCount={demoDashboard.unreadNotificationCount} />
+      <Sidebar companyName={demoDashboard.companyName} initials={demoDashboard.initials} companyStatus="APPROVED" activeRequestCount={demoDashboard.stats.newRequests} unreadNotificationCount={demoDashboard.unreadNotificationCount} demo={demo} />
       <header className="mobile-header"><BrandMark compact /><span>{demoRequest.reference}</span></header>
       <main className="portal-main request-page">
         {demo && <div className="demo-banner"><ShieldCheck size={15} /><span><b>Demonstration request</b> — files and actions below use sample data only.</span></div>}
-        <Link href="/" className="back-link request-back"><ArrowLeft size={14} />Back to requests</Link>
+        <Link href={demo ? "/demo" : "/dashboard/requests"} className="back-link request-back"><ArrowLeft size={14} />Back to requests</Link>
         <div className="request-title-row"><div><div className="request-ref"><span className="status-dot urgent" />{demoRequest.reference}<span className="tag new">New</span></div><h1>{demoRequest.title}</h1><p>{demoRequest.category}</p></div><div className="deadline-box"><Clock3 size={18} /><span>Response deadline<b>{demoRequest.due}</b></span></div></div>
         <div className="request-layout">
           <div className="request-content">
             <section className="panel request-section"><div className="section-title"><MessageSquareText size={18} /><div><p className="eyebrow">Customer brief</p><h2>Requirements</h2></div></div><p className="request-summary">{demoRequest.summary}</p><div className="privacy-note"><LockKeyhole size={17} /><div><b>{demoRequest.requestedBy}</b><p>{demoRequest.customerNotice}</p></div></div></section>
             <section className="panel request-section"><div className="section-title"><FileText size={18} /><div><p className="eyebrow">Bill of requirements</p><h2>Requested items</h2></div></div><div className="items-table">{demoRequest.items.map((item, index) => <div className="item-row" key={item.description}><span className="item-number">{String(index + 1).padStart(2, "0")}</span><div><b>{item.description}</b><p>{item.specification}</p></div><strong>{item.quantity}</strong></div>)}</div></section>
-            <section className="panel request-section"><div className="section-title"><Paperclip size={18} /><div><p className="eyebrow">4 files · 6.7 MB</p><h2>Drawings & attachments</h2></div></div><div className="attachment-grid">{demoRequest.attachments.map((file) => <button className="attachment-file" key={file.name}><span>{file.meta.startsWith("PDF") ? <FileText size={19} /> : <FileImage size={19} />}</span><div><b>{file.name}</b><small>{file.type} · {file.meta}</small></div><Download size={16} /></button>)}</div></section>
+            <section className="panel request-section"><div className="section-title"><Paperclip size={18} /><div><p className="eyebrow">4 files · 6.7 MB</p><h2>Drawings & attachments</h2></div></div><div className="attachment-grid">{demoRequest.attachments.map((file) => <article className="attachment-file demo-attachment" key={file.name} aria-label={`Sample attachment: ${file.name}`}><span>{file.meta.startsWith("PDF") ? <FileText size={19} /> : <FileImage size={19} />}</span><div><b>{file.name}</b><small>{file.type} · {file.meta} · sample only</small></div></article>)}</div></section>
           </div>
           <aside className="request-action-rail">
             <section className="panel action-card"><div className="action-heading"><span><CheckCircle2 size={18} /></span><div><p className="eyebrow">Your response</p><h2>{accepted ? "Prepare quotation" : "Can you quote?"}</h2></div></div>{!accepted && !declined && <><p>Confirm interest to unlock the quotation form. This does not commit you to a price.</p><button className="button button-dark action-primary" onClick={() => setAccepted(true)}><Check size={16} />Accept request</button><button className="decline-button" onClick={() => setDeclined(true)}><X size={15} />Decline</button></>}{declined && <div className="decision-state"><span><X size={17} /></span><b>Request declined</b><p>This sample action is only held in this preview.</p><button onClick={() => setDeclined(false)}>Undo</button></div>}{accepted && <QuotationForm />}</section>

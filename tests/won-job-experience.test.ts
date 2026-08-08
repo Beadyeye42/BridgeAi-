@@ -22,7 +22,7 @@ describe("won job experience", () => {
     expect(data).toContain('orderBy: { decidedAt: "desc" }');
     expect(dashboard).toContain('className="win-alert"');
     expect(dashboard).toContain("Open won job");
-    expect(dashboard).toContain('href="/dashboard/requests?view=won"');
+    expect(dashboard).toContain('demo ? "/demo#new-requests" : "/dashboard/requests?view=won"');
   });
 
   it("keeps the contact unlock inside a signed-in, audited database transaction", () => {

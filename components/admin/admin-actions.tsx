@@ -7,7 +7,53 @@ export function SupplierStatusControl({id,status,approvalReady=true,approvalBloc
 
 export function RetryWhatsAppJobButton({id,retrySafe}:{id:string;retrySafe:boolean}){const router=useRouter();const[busy,setBusy]=useState(false);const[message,setMessage]=useState("");return <div className="status-control"><button className="button button-outline" disabled={busy||!retrySafe} title={retrySafe?"Retry this idempotent background action":"Automatic retry is blocked because delivery could already have occurred"} onClick={async()=>{setBusy(true);setMessage("");try{const result=await call(`/api/admin/system/jobs/${id}/retry`,"POST",{});setMessage(result.status==="COMPLETED"?"Retried successfully.":`Retry finished with status ${String(result.status).toLowerCase()}.`);router.refresh()}catch(error){setMessage(error instanceof Error?error.message:"Retry failed")}finally{setBusy(false)}}}>{busy?<LoaderCircle className="spin" size={14}/>:<RotateCcw size={14}/>}Retry</button>{message&&<small className="form-result">{message}</small>}</div>}
 export function SanitizeAttachmentButton({id}:{id:string}){const router=useRouter();const[busy,setBusy]=useState(false);const[message,setMessage]=useState("");return <div className="attachment-scan-action"><button className="button button-outline" disabled={busy} onClick={async()=>{setBusy(true);setMessage("");try{await call(`/api/admin/attachments/${id}/sanitize`,"POST",{});router.refresh()}catch(error){setMessage(error instanceof Error?error.message:"Image processing failed")}finally{setBusy(false)}}}>{busy?<LoaderCircle className="spin" size={13}/>:<ImageIcon size={13}/>}Make image available</button>{message&&<small className="error-text">{message}</small>}</div>}
-export function AssignmentForm({requestId,distributionLimit,currentCount,responseDueAt,suppliers}:{requestId:string;distributionLimit:number;currentCount:number;responseDueAt:string;suppliers:{id:string;name:string;postcode:string|null;matchDescription:string}[]}){const router=useRouter();const[busy,setBusy]=useState(false);const[message,setMessage]=useState("");async function submit(e:React.FormEvent<HTMLFormElement>){e.preventDefault();setBusy(true);const d=new FormData(e.currentTarget);try{const result=await call("/api/admin/assignments","POST",{quoteRequestId:requestId,supplierCompanyIds:d.getAll("supplierIds")});setMessage(`${result.created} supplier assignment(s) created.`);router.refresh()}catch(err){setMessage(err instanceof Error?err.message:"Assignment failed")}finally{setBusy(false)}}return <form className="assign-form" onSubmit={submit}><div className="assignment-limit"><b>{currentCount} / {Math.min(distributionLimit,3)}</b><span>supplier slots used · maximum three</span></div>{suppliers.length?<div className="choice-grid compact">{suppliers.map(s=><label className="choice-card" key={s.id}><input type="checkbox" name="supplierIds" value={s.id}/><span><b>{s.name}</b><small>{s.matchDescription}{s.postcode?` · office ${s.postcode}`:""}</small></span></label>)}</div>:<div className="empty-state">No supplier currently passes the capability, capacity, subscription and coverage checks.</div>}<div className="form-control"><span>Shared supplier response deadline</span><b>{responseDueAt}</b><small>Response time pauses Friday at 3:00 pm and resumes Monday at 8:00 am (UK time).</small></div><button className="button button-dark" disabled={busy||!suppliers.length||currentCount>=Math.min(distributionLimit,3)}>{busy?<LoaderCircle className="spin" size={14}/>:<Send size={14}/>}Assign selected</button>{message&&<p className="form-result">{message}</p>}</form>}
+export function AssignmentForm({ requestId, distributionLimit, currentCount, responseDueAt, suppliers }: { requestId: string; distributionLimit: number; currentCount: number; responseDueAt: string; suppliers: { id: string; name: string; postcode: string | null; matchDescription: string }[] }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const assignmentLimit = Math.min(distributionLimit, 3);
+  const remainingSlots = Math.max(0, assignmentLimit - currentCount);
+
+  function toggleSupplier(id: string, checked: boolean) {
+    setMessage("");
+    setSelectedIds((current) => checked ? [...current, id].slice(0, remainingSlots) : current.filter((value) => value !== id));
+  }
+
+  async function submit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (selectedIds.length === 0) {
+      setMessage("Choose at least one supplier before assigning this request.");
+      return;
+    }
+    setBusy(true);
+    setMessage("");
+    try {
+      const result = await call("/api/admin/assignments", "POST", { quoteRequestId: requestId, supplierCompanyIds: selectedIds });
+      setSelectedIds([]);
+      setMessage(`${result.created} supplier assignment(s) created.`);
+      router.refresh();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Assignment failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <form className="assign-form" onSubmit={submit}>
+    <div className="assignment-limit"><b>{currentCount} / {assignmentLimit}</b><span>supplier slots used · maximum three</span></div>
+    {suppliers.length ? <div className="choice-grid compact">{suppliers.map((supplier) => {
+      const checked = selectedIds.includes(supplier.id);
+      return <label className="choice-card" key={supplier.id}>
+        <input type="checkbox" name="supplierIds" value={supplier.id} checked={checked} disabled={!checked && selectedIds.length >= remainingSlots} onChange={(event) => toggleSupplier(supplier.id, event.currentTarget.checked)} />
+        <span><b>{supplier.name}</b><small>{supplier.matchDescription}{supplier.postcode ? ` · office ${supplier.postcode}` : ""}</small></span>
+      </label>;
+    })}</div> : <div className="empty-state">No supplier currently passes the capability, capacity, subscription and coverage checks.</div>}
+    <div className="form-control"><span>Shared supplier response deadline</span><b>{responseDueAt}</b><small>Response time pauses Friday at 3:00 pm and resumes Monday at 8:00 am (UK time).</small></div>
+    <button className="button button-dark" disabled={busy || !suppliers.length || remainingSlots === 0 || selectedIds.length === 0}>{busy ? <LoaderCircle className="spin" size={14} /> : <Send size={14} />}Assign selected</button>
+    {message && <p className="form-result" role="status">{message}</p>}
+  </form>;
+}
 export function RecordCustomerSelection({quotationId}:{quotationId:string}){const router=useRouter();const[busy,setBusy]=useState(false);const[message,setMessage]=useState("");async function select(){const evidence=window.prompt("Enter the WhatsApp message ID or a short audit reference proving the customer selected this quote")?.trim();if(!evidence)return;setBusy(true);setMessage("");try{await call(`/api/admin/quotations/${quotationId}/select`,"POST",{evidence});setMessage("Selection recorded. Both parties can now see the relevant contact details; no winning fee is due.");router.refresh()}catch(error){setMessage(error instanceof Error?error.message:"Selection failed")}finally{setBusy(false)}}return <div className="inline-actions"><button className="button button-dark" disabled={busy} onClick={select}>{busy?<LoaderCircle className="spin" size={14}/>:<Check size={14}/>}Record customer selection</button>{message&&<small>{message}</small>}</div>}
 function CategoryCreateForm({ parentId, title, copy, successMessage }: { parentId: string | null; title: string; copy: string; successMessage: string }) {
   const router = useRouter();

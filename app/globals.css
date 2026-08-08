@@ -464,6 +464,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .attachment-preview-meta > a { width: 28px; height: 28px; display: grid; place-items: center; color: #65736e; border-radius: 6px; }
 .attachment-preview-meta > a:hover { background: #edf3ef; color: #315f50; }
 .attachment-file.locked { cursor: default; }
+.attachment-file.demo-attachment { cursor: default; }
 .attachment-scan-action { display: grid; justify-items: end; gap: 4px; }
 .attachment-scan-action .button { min-height: 28px; padding: 6px 8px; white-space: nowrap; font-size: 8px; }
 .attachment-scan-action small { max-width: 170px; white-space: normal; text-align: right; }

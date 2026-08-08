@@ -16,7 +16,7 @@ export function ClaimOpportunity({ reference }: { reference: string }) {
       const response = await fetch(`/api/opportunities/${encodeURIComponent(reference)}/claim`, {
         method: "POST",
       });
-      const body = await response.json();
+      const body = await response.json().catch(() => ({} as { error?: string }));
       if (!response.ok) throw new Error(body.error ?? "This opportunity could not be claimed");
       router.refresh();
     } catch (error) {

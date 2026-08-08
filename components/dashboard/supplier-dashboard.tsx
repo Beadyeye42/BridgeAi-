@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowUpRight, Bell, BriefcaseBusiness, CheckCircle2, ChevronRight, CircleGauge, Clock3, FileCheck2, FileText, HelpCircle, MapPin, MoreHorizontal, Paperclip, Plus, Search, Sparkles, Target, TrendingUp, Trophy } from "lucide-react";
+import { ArrowUpRight, Bell, BriefcaseBusiness, CheckCircle2, ChevronRight, CircleGauge, Clock3, FileCheck2, FileText, HelpCircle, MapPin, MoreHorizontal, Paperclip, Plus, Sparkles, Target, TrendingUp, Trophy } from "lucide-react";
 import type { DashboardData } from "@/lib/demo-data";
 import { Sidebar } from "./sidebar";
 import { BrandMark } from "@/components/brand-mark";
@@ -9,15 +9,17 @@ import { RefreshButton } from "./refresh-button";
 
 export function SupplierDashboard({ data, demo = false, onboarding, supplierStatus = "APPROVED" }: { data: DashboardData; demo?: boolean; onboarding?: SupplierOnboardingReadiness; supplierStatus?: string }) {
   const requestBase = demo ? "/requests" : "/dashboard/requests";
+  const requestListHref = demo ? "/demo#new-requests" : "/dashboard/requests";
+  const notificationsHref = demo ? "/login" : "/dashboard/notifications";
   return (
     <div className="portal-shell">
-      <Sidebar companyName={data.companyName} initials={data.initials} companyStatus={supplierStatus} activeRequestCount={data.stats.newRequests} unreadNotificationCount={data.unreadNotificationCount} />
-      <header className="mobile-header"><BrandMark compact /><span>{data.companyName}</span><div className="mobile-header-actions"><RefreshButton compact/><Link href="/dashboard/notifications" className="icon-button" aria-label="Notifications"><Bell size={19} /></Link></div></header>
+      <Sidebar companyName={data.companyName} initials={data.initials} companyStatus={supplierStatus} activeRequestCount={data.stats.newRequests} unreadNotificationCount={data.unreadNotificationCount} demo={demo} />
+      <header className="mobile-header"><BrandMark compact /><span>{data.companyName}</span><div className="mobile-header-actions"><RefreshButton compact/><Link href={notificationsHref} className="icon-button" aria-label={demo ? "Supplier sign in" : "Notifications"}><Bell size={19} /></Link></div></header>
       <main className="portal-main">
         {demo && <div className="demo-banner"><Sparkles size={15} /><span><b>Demonstration workspace</b> — realistic sample data, no customer information.</span><Link href="/login">Supplier sign in <ArrowUpRight size={14} /></Link></div>}
         <div className="page-heading">
           <div><p className="eyebrow">{demo ? "Sunday, 2 August" : new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long" }).format(new Date())}</p><h1>Good afternoon, {data.contactName.split(" ")[0]}.</h1><p>Here’s what needs your attention across {data.companyName}.</p></div>
-          <div className="heading-actions"><button className="search-button" aria-label="Search"><Search size={18} /><span>Search</span><kbd>⌘ K</kbd></button><RefreshButton/><Link href="/dashboard/notifications" className="icon-button desktop-only" aria-label="Notifications"><Bell size={19} />{data.unreadNotificationCount > 0 && <i />}</Link><span className="avatar">{data.initials}</span></div>
+          <div className="heading-actions"><RefreshButton/><Link href={notificationsHref} className="icon-button desktop-only" aria-label={demo ? "Supplier sign in" : "Notifications"}><Bell size={19} />{!demo && data.unreadNotificationCount > 0 && <i />}</Link><span className="avatar">{data.initials}</span></div>
         </div>
 
         {onboarding && (!onboarding.ready || supplierStatus !== "APPROVED")
@@ -27,36 +29,36 @@ export function SupplierDashboard({ data, demo = false, onboarding, supplierStat
         {data.latestWin ? <section className="win-alert" role="status">
           <div className="win-alert-icon"><Trophy size={25} /></div>
           <div><p className="eyebrow">Customer selected your quotation</p><h2>You won {data.latestWin.title}</h2><p>Your {data.latestWin.value} quotation was accepted. The customer’s contact details are now ready inside the job.</p></div>
-          <div className="win-alert-actions"><Link href={`/dashboard/requests/${data.latestWin.reference}`} className="button win-alert-primary">Open won job <ArrowUpRight size={16} /></Link><Link href="/dashboard/requests?view=won" className="win-alert-link">View all won jobs</Link></div>
+          <div className="win-alert-actions"><Link href={`${requestBase}/${data.latestWin.reference}`} className="button win-alert-primary">Open won job <ArrowUpRight size={16} /></Link><Link href={demo ? "/demo#new-requests" : "/dashboard/requests?view=won"} className="win-alert-link">View all won jobs</Link></div>
         </section> : null}
 
         {data.stats.newRequests > 0 ? <section className="attention-card">
           <div className="attention-icon"><BriefcaseBusiness size={21} /></div>
           <div><b>{data.stats.newRequests} matched quote request{data.stats.newRequests === 1 ? " is" : "s are"} waiting</b><p>These requests were selected for your company from its confirmed capabilities, coverage and current capacity.</p></div>
-          <Link href="/dashboard/requests" className="button button-dark">View leads <ArrowUpRight size={16} /></Link>
+          <Link href={requestListHref} className="button button-dark">View leads <ArrowUpRight size={16} /></Link>
         </section> : null}
 
         {data.upgradeInsight && data.upgradeInsight.tier !== "NATIONWIDE" && data.upgradeInsight.geographicMisses > 0 ? <section className="attention-card upgrade-insight">
           <div className="attention-icon"><MapPin size={21}/></div>
           <div><b>{data.upgradeInsight.geographicMisses} otherwise suitable opportunit{data.upgradeInsight.geographicMisses === 1 ? "y was" : "ies were"} outside your chosen coverage in the last 30 days</b><p>{data.upgradeInsight.regionalBandMisses > 0 ? `${data.upgradeInsight.regionalBandMisses} were between 40 and 100 miles from your company base. ` : ""}Only anonymous totals are shown—no customer details or specifications are revealed.</p></div>
-          <Link href="/dashboard/subscription" className="button button-outline">Compare coverage plans <ArrowUpRight size={16}/></Link>
+          <Link href={demo ? "/register" : "/dashboard/subscription"} className="button button-outline">Compare coverage plans <ArrowUpRight size={16}/></Link>
         </section> : null}
 
         <section className="stats-grid" aria-label="Supplier overview">
           <Stat label="Matched leads" value={String(data.stats.newRequests).padStart(2, "0")} helper={demo ? "2 added today" : "Assigned to your company"} icon={<FileText size={19} />} tone="amber" />
           <Stat label="Quotes in progress" value={String(data.stats.openQuotes).padStart(2, "0")} helper={demo ? "£86.4k total value" : "Submitted and awaiting a decision"} icon={<CircleGauge size={19} />} tone="blue" />
-          <Stat label="Won this month" value={String(data.stats.wonThisMonth).padStart(2, "0")} helper={demo ? "£42.8k secured" : data.performance.monthValue === "£0" ? "No wins recorded yet" : `${data.performance.monthValue} secured`} icon={<Target size={19} />} tone="green" href="/dashboard/requests?view=won" featured={data.stats.wonThisMonth > 0} />
+          <Stat label="Won this month" value={String(data.stats.wonThisMonth).padStart(2, "0")} helper={demo ? "£42.8k secured" : data.performance.monthValue === "£0" ? "No wins recorded yet" : `${data.performance.monthValue} secured`} icon={<Target size={19} />} tone="green" href={demo ? "/demo#new-requests" : "/dashboard/requests?view=won"} featured={data.stats.wonThisMonth > 0} />
           <Stat label="Response rate" value={`${data.stats.responseRate}%`} helper={demo ? "Up 6% from July" : "Assigned requests answered in 30 days"} icon={<TrendingUp size={19} />} tone="violet" />
         </section>
 
         <div className="dashboard-grid">
           <div className="dashboard-primary">
             <section className="panel" id="new-requests">
-              <div className="panel-heading"><div><p className="eyebrow">Matched opportunities</p><h2>Requests selected for you</h2></div><Link href="/dashboard/requests" className="text-link">View all <ChevronRight size={15} /></Link></div>
+              <div className="panel-heading"><div><p className="eyebrow">Matched opportunities</p><h2>Requests selected for you</h2></div><Link href={requestListHref} className="text-link">View all <ChevronRight size={15} /></Link></div>
               <div className="request-list">
                 {data.requests.map((request) => (
                   <article className="request-card" key={request.reference}>
-                    <div className="request-top"><div className="request-ref"><span className={`status-dot ${request.urgency}`} />{request.reference}<span className={`tag ${request.status.toLowerCase()}`}>{request.status}</span></div><button className="icon-button subtle" aria-label={`More options for ${request.reference}`}><MoreHorizontal size={18} /></button></div>
+                    <div className="request-top"><div className="request-ref"><span className={`status-dot ${request.urgency}`} />{request.reference}<span className={`tag ${request.status.toLowerCase()}`}>{request.status}</span></div></div>
                     <h3><Link href={`${requestBase}/${request.reference}`}>{request.title}</Link></h3>
                     <p className="category">{request.category}</p>
                     <div className="request-meta"><span><MapPin size={15} />{request.area}<small>{request.distance}</small></span><span><Paperclip size={15} />{request.attachmentCount} files</span><span><FileCheck2 size={15} />{request.itemCount} items</span></div>
@@ -66,8 +68,8 @@ export function SupplierDashboard({ data, demo = false, onboarding, supplierStat
               </div>
             </section>
 
-            <section className="panel recent-panel">
-              <div className="panel-heading"><div><p className="eyebrow">Pipeline</p><h2>Recent quotations</h2></div><Link href="/dashboard/requests?view=submitted" className="text-link">Quotation history <ChevronRight size={15} /></Link></div>
+            <section className="panel recent-panel" id="recent-quotes">
+              <div className="panel-heading"><div><p className="eyebrow">Pipeline</p><h2>Recent quotations</h2></div><Link href={demo ? "/demo#recent-quotes" : "/dashboard/requests?view=submitted"} className="text-link">Quotation history <ChevronRight size={15} /></Link></div>
               <div className="table-wrap"><table><thead><tr><th>Request</th><th>Submitted</th><th>Quote value</th><th>Status</th><th /></tr></thead><tbody>{data.recent.map((item) => <tr key={item.reference}><td><b>{item.title}</b><span>{item.reference}</span></td><td>{item.date}</td><td><b>{item.value}</b></td><td><span className={`result ${item.status.toLowerCase()}`}>{item.status}</span></td><td><ChevronRight size={16} /></td></tr>)}</tbody></table></div>
             </section>
           </div>
@@ -81,14 +83,14 @@ export function SupplierDashboard({ data, demo = false, onboarding, supplierStat
             </section>
 
             <section className="panel subscription-card">
-              <div className="plan-orbit"><i /><Plus size={18} /></div><p className="eyebrow">{data.subscription.plan} plan</p><h3>Your subscription is {data.subscription.status.toLowerCase()}</h3><p>{demo ? "Unlimited team members and up to 25 qualified requests each month." : "Your live billing status and renewal date are shown here."}</p>{demo ? <><div className="usage"><span><b>11</b> of 25 requests</span><span>44%</span></div><div className="usage-track"><i /></div></> : null}<small>{data.subscription.renewal === "—" ? "No renewal date recorded" : `Renews ${data.subscription.renewal}`}</small><Link href="/dashboard/subscription" className="text-link">Manage subscription <ArrowUpRight size={14} /></Link>
+              <div className="plan-orbit"><i /><Plus size={18} /></div><p className="eyebrow">{data.subscription.plan} plan</p><h3>Your subscription is {data.subscription.status.toLowerCase()}</h3><p>{demo ? "Unlimited team members and up to 25 qualified requests each month." : "Your live billing status and renewal date are shown here."}</p>{demo ? <><div className="usage"><span><b>11</b> of 25 requests</span><span>44%</span></div><div className="usage-track"><i /></div></> : null}<small>{data.subscription.renewal === "—" ? "No renewal date recorded" : `Renews ${data.subscription.renewal}`}</small><Link href={demo ? "/register" : "/dashboard/subscription"} className="text-link">{demo ? "Apply to join" : "Manage subscription"} <ArrowUpRight size={14} /></Link>
             </section>
 
             <section className="help-card"><HelpCircle size={20} /><div><b>Need a hand?</b><p>Your supplier success team usually replies within one working hour.</p><Link href="/help">Contact support</Link></div></section>
           </aside>
         </div>
       </main>
-      <nav className="mobile-nav" aria-label="Mobile navigation"><Link href="/dashboard" className="active"><CircleGauge size={20} />Overview</Link><Link href="/dashboard/requests"><FileText size={20} />Requests{data.stats.newRequests > 0 && <i>{data.stats.newRequests}</i>}</Link><Link href="/dashboard/company"><BriefcaseBusiness size={20} />Company</Link><Link href="/dashboard/settings"><MoreHorizontal size={20} />More</Link></nav>
+      <nav className="mobile-nav" aria-label="Mobile navigation"><Link href={demo ? "/demo" : "/dashboard"} className="active"><CircleGauge size={20} />Overview</Link><Link href={requestListHref}><FileText size={20} />Requests{data.stats.newRequests > 0 && <i>{data.stats.newRequests}</i>}</Link><Link href={demo ? "/register" : "/dashboard/company"}><BriefcaseBusiness size={20} />{demo ? "Join" : "Company"}</Link><Link href={demo ? "/help" : "/dashboard/settings"}><MoreHorizontal size={20} />More</Link></nav>
     </div>
   );
 }

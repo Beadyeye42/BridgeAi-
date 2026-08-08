@@ -9,7 +9,7 @@ export function CheckoutButton({ endpoint, children, body, className = "button b
     setBusy(true); setError("");
     try {
       const response = await fetch(endpoint, { method: "POST", headers: body ? { "Content-Type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined });
-      const result = await response.json();
+      const result = await response.json().catch(() => ({} as { error?: string; url?: string }));
       if (!response.ok || !result.url) throw new Error(result.error || "Checkout could not be started");
       window.location.assign(result.url);
     } catch (cause) {
