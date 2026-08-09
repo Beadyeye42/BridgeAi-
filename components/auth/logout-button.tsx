@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { LogOut } from "lucide-react";
 
-export function LogoutButton() {
+export function LogoutButton({ compact = false }: { compact?: boolean }) {
   const [busy, setBusy] = useState(false);
 
   async function logout() {
@@ -17,5 +17,12 @@ export function LogoutButton() {
     }
   }
 
-  return <button className="sidebar-link sidebar-logout" type="button" disabled={busy} onClick={logout}><LogOut size={18} />{busy ? "Signing out…" : "Sign out"}</button>;
+  return <button
+    aria-label={busy ? "Signing out" : "Sign out"}
+    className={compact ? "icon-button" : "sidebar-link sidebar-logout"}
+    title={busy ? "Signing out…" : "Sign out"}
+    type="button"
+    disabled={busy}
+    onClick={logout}
+  ><LogOut size={18} />{compact ? null : busy ? "Signing out…" : "Sign out"}</button>;
 }

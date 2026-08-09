@@ -271,6 +271,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .table-wrap { overflow-x: auto; }
   .recent-panel table { min-width: 570px; }
   .mobile-nav { position: fixed; inset: auto 0 0; height: 69px; display: grid; grid-template-columns: repeat(4,1fr); border-top: 1px solid #dde2de; background: rgba(255,255,255,.96); backdrop-filter: blur(14px); z-index: 40; }
+  .affiliate-mobile-nav { grid-template-columns: repeat(5,1fr); }
   .mobile-nav a { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #84908b; font-size: 8px; font-weight: 600; }
   .mobile-nav a.active { color: #275a49; }
   .mobile-nav i { position: absolute; top: 8px; margin-left: 19px; width: 15px; height: 15px; display: grid; place-items: center; border-radius: 50%; background: #cbdf9c; color: #24483d; font-size: 7px; font-style: normal; }

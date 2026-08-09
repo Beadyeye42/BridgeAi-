@@ -74,12 +74,16 @@ describe("affiliate invoice accounting", () => {
 
   it("keeps affiliate dashboards live with an RLS-protected recovery path", () => {
     const refresh = read("components/affiliate/realtime-refresh.tsx");
+    const shell = read("components/affiliate/affiliate-shell.tsx");
     for (const table of ["affiliate_referrals", "affiliate_commissions", "affiliate_notifications", "affiliate_payouts"]) expect(refresh).toContain(table);
     expect(refresh).toContain('schema: "bridge_ai"');
     expect(refresh).toContain("affiliateId=eq.${affiliateId}");
     expect(refresh).toContain("router.refresh()");
     expect(refresh).toContain("60_000");
     expect(refresh).toContain('document.addEventListener("visibilitychange"');
+    expect(shell).toContain("affiliate-mobile-nav");
+    expect(shell).toContain("<LogoutButton />");
+    expect(shell).toContain("<LogoutButton compact />");
   });
 
   it("forces RLS and prevents cross-affiliate reads", () => {

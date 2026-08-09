@@ -1,7 +1,7 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import { applicationOrigin } from "@/lib/config";
-import { trustedPrisma } from "@/lib/db";
+import { runAsDatabaseWorker } from "@/lib/db";
 import { operationalEmailConfiguration, sendOperationalAlertEmail } from "@/lib/email";
 import { buildOperationalAlertCandidates } from "@/lib/monitoring/candidates";
 
@@ -16,8 +16,8 @@ function monitoringOrigin() {
 
 export async function discoverOperationalAlerts(now = new Date()) {
   const staleAttachmentBefore = new Date(now.getTime() - STALE_ATTACHMENT_MS);
-  const [failedWhatsAppJobs, failedStripeWebhooks, problemAttachments, storageEvents] = await Promise.all([
-    trustedPrisma.whatsAppJob.findMany({
+  const [failedWhatsAppJobs, failedStripeWebhooks, problemAttachments, storageEvents] = await runAsDatabaseWorker("production_monitoring", (tx) => Promise.all([
+    tx.whatsAppJob.findMany({
       where: {
         status: "FAILED",
         NOT: { errorCode: { startsWith: "SUPERSEDED_" } },
@@ -25,12 +25,12 @@ export async function discoverOperationalAlerts(now = new Date()) {
       select: { id: true, type: true, attempts: true, errorCode: true },
       take: 100,
     }),
-    trustedPrisma.webhookEvent.findMany({
+    tx.webhookEvent.findMany({
       where: { provider: "STRIPE", failedAt: { not: null }, processedAt: null },
       select: { id: true, eventType: true, retryCount: true, failureReason: true },
       take: 100,
     }),
-    trustedPrisma.attachment.findMany({
+    tx.attachment.findMany({
       where: {
         OR: [
           { scanStatus: { in: ["FAILED", "REJECTED"] } },
@@ -40,7 +40,7 @@ export async function discoverOperationalAlerts(now = new Date()) {
       select: { id: true, fileName: true, scanStatus: true, createdAt: true },
       take: 100,
     }),
-    trustedPrisma.systemEvent.findMany({
+    tx.systemEvent.findMany({
       where: {
         status: { not: "RESOLVED" },
         severity: { in: ["ERROR", "CRITICAL"] },
@@ -53,7 +53,7 @@ export async function discoverOperationalAlerts(now = new Date()) {
       select: { id: true, severity: true, code: true, message: true },
       take: 100,
     }),
-  ]);
+  ]));
   const candidates = buildOperationalAlertCandidates({
     failedWhatsAppJobs,
     failedStripeWebhooks,
@@ -65,7 +65,7 @@ export async function discoverOperationalAlerts(now = new Date()) {
   }, monitoringOrigin());
   if (!candidates.length) return { discovered: 0, queued: 0 };
 
-  return trustedPrisma.$transaction(async (tx) => {
+  return runAsDatabaseWorker("production_monitoring", async (tx) => {
     const existing = await tx.productionAlert.findMany({
       where: { fingerprint: { in: candidates.map((candidate) => candidate.fingerprint) } },
       select: { fingerprint: true },
@@ -87,7 +87,7 @@ export async function discoverOperationalAlerts(now = new Date()) {
 
 async function claimAlertBatch(now = new Date()) {
   const staleLockBefore = new Date(now.getTime() - STALE_DELIVERY_LOCK_MS);
-  return trustedPrisma.$transaction(async (tx) => {
+  return runAsDatabaseWorker("production_monitoring", async (tx) => {
     await tx.productionAlert.updateMany({
       where: { status: "PROCESSING", lockedAt: { lt: staleLockBefore }, attempts: { lt: MAX_DELIVERY_ATTEMPTS } },
       data: { status: "FAILED", lockedAt: null, failedAt: now, availableAt: now, lastError: "STALE_DELIVERY_LOCK" },
@@ -126,7 +126,7 @@ export async function dispatchOperationalAlerts(now = new Date()) {
       body: alert.body,
       actionUrl: alert.actionUrl,
     })), `bridge-ai-monitoring-${digest}`);
-    await trustedPrisma.$transaction(async (tx) => {
+    await runAsDatabaseWorker("production_monitoring", async (tx) => {
       await tx.productionAlert.updateMany({
         where: { id: { in: ids }, status: "PROCESSING" },
         data: { status: "SENT", sentAt: new Date(), lockedAt: null, providerEmailId: result.providerEmailId },
@@ -143,7 +143,7 @@ export async function dispatchOperationalAlerts(now = new Date()) {
     const message = error instanceof Error ? error.message.slice(0, 500) : "Unknown alert delivery failure";
     const attempts = Math.max(...alerts.map((alert) => alert.attempts));
     const retryDelayMs = Math.min(6 * 60 * 60_000, Math.max(60_000, 2 ** attempts * 60_000));
-    await trustedPrisma.$transaction(async (tx) => {
+    await runAsDatabaseWorker("production_monitoring", async (tx) => {
       await tx.productionAlert.updateMany({
         where: { id: { in: ids }, status: "PROCESSING" },
         data: { status: "FAILED", failedAt: new Date(), lockedAt: null, lastError: message, availableAt: new Date(Date.now() + retryDelayMs) },

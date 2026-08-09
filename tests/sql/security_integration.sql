@@ -869,6 +869,30 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'affiliate cancellation administrator alert policy is missing';
   END IF;
+  IF (
+    SELECT count(*)
+    FROM pg_policies
+    WHERE schemaname='bridge_ai'
+      AND policyname IN (
+        'production_monitoring_select_failed_whatsapp_jobs',
+        'production_monitoring_select_failed_stripe_webhooks',
+        'production_monitoring_select_problem_attachments',
+        'production_monitoring_select_storage_events',
+        'production_monitoring_select_alerts',
+        'production_monitoring_insert_alerts',
+        'production_monitoring_update_alerts',
+        'production_monitoring_insert_audit_logs'
+      )
+  ) <> 8 THEN
+    RAISE EXCEPTION 'production monitoring least-privilege policies are incomplete';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM bridge_ai."AuditLog"
+    WHERE action='SYSTEM.PRODUCTION_MONITORING_WORKER_RLS_ENABLED'
+      AND "entityType"='SecurityConfiguration'
+  ) THEN
+    RAISE EXCEPTION 'production monitoring worker security audit is missing';
+  END IF;
 END
 $test$;
 
