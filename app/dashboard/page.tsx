@@ -16,6 +16,7 @@ export default async function DashboardPage() {
   const session = await getCurrentSession();
   if (!session) redirect("/login");
   if (session.user.role === "ADMINISTRATOR") redirect("/admin");
+  if (session.user.role === "AFFILIATE") redirect("/affiliate");
   const companyId = getPrimarySupplierCompanyId(session);
   if (!companyId) redirect("/account-restricted");
   const dashboard = await getSupplierDashboard(companyId, session.userId);

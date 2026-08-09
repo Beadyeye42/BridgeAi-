@@ -11,6 +11,7 @@ export const getCurrentSession = cache(async () => {
       where: { id: authUser.id },
       include: {
         platformAdministrator: true,
+        affiliate: true,
         memberships: {
           where: { status: "ACTIVE" },
           include: { supplierCompany: true },
@@ -22,13 +23,14 @@ export const getCurrentSession = cache(async () => {
   if (!profile || profile.status !== "ACTIVE") return null;
 
   const isAdministrator = Boolean(profile.platformAdministrator?.active);
+  const isAffiliate = profile.affiliate?.status === "ACTIVE";
   return {
     userId: authUser.id,
     accessToken: null,
     expiresAt: null,
     user: {
       ...profile,
-      role: isAdministrator ? ("ADMINISTRATOR" as const) : ("SUPPLIER" as const),
+      role: isAdministrator ? ("ADMINISTRATOR" as const) : isAffiliate ? ("AFFILIATE" as const) : ("SUPPLIER" as const),
     },
   };
 });

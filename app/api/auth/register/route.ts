@@ -38,12 +38,22 @@ export async function POST(request: Request) {
         )
       `;
     } else {
-      await trustedPrisma.$queryRaw`
-        SELECT bridge_private.bootstrap_supplier(
-          ${data.user.id}::uuid, ${parsed.data.email}, ${parsed.data.firstName},
-          ${parsed.data.lastName}, ${parsed.data.companyName!}, ${parsed.data.phone!}, ${TERMS_VERSION}
-        )
-      `;
+      if (parsed.data.referralCode) {
+        await trustedPrisma.$queryRaw`
+          SELECT bridge_private.bootstrap_referred_supplier(
+            ${data.user.id}::uuid, ${parsed.data.email}, ${parsed.data.firstName},
+            ${parsed.data.lastName}, ${parsed.data.companyName!}, ${parsed.data.phone!},
+            ${TERMS_VERSION}, ${parsed.data.referralCode}
+          )
+        `;
+      } else {
+        await trustedPrisma.$queryRaw`
+          SELECT bridge_private.bootstrap_supplier(
+            ${data.user.id}::uuid, ${parsed.data.email}, ${parsed.data.firstName},
+            ${parsed.data.lastName}, ${parsed.data.companyName!}, ${parsed.data.phone!}, ${TERMS_VERSION}
+          )
+        `;
+      }
     }
   } catch (cause) {
     await getSupabaseAdmin().auth.admin.deleteUser(data.user.id).catch(() => undefined);

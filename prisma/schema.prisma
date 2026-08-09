@@ -319,6 +319,81 @@ enum AccreditationStatus {
   @@schema("bridge_ai")
 }
 
+enum AffiliateStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  REJECTED
+
+  @@schema("bridge_ai")
+}
+
+enum AffiliateReferralStatus {
+  CLICKED
+  REGISTERED
+  AWAITING_APPROVAL
+  APPROVED
+  QUALIFICATION_MONTH
+  COMMISSION_ACTIVE
+  PAST_DUE
+  CANCELLATION_SCHEDULED
+  CANCELLED
+  COMMISSION_COMPLETED
+  REJECTED
+
+  @@schema("bridge_ai")
+}
+
+enum AffiliateCommissionEntryType {
+  INVOICE
+  REFUND_ADJUSTMENT
+  DISPUTE_ADJUSTMENT
+
+  @@schema("bridge_ai")
+}
+
+enum AffiliateCommissionStatus {
+  QUALIFICATION
+  PENDING
+  AVAILABLE
+  SCHEDULED
+  PAID
+  REVERSED
+  NOT_ELIGIBLE
+  ADJUSTMENT_PENDING
+  ADJUSTMENT_APPLIED
+
+  @@schema("bridge_ai")
+}
+
+enum AffiliatePayoutStatus {
+  PENDING
+  VALIDATING
+  AVAILABLE
+  SCHEDULED
+  PAID
+  REVERSED
+
+  @@schema("bridge_ai")
+}
+
+enum AffiliateNotificationType {
+  CANCELLATION_SCHEDULED
+  CANCELLATION_COMPLETED
+  PAYMENT_FAILED
+  SUBSCRIPTION_RECOVERED
+  PLAN_UPGRADED
+  PLAN_DOWNGRADED
+  COMMISSION_STARTED
+  COMMISSION_COMPLETED
+  COMMISSION_REVERSED
+  PAYOUT_AVAILABLE
+  PAYOUT_PAID
+  SYSTEM
+
+  @@schema("bridge_ai")
+}
+
 model User {
   id                       String                    @id @db.Uuid
   email                    String                    @unique @db.Citext
@@ -346,6 +421,8 @@ model User {
   accreditationsReviewed   SupplierAccreditation[]   @relation("AccreditationReviewer")
   complimentaryGranted     Subscription[]            @relation("ComplimentaryMembershipGrantor")
   complimentaryRevoked     Subscription[]            @relation("ComplimentaryMembershipRevoker")
+  affiliate                Affiliate?
+  affiliateAuditLogs       AffiliateAuditLog[]       @relation("AffiliateAuditActor")
 
   @@index([status])
   @@map("portal_profiles")
@@ -437,6 +514,8 @@ model SupplierCompany {
   successFees                        SupplierSuccessFee[]
   contactAccess                      ContactAccessGrant[]
   accreditations                     SupplierAccreditation[]
+  affiliateReferral                  AffiliateReferral?
+  affiliateCommissions               AffiliateCommission[]
 
   @@index([status])
   @@index([postcode])
@@ -984,24 +1063,25 @@ model CollectionLocation {
 }
 
 model MembershipPlan {
-  id                         String         @id @default(cuid())
-  code                       String         @unique
+  id                         String                @id @default(cuid())
+  code                       String                @unique
   name                       String
-  tier                       MembershipTier @unique
+  tier                       MembershipTier        @unique
   description                String?
   monthlyPricePence          Int
-  currency                   String         @default("GBP") @db.VarChar(3)
+  currency                   String                @default("GBP") @db.VarChar(3)
   maximumRadiusMiles         Int?
-  nationwideAllowed          Boolean        @default(false)
+  nationwideAllowed          Boolean               @default(false)
   maximumActiveOpportunities Int
-  taxEnabled                 Boolean        @default(false)
-  providerProductId          String?        @unique
-  providerPriceId            String?        @unique
-  active                     Boolean        @default(true)
-  displayOrder               Int            @default(0)
-  createdAt                  DateTime       @default(now())
-  updatedAt                  DateTime       @updatedAt
+  taxEnabled                 Boolean               @default(false)
+  providerProductId          String?               @unique
+  providerPriceId            String?               @unique
+  active                     Boolean               @default(true)
+  displayOrder               Int                   @default(0)
+  createdAt                  DateTime              @default(now())
+  updatedAt                  DateTime              @updatedAt
   subscriptions              Subscription[]
+  affiliateCommissions       AffiliateCommission[]
 
   @@index([active, displayOrder])
   @@schema("bridge_ai")
@@ -1073,6 +1153,7 @@ model Subscription {
   promotion                     MembershipPromotion?     @relation(fields: [promotionId], references: [id], onDelete: SetNull)
   complimentaryGrantedBy        User?                    @relation("ComplimentaryMembershipGrantor", fields: [complimentaryGrantedById], references: [id], onDelete: SetNull)
   complimentaryRevokedBy        User?                    @relation("ComplimentaryMembershipRevoker", fields: [complimentaryRevokedById], references: [id], onDelete: SetNull)
+  affiliateCommissions          AffiliateCommission[]
 
   @@index([status, currentPeriodEnd])
   @@index([membershipPlanId, status])
@@ -1168,6 +1249,233 @@ model WebhookEvent {
 
   @@unique([provider, externalEventId])
   @@index([provider, processedAt, failedAt])
+  @@schema("bridge_ai")
+}
+
+model AffiliateProgramme {
+  id                    String   @id @default("default")
+  maximumActive         Int      @default(10)
+  commissionRateBps     Int      @default(1600)
+  qualificationPayments Int      @default(1)
+  commissionPayments    Int      @default(12)
+  validationDays        Int      @default(30)
+  enabled               Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@map("affiliate_programme")
+  @@schema("bridge_ai")
+}
+
+model Affiliate {
+  id                String                  @id @default(cuid())
+  userId            String                  @unique @db.Uuid
+  code              String                  @unique @db.VarChar(24)
+  displayName       String
+  status            AffiliateStatus         @default(PENDING)
+  commissionRateBps Int?
+  approvedAt        DateTime?
+  approvedById      String?                 @db.Uuid
+  suspendedAt       DateTime?
+  suspensionReason  String?
+  fraudFlags        Json?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  user              User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  referrals         AffiliateReferral[]
+  clicks            ReferralClick[]
+  commissions       AffiliateCommission[]
+  payouts           AffiliatePayout[]
+  notifications     AffiliateNotification[]
+  auditLogs         AffiliateAuditLog[]
+
+  @@index([status, createdAt])
+  @@map("affiliates")
+  @@schema("bridge_ai")
+}
+
+model AffiliateReferral {
+  id                                 String                  @id @default(cuid())
+  affiliateId                        String
+  supplierCompanyId                  String                  @unique
+  referralCode                       String                  @db.VarChar(24)
+  status                             AffiliateReferralStatus @default(REGISTERED)
+  referredAt                         DateTime                @default(now())
+  signupAt                           DateTime?
+  approvedAt                         DateTime?
+  firstPaidAt                        DateTime?
+  qualificationCompletedAt           DateTime?
+  successfulPaidPeriods              Int                     @default(0)
+  eligibleCommissionPeriodsCompleted Int                     @default(0)
+  cancellationScheduledAt            DateTime?
+  cancelledAt                        DateTime?
+  completedAt                        DateTime?
+  lastPaymentFailedAt                DateTime?
+  lastRecoveredAt                    DateTime?
+  attributionLockedAt                DateTime?
+  attributionOverrideReason          String?
+  createdAt                          DateTime                @default(now())
+  updatedAt                          DateTime                @updatedAt
+  affiliate                          Affiliate               @relation(fields: [affiliateId], references: [id], onDelete: Restrict)
+  supplierCompany                    SupplierCompany         @relation(fields: [supplierCompanyId], references: [id], onDelete: Restrict)
+  commissions                        AffiliateCommission[]
+
+  @@index([affiliateId, status, createdAt])
+  @@index([referralCode])
+  @@map("affiliate_referrals")
+  @@schema("bridge_ai")
+}
+
+model ReferralClick {
+  id                   String    @id @default(cuid())
+  affiliateId          String
+  referralCode         String    @db.VarChar(24)
+  attributionTokenHash String?   @db.VarChar(64)
+  ipHash               String?   @db.VarChar(64)
+  userAgent            String?
+  landingPath          String?
+  convertedAt          DateTime?
+  supplierCompanyId    String?
+  createdAt            DateTime  @default(now())
+  affiliate            Affiliate @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+
+  @@index([affiliateId, createdAt])
+  @@index([supplierCompanyId])
+  @@map("referral_clicks")
+  @@schema("bridge_ai")
+}
+
+model AffiliateCommission {
+  id                    String                       @id @default(cuid())
+  externalLedgerKey     String                       @unique
+  entryType             AffiliateCommissionEntryType @default(INVOICE)
+  affiliateId           String
+  referralId            String
+  supplierCompanyId     String
+  subscriptionId        String
+  membershipPlanId      String?
+  stripeInvoiceId       String
+  stripePaymentId       String?
+  stripeChargeId        String?
+  stripeRefundId        String?
+  stripeDisputeId       String?
+  sourceCommissionId    String?
+  planCode              String
+  currency              String                       @default("GBP") @db.VarChar(3)
+  billingAmountPence    Int
+  vatAmountPence        Int
+  eligibleRevenuePence  Int
+  commissionRateBps     Int
+  commissionAmountPence Int
+  paidBillingPeriod     Int?
+  commissionSequence    Int?
+  billingPeriodStart    DateTime?
+  billingPeriodEnd      DateTime?
+  status                AffiliateCommissionStatus
+  earnedAt              DateTime
+  validationAt          DateTime?
+  validatedAt           DateTime?
+  paidAt                DateTime?
+  reversedAt            DateTime?
+  createdAt             DateTime                     @default(now())
+  affiliate             Affiliate                    @relation(fields: [affiliateId], references: [id], onDelete: Restrict)
+  referral              AffiliateReferral            @relation(fields: [referralId], references: [id], onDelete: Restrict)
+  supplierCompany       SupplierCompany              @relation(fields: [supplierCompanyId], references: [id], onDelete: Restrict)
+  subscription          Subscription                 @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
+  membershipPlan        MembershipPlan?              @relation(fields: [membershipPlanId], references: [id], onDelete: Restrict)
+  sourceCommission      AffiliateCommission?         @relation("AffiliateCommissionAdjustments", fields: [sourceCommissionId], references: [id], onDelete: Restrict)
+  adjustments           AffiliateCommission[]        @relation("AffiliateCommissionAdjustments")
+  payoutItem            AffiliatePayoutItem?
+
+  @@index([affiliateId, earnedAt])
+  @@index([affiliateId, status, validationAt])
+  @@index([referralId, earnedAt])
+  @@index([stripeInvoiceId])
+  @@index([stripeChargeId])
+  @@index([supplierCompanyId])
+  @@index([subscriptionId], map: "affiliate_commissions_subscription_idx")
+  @@index([membershipPlanId], map: "affiliate_commissions_membership_plan_idx")
+  @@index([sourceCommissionId], map: "affiliate_commissions_source_idx")
+  @@map("affiliate_commissions")
+  @@schema("bridge_ai")
+}
+
+model AffiliatePayout {
+  id                         String                @id @default(cuid())
+  affiliateId                String
+  statementReference         String                @unique
+  periodStart                DateTime
+  periodEnd                  DateTime
+  currency                   String                @default("GBP") @db.VarChar(3)
+  openingPendingBalancePence Int
+  commissionsEarnedPence     Int
+  reversalsPence             Int
+  adjustmentsPence           Int
+  amountPaidPence            Int
+  closingBalancePence        Int
+  status                     AffiliatePayoutStatus @default(PENDING)
+  scheduledAt                DateTime?
+  paidAt                     DateTime?
+  paymentReference           String?
+  createdAt                  DateTime              @default(now())
+  updatedAt                  DateTime              @updatedAt
+  affiliate                  Affiliate             @relation(fields: [affiliateId], references: [id], onDelete: Restrict)
+  items                      AffiliatePayoutItem[]
+
+  @@index([affiliateId, periodStart, periodEnd])
+  @@index([status, createdAt])
+  @@map("affiliate_payouts")
+  @@schema("bridge_ai")
+}
+
+model AffiliatePayoutItem {
+  id           String              @id @default(cuid())
+  payoutId     String
+  commissionId String              @unique
+  amountPence  Int
+  createdAt    DateTime            @default(now())
+  payout       AffiliatePayout     @relation(fields: [payoutId], references: [id], onDelete: Restrict)
+  commission   AffiliateCommission @relation(fields: [commissionId], references: [id], onDelete: Restrict)
+
+  @@index([payoutId])
+  @@map("affiliate_payout_items")
+  @@schema("bridge_ai")
+}
+
+model AffiliateNotification {
+  id          String                    @id @default(cuid())
+  affiliateId String
+  type        AffiliateNotificationType
+  title       String
+  body        String
+  actionUrl   String?
+  readAt      DateTime?
+  emailedAt   DateTime?
+  createdAt   DateTime                  @default(now())
+  affiliate   Affiliate                 @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+
+  @@index([affiliateId, readAt, createdAt])
+  @@map("affiliate_notifications")
+  @@schema("bridge_ai")
+}
+
+model AffiliateAuditLog {
+  id          String     @id @default(cuid())
+  affiliateId String?
+  actorUserId String?    @db.Uuid
+  action      String
+  entityType  String
+  entityId    String?
+  summary     String
+  metadata    Json?
+  createdAt   DateTime   @default(now())
+  affiliate   Affiliate? @relation(fields: [affiliateId], references: [id], onDelete: SetNull)
+  actor       User?      @relation("AffiliateAuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([affiliateId, createdAt])
+  @@index([entityType, entityId])
+  @@index([actorUserId, createdAt])
+  @@map("affiliate_audit_logs")
   @@schema("bridge_ai")
 }
 

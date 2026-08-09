@@ -5,6 +5,16 @@ import { runAsDatabaseWorker } from "@/lib/db";
 import { getStripe, introductoryMembershipPriceId, standardMembershipPriceId, stripeWebhookSecret } from "@/lib/stripe/server";
 import { FOUNDING_PLAN_CODE, INTRODUCTORY_MONTHS } from "@/lib/billing/pricing";
 import { runProductionMonitoringSafely } from "@/lib/monitoring/operational-alerts";
+import {
+  invoiceSubscriptionId,
+  recordAffiliateDispute,
+  recordAffiliatePaymentFailure,
+  recordAffiliateRefund,
+  recordAffiliatePlanChange,
+  recordPaidAffiliateInvoice,
+  syncAffiliateSubscriptionLifecycle,
+} from "@/lib/affiliates/stripe-ledger";
+import { processAffiliateEmailsSafely } from "@/lib/affiliates/email-worker";
 
 export const runtime = "nodejs";
 const PROVIDER = "STRIPE";
@@ -30,8 +40,10 @@ async function syncSubscription(subscription: Stripe.Subscription) {
   const membershipPromotion = subscription.metadata.membershipPromotionId
     ? await runAsDatabaseWorker("stripe_billing", (tx) => tx.membershipPromotion.findUnique({ where: { id: subscription.metadata.membershipPromotionId } }))
     : null;
+  let previousPlanCode: string | null = null;
   await runAsDatabaseWorker("stripe_billing", async (tx) => {
     const current = await tx.subscription.findUnique({ where: { supplierCompanyId: companyId } });
+    previousPlanCode = current?.planCode ?? null;
     const complimentaryActive = current?.accessSource === "COMPLIMENTARY"
       && current.status === "ACTIVE"
       && Boolean(current.currentPeriodEnd && current.currentPeriodEnd > new Date());
@@ -93,6 +105,8 @@ async function syncSubscription(subscription: Stripe.Subscription) {
       metadata: { stripeStatus: subscription.status, membershipPlanId: membershipPlan?.id ?? null, membershipTier: membershipPlan?.tier ?? null, membershipPromotionId: membershipPromotion?.id ?? null },
     } });
   });
+  await syncAffiliateSubscriptionLifecycle(subscription, localSubscriptionStatus(subscription.status));
+  await recordAffiliatePlanChange(companyId, previousPlanCode, subscription.metadata.planCode || FOUNDING_PLAN_CODE);
 }
 
 async function ensureFoundingPriceSchedule(subscription: Stripe.Subscription) {
@@ -132,7 +146,32 @@ async function ensureFoundingPriceSchedule(subscription: Stripe.Subscription) {
 
 async function processEvent(event: Stripe.Event) {
   if (["customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"].includes(event.type)) {
-    await syncSubscription(event.data.object as Stripe.Subscription);
+    const incoming = event.data.object as Stripe.Subscription;
+    await syncSubscription(await getStripe().subscriptions.retrieve(incoming.id));
+    return;
+  }
+  if (event.type === "invoice.paid") {
+    const invoice = event.data.object as Stripe.Invoice;
+    const subscriptionId = invoiceSubscriptionId(invoice);
+    if (subscriptionId) await syncSubscription(await getStripe().subscriptions.retrieve(subscriptionId));
+    await recordPaidAffiliateInvoice(invoice);
+    return;
+  }
+  if (event.type === "invoice.payment_failed") {
+    await recordAffiliatePaymentFailure(event.data.object as Stripe.Invoice);
+    return;
+  }
+  if (event.type === "refund.created") {
+    await recordAffiliateRefund(event.data.object as Stripe.Refund);
+    return;
+  }
+  if (event.type === "charge.refunded") {
+    const charge = event.data.object as Stripe.Charge;
+    for (const refund of charge.refunds?.data ?? []) await recordAffiliateRefund(refund);
+    return;
+  }
+  if (event.type === "charge.dispute.created") {
+    await recordAffiliateDispute(event.data.object as Stripe.Dispute);
     return;
   }
   if (!["checkout.session.completed", "checkout.session.async_payment_succeeded"].includes(event.type)) return;
@@ -165,6 +204,7 @@ export async function POST(request: Request) {
     } }));
     await processEvent(event);
     await runAsDatabaseWorker("stripe_billing", (tx) => tx.webhookEvent.update({ where: { id: stored.id }, data: { processedAt: new Date() } }));
+    after(processAffiliateEmailsSafely);
     return NextResponse.json({ received: true, duplicate: false });
   } catch (error) {
     console.error("Verified Stripe webhook processing failed", error);

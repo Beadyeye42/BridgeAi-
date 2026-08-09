@@ -48,6 +48,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         },
       });
       foundingMemberNumber = updated.foundingMemberNumber;
+      const referral = await tx.affiliateReferral.findUnique({ where: { supplierCompanyId: id } });
+      if (referral && ["APPROVED", "REJECTED"].includes(parsed.data.status)) {
+        const referralStatus = parsed.data.status === "APPROVED" ? "APPROVED" : "REJECTED";
+        await tx.affiliateReferral.update({ where: { id: referral.id }, data: { status: referralStatus, approvedAt: referralStatus === "APPROVED" ? now : referral.approvedAt } });
+        await tx.affiliateNotification.create({ data: { affiliateId: referral.affiliateId, type: "SYSTEM", title: referralStatus === "APPROVED" ? "Referred supplier approved" : "Referred supplier rejected", body: `${existing.legalName} has been ${referralStatus.toLowerCase()} by Bridge AI.`, actionUrl: "/affiliate/referrals" } });
+        await tx.affiliateAuditLog.create({ data: { affiliateId: referral.affiliateId, actorUserId: auth.session.userId, action: "ADMIN.REFERRAL_SUPPLIER_STATUS_CHANGED", entityType: "AffiliateReferral", entityId: referral.id, summary: `Referred supplier changed to ${referralStatus}`, metadata: { supplierCompanyId: id } } });
+      }
       await writeAuditLog({
         actorUserId: auth.session.userId,
         supplierCompanyId: id,

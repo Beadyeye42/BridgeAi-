@@ -138,3 +138,22 @@ export async function sendSupplierNotificationEmail(
   const payload = await response.json().catch(() => null) as { id?: string } | null;
   return { delivered: true as const, providerEmailId: payload?.id ?? null };
 }
+
+export async function sendAffiliateNotificationEmail(
+  recipientEmail: string,
+  input: { firstName: string; title: string; body: string; portalUrl: string },
+  idempotencyKey: string,
+) {
+  const config = supplierEmailConfiguration();
+  if (!config.configured) throw new Error(`AFFILIATE_EMAIL_NOT_CONFIGURED: ${config.reason}`);
+  const text = [`Hello ${input.firstName},`, "", input.body, "", `View your affiliate portal: ${input.portalUrl}`, "", "Bridge AI · Ironbridge Group Ltd"].join("\n");
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    signal: AbortSignal.timeout(10_000),
+    headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify({ from: process.env.EMAIL_FROM, to: [recipientEmail], subject: input.title, text }),
+  });
+  if (!response.ok) throw new Error(`Affiliate notification email failed with status ${response.status}`);
+  const payload = await response.json().catch(() => null) as { id?: string } | null;
+  return { delivered: true as const, providerEmailId: payload?.id ?? null };
+}

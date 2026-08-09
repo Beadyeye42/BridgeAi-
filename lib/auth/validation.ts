@@ -22,6 +22,7 @@ export const registerSchema = z.object({
   phone: z.string().trim().min(7).max(32).optional(),
   password,
   invitationToken: z.string().min(32).max(256).optional(),
+  referralCode: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{4,24}$/, "Enter a valid referral code").optional(),
   termsAccepted: z.literal(true, { error: "Accept the terms to continue" }),
 }).superRefine((value, context) => {
   if (!value.invitationToken && !value.companyName) context.addIssue({ code: "custom", path: ["companyName"], message: "Enter your company name" });
@@ -32,6 +33,22 @@ export const forgotPasswordSchema = z.object({ email });
 
 export const resetPasswordSchema = z.object({
   password,
+});
+
+export const affiliateCreateSchema = z.object({
+  firstName: z.string().trim().min(2).max(60),
+  lastName: z.string().trim().min(2).max(60),
+  displayName: z.string().trim().min(2).max(120),
+  email,
+  code: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{4,24}$/, "Use 4–24 letters or numbers"),
+  activate: z.boolean().default(false),
+});
+
+export const affiliateStatusSchema = z.object({
+  status: z.enum(["PENDING", "ACTIVE", "SUSPENDED", "REJECTED"]),
+  reason: z.string().trim().max(500).optional(),
+}).superRefine((value, context) => {
+  if (value.status === "SUSPENDED" && !value.reason) context.addIssue({ code: "custom", path: ["reason"], message: "Enter a suspension reason" });
 });
 
 export const assignmentDecisionSchema = z.object({

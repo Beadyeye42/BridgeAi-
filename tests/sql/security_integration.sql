@@ -50,8 +50,8 @@ BEGIN
   INSERT INTO bridge_ai.company_memberships (id,"userId","supplierCompanyId",role,status,"isPrimary","joinedAt") VALUES
     ('security_membership_a',user_a,'security_company_a','OWNER','ACTIVE',true,now()),
     ('security_membership_b',user_b,'security_company_b','OWNER','ACTIVE',true,now());
-  INSERT INTO bridge_ai."Subscription" (id,"supplierCompanyId",provider,"planCode",status,"currentPeriodStart","currentPeriodEnd","createdAt","updatedAt")
-  VALUES ('security_subscription_a','security_company_a','stripe','bridge-ai-founding-supplier','ACTIVE',now(),now()+interval '1 month',now(),now());
+  INSERT INTO bridge_ai."Subscription" (id,"supplierCompanyId",provider,"planCode","membershipPlanId",status,"currentPeriodStart","currentPeriodEnd","createdAt","updatedAt")
+  VALUES ('security_subscription_a','security_company_a','stripe','bridge-ai-nationwide-partner','plan_nationwide_partner','ACTIVE',now(),now()+interval '1 month',now(),now());
   INSERT INTO bridge_ai."Attachment" (id,kind,"fileName","mimeType","byteSize","storageKey",sha256,"scanStatus","supplierCompanyId","uploadedById","createdAt") VALUES
     ('security_accreditation_file_a','ACCREDITATION_DOCUMENT','a.pdf','application/pdf',1,'companies/security_company_a/accreditations/a.pdf','a','CLEAN','security_company_a',user_a,now()),
     ('security_accreditation_file_b','ACCREDITATION_DOCUMENT','b.pdf','application/pdf',1,'companies/security_company_b/accreditations/b.pdf','b','CLEAN','security_company_b',user_b,now());
@@ -112,14 +112,14 @@ BEGIN
   BEGIN
     UPDATE bridge_ai.supplier_companies SET "foundingMemberNumber"=50 WHERE id='security_company_a';
     RAISE EXCEPTION 'Supplier changed its founding supplier place';
-  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  EXCEPTION WHEN insufficient_privilege OR check_violation THEN NULL;
   END;
 
   BEGIN
     INSERT INTO bridge_ai."CoverageArea" (id,"supplierCompanyId",type,label,active,"createdAt","updatedAt")
     VALUES ('forbidden_coverage','security_company_b','NATIONWIDE','forbidden',true,now(),now());
     RAISE EXCEPTION 'Supplier A inserted a Supplier B coverage rule';
-  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  EXCEPTION WHEN insufficient_privilege OR check_violation THEN NULL;
   END;
 
   BEGIN
@@ -759,6 +759,106 @@ BEGIN
       AND "entityType"='SecurityConfiguration'
   ) THEN
     RAISE EXCEPTION 'supplier email returning-policy security audit is missing';
+  END IF;
+
+  SELECT count(*) INTO visible_count
+  FROM pg_class relation
+  JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = 'bridge_ai'
+    AND relation.relname IN (
+      'affiliate_programme','affiliates','affiliate_referrals','referral_clicks',
+      'affiliate_commissions','affiliate_payouts','affiliate_payout_items',
+      'affiliate_notifications','affiliate_audit_logs'
+    )
+    AND relation.relrowsecurity
+    AND relation.relforcerowsecurity;
+  IF visible_count <> 9 THEN
+    RAISE EXCEPTION 'affiliate tables do not all enforce RLS';
+  END IF;
+
+  IF has_function_privilege('anon','bridge_private.attribute_supplier_referral(text,uuid,text)','EXECUTE')
+     OR has_function_privilege('authenticated','bridge_private.record_affiliate_paid_invoice(text,text,text,text,text,text,integer,integer,integer,timestamptz,timestamptz,timestamptz)','EXECUTE')
+     OR has_function_privilege('authenticated','bridge_private.validate_affiliate_commissions()','EXECUTE')
+     OR NOT has_function_privilege('bridge_ai_app','bridge_private.validate_affiliate_commissions()','EXECUTE') THEN
+    RAISE EXCEPTION 'affiliate accounting function grants are unsafe';
+  END IF;
+
+  INSERT INTO bridge_ai."Subscription" (
+    id,"supplierCompanyId",provider,"planCode","membershipPlanId",status,"currentPeriodStart","currentPeriodEnd","createdAt","updatedAt"
+  ) VALUES (
+    'security_subscription_b','security_company_b','stripe','bridge-ai-local-partner','plan_local_partner','ACTIVE',now(),now()+interval '1 month',now(),now()
+  );
+  UPDATE bridge_ai.affiliate_programme SET "maximumActive" = 1000 WHERE id='default';
+  INSERT INTO bridge_ai.affiliates (
+    id,"userId",code,"displayName",status,"approvedAt","createdAt","updatedAt"
+  ) VALUES
+    ('security_affiliate_a',user_a,'SECAFF1','Security Affiliate A','ACTIVE',now(),now(),now()),
+    ('security_affiliate_b',user_b,'SECAFF2','Security Affiliate B','ACTIVE',now(),now(),now());
+  INSERT INTO bridge_ai.affiliate_referrals (
+    id,"affiliateId","supplierCompanyId","referralCode",status,"referredAt","signupAt","attributionLockedAt","createdAt","updatedAt"
+  ) VALUES
+    ('security_referral_a','security_affiliate_a','security_company_a','SECAFF1','QUALIFICATION_MONTH',now(),now(),now(),now(),now()),
+    ('security_referral_b','security_affiliate_b','security_company_b','SECAFF2','QUALIFICATION_MONTH',now(),now(),now(),now(),now());
+  INSERT INTO bridge_ai.affiliate_commissions (
+    id,"externalLedgerKey","entryType","affiliateId","referralId","supplierCompanyId","subscriptionId",
+    "stripeInvoiceId","planCode",currency,"billingAmountPence","vatAmountPence","eligibleRevenuePence",
+    "commissionRateBps","commissionAmountPence","paidBillingPeriod","commissionSequence",status,"earnedAt","createdAt"
+  ) VALUES
+    ('security_commission_a','invoice:security_a','INVOICE','security_affiliate_a','security_referral_a','security_company_a','security_subscription_a',
+      'security_invoice_a','bridge-ai-founding-supplier','GBP',2999,0,2999,1600,0,1,0,'QUALIFICATION',now(),now()),
+    ('security_commission_b','invoice:security_b','INVOICE','security_affiliate_b','security_referral_b','security_company_b','security_subscription_b',
+      'security_invoice_b','bridge-ai-founding-supplier','GBP',5999,0,5999,1600,960,2,1,'PENDING',now(),now());
+
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  PERFORM set_config('request.jwt.claim.sub', user_a::text, true);
+  SELECT count(*) INTO visible_count FROM bridge_ai.affiliates;
+  IF visible_count <> 1 THEN RAISE EXCEPTION 'Affiliate A can see another affiliate account'; END IF;
+  SELECT count(*) INTO visible_count FROM bridge_ai.affiliate_referrals;
+  IF visible_count <> 1 THEN RAISE EXCEPTION 'Affiliate A can see another affiliate referral'; END IF;
+  SELECT count(*) INTO visible_count FROM bridge_ai.affiliate_commissions;
+  IF visible_count <> 1 THEN RAISE EXCEPTION 'Affiliate A can see another affiliate ledger'; END IF;
+  BEGIN
+    UPDATE bridge_ai.affiliate_commissions SET "commissionAmountPence" = 999999 WHERE id='security_commission_a';
+    GET DIAGNOSTICS affected_count = ROW_COUNT;
+    IF affected_count <> 0 THEN RAISE EXCEPTION 'Affiliate modified its commission ledger'; END IF;
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  EXECUTE 'RESET ROLE';
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+
+  BEGIN
+    UPDATE bridge_ai.affiliate_commissions
+    SET "commissionAmountPence" = 999999
+    WHERE id='security_commission_a';
+    RAISE EXCEPTION 'immutable affiliate ledger amount was modified';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  BEGIN
+    DELETE FROM bridge_ai.affiliate_commissions WHERE id='security_commission_a';
+    RAISE EXCEPTION 'immutable affiliate ledger row was deleted';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM bridge_ai."AuditLog"
+    WHERE action='SYSTEM.AFFILIATE_INVOICE_LEDGER_ENABLED'
+      AND "entityType"='SecurityConfiguration'
+  ) THEN
+    RAISE EXCEPTION 'affiliate invoice ledger security configuration audit is missing';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM bridge_ai."AuditLog"
+    WHERE action='SYSTEM.SUPPLIER_COMMERCIAL_IDENTITY_PROTECTED'
+      AND "entityType"='SecurityConfiguration'
+  ) THEN
+    RAISE EXCEPTION 'supplier commercial identity protection audit is missing';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM bridge_ai."AuditLog"
+    WHERE action='SYSTEM.AFFILIATE_PORTAL_DATA_API_GRANTS_ENABLED'
+      AND "entityType"='SecurityConfiguration'
+  ) THEN
+    RAISE EXCEPTION 'affiliate portal Data API grants audit is missing';
   END IF;
 END
 $test$;

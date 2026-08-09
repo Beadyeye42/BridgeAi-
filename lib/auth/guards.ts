@@ -11,6 +11,7 @@ export const requireSupplierPage = cache(async function requireSupplierPage() {
   const session = await getCurrentSession();
   if (!session) redirect("/login");
   if (session.user.role === "ADMINISTRATOR") redirect("/admin");
+  if (session.user.role === "AFFILIATE") redirect("/affiliate");
   const companyId = getPrimarySupplierCompanyId(session);
   if (!companyId) redirect("/account-restricted");
   const company = session.user.memberships.find(
@@ -25,7 +26,7 @@ export const requireAdminPage = cache(async function requireAdminPage() {
   if (!process.env.POSTGRES_PRISMA_URL) redirect("/");
   const session = await getCurrentSession();
   if (!session) redirect("/login");
-  if (session.user.role !== "ADMINISTRATOR") redirect("/dashboard");
+  if (session.user.role !== "ADMINISTRATOR") redirect(session.user.role === "AFFILIATE" ? "/affiliate" : "/dashboard");
   await writeAuditLog({
     actorUserId: session.userId,
     action: "ADMIN.PORTAL_ACCESS",
@@ -34,4 +35,13 @@ export const requireAdminPage = cache(async function requireAdminPage() {
     summary: "Administrator portal access verified",
   });
   return session;
+});
+
+export const requireAffiliatePage = cache(async function requireAffiliatePage() {
+  if (!process.env.POSTGRES_PRISMA_URL) redirect("/");
+  const session = await getCurrentSession();
+  if (!session) redirect("/login");
+  if (session.user.role === "ADMINISTRATOR") redirect("/admin");
+  if (session.user.role !== "AFFILIATE" || !session.user.affiliate) redirect("/dashboard");
+  return { session, affiliate: session.user.affiliate };
 });

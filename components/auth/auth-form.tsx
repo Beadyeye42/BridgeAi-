@@ -6,7 +6,7 @@ import { ArrowRight, Check, Eye, EyeOff, LoaderCircle, LockKeyhole, Mail, Shield
 
 type Mode = "login" | "register" | "forgot" | "reset";
 
-export function AuthForm({ mode, invitationToken }: { mode: Mode; invitationToken?: string }) {
+export function AuthForm({ mode, invitationToken, referralCode }: { mode: Mode; invitationToken?: string; referralCode?: string }) {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -19,6 +19,7 @@ export function AuthForm({ mode, invitationToken }: { mode: Mode; invitationToke
     const payload: Record<string, unknown> = Object.fromEntries(form.entries());
     if (mode === "register") payload.termsAccepted = form.get("termsAccepted") === "on";
     if (mode === "register" && invitationToken) payload.invitationToken = invitationToken;
+    if (mode === "register" && referralCode) payload.referralCode = referralCode;
     try {
       const response = await fetch(`/api/auth/${mode === "forgot" ? "forgot-password" : mode === "reset" ? "reset-password" : mode}`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
@@ -38,6 +39,7 @@ export function AuthForm({ mode, invitationToken }: { mode: Mode; invitationToke
       {mode === "register" && !invitationToken && <Field label="Company name" name="companyName" autoComplete="organization" />}
       {mode !== "reset" && <Field label="Business email" name="email" type="email" autoComplete="email" icon={<Mail size={16} />} />}
       {mode === "register" && !invitationToken && <Field label="Phone number" name="phone" type="tel" autoComplete="tel" />}
+      {mode === "register" && referralCode && <p className="form-alert success" role="status">Affiliate referral code {referralCode} will be applied securely.</p>}
       {(mode === "login" || mode === "register" || mode === "reset") && <label className="form-field"><span>{mode === "reset" ? "New password" : "Password"}{mode === "login" && <Link href="/forgot-password">Forgot password?</Link>}</span><div className="input-wrap"><LockKeyhole size={16} /><input name="password" type={showPassword ? "text" : "password"} minLength={mode === "login" ? undefined : 8} autoComplete={mode === "login" ? "current-password" : "new-password"} required /><button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button></div>{mode !== "login" && <small>8+ characters with upper, lower and a number.</small>}</label>}
       {mode === "register" && <label className="check-field"><input type="checkbox" name="termsAccepted" /><span className="check-box"><Check size={12} /></span><span>I agree to the <Link href="/legal/terms">supplier terms</Link> and <Link href="/legal/privacy">privacy notice</Link>.</span></label>}
       {error && <p className="form-alert error" role="alert">{error}</p>}
