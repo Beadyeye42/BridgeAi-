@@ -53,7 +53,7 @@ describe("production monitoring", () => {
     expect(cron).toContain('request.headers.get("authorization") !== `Bearer ${secret}`');
     expect(manual).toContain("requireAdminApi()");
     expect(manual).toContain("ADMIN.PRODUCTION_MONITORING_RUN");
-    expect(manual).toContain("}, prisma);");
+    expect(manual.indexOf("ADMIN.PRODUCTION_MONITORING_RUN")).toBeLessThan(manual.indexOf("runProductionMonitoring()"));
     expect(manual).not.toContain("trustedPrisma");
   });
 
@@ -61,6 +61,7 @@ describe("production monitoring", () => {
     const monitoring = readFileSync("lib/monitoring/operational-alerts.ts", "utf8");
     const database = readFileSync("lib/db.ts", "utf8");
     const migration = readFileSync("supabase/migrations/20260809145934_production_monitoring_worker_rls.sql", "utf8");
+    const triggerMigration = readFileSync("supabase/migrations/20260809152418_production_alert_database_audit_trigger.sql", "utf8");
     const processor = readFileSync("lib/whatsapp/processor.ts", "utf8");
     expect(monitoring).toContain('NOT: { errorCode: { startsWith: "SUPERSEDED_" } }');
     expect(monitoring).toContain('runAsDatabaseWorker("production_monitoring"');
@@ -69,6 +70,9 @@ describe("production monitoring", () => {
     expect(migration).toContain("production_monitoring_select_failed_whatsapp_jobs");
     expect(migration).toContain("production_monitoring_update_alerts");
     expect(migration).toContain("production_monitoring_insert_audit_logs");
+    expect(triggerMigration).toContain("audit_production_alert_change");
+    expect(triggerMigration).toContain("DROP POLICY production_monitoring_insert_audit_logs");
+    expect(monitoring).not.toContain("tx.auditLog.create");
     expect(processor).toContain("processSupplierEmailsSafely({ limit: 25 })");
     expect(processor).toContain("runProductionMonitoringSafely()");
   });

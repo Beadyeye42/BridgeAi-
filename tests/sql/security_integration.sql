@@ -880,11 +880,18 @@ BEGIN
         'production_monitoring_select_storage_events',
         'production_monitoring_select_alerts',
         'production_monitoring_insert_alerts',
-        'production_monitoring_update_alerts',
-        'production_monitoring_insert_audit_logs'
+        'production_monitoring_update_alerts'
       )
-  ) <> 8 THEN
+  ) <> 7 THEN
     RAISE EXCEPTION 'production monitoring least-privilege policies are incomplete';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgrelid='bridge_ai."ProductionAlert"'::regclass
+      AND tgname='production_alert_database_audit'
+      AND NOT tgisinternal
+  ) THEN
+    RAISE EXCEPTION 'production alert database audit trigger is missing';
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM bridge_ai."AuditLog"

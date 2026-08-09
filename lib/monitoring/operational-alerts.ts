@@ -74,12 +74,6 @@ export async function discoverOperationalAlerts(now = new Date()) {
     const fresh = candidates.filter((candidate) => !known.has(candidate.fingerprint));
     if (fresh.length) {
       await tx.productionAlert.createMany({ data: fresh });
-      await tx.auditLog.create({ data: {
-        action: "MONITORING.ALERTS_QUEUED",
-        entityType: "ProductionAlert",
-        summary: `${fresh.length} production alert${fresh.length === 1 ? "" : "s"} queued for delivery`,
-        metadata: { sources: [...new Set(fresh.map((candidate) => candidate.source))] },
-      } });
     }
     return { discovered: candidates.length, queued: fresh.length };
   });
@@ -131,12 +125,6 @@ export async function dispatchOperationalAlerts(now = new Date()) {
         where: { id: { in: ids }, status: "PROCESSING" },
         data: { status: "SENT", sentAt: new Date(), lockedAt: null, providerEmailId: result.providerEmailId },
       });
-      await tx.auditLog.create({ data: {
-        action: "MONITORING.ALERTS_SENT",
-        entityType: "ProductionAlert",
-        summary: `${alerts.length} production alert${alerts.length === 1 ? "" : "s"} emailed to administrators`,
-        metadata: { alertIds: ids, providerEmailId: result.providerEmailId },
-      } });
     });
     return { configured: true as const, sent: alerts.length, reason: null };
   } catch (error) {
@@ -148,12 +136,6 @@ export async function dispatchOperationalAlerts(now = new Date()) {
         where: { id: { in: ids }, status: "PROCESSING" },
         data: { status: "FAILED", failedAt: new Date(), lockedAt: null, lastError: message, availableAt: new Date(Date.now() + retryDelayMs) },
       });
-      await tx.auditLog.create({ data: {
-        action: "MONITORING.ALERT_DELIVERY_FAILED",
-        entityType: "ProductionAlert",
-        summary: "Production alert email delivery failed and was scheduled for retry",
-        metadata: { alertIds: ids, failure: message },
-      } });
     });
     return { configured: true as const, sent: 0, reason: message };
   }
