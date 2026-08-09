@@ -205,6 +205,7 @@ export async function POST(request: Request) {
     await processEvent(event);
     await runAsDatabaseWorker("stripe_billing", (tx) => tx.webhookEvent.update({ where: { id: stored.id }, data: { processedAt: new Date() } }));
     after(processAffiliateEmailsSafely);
+    after(runProductionMonitoringSafely);
     return NextResponse.json({ received: true, duplicate: false });
   } catch (error) {
     console.error("Verified Stripe webhook processing failed", error);

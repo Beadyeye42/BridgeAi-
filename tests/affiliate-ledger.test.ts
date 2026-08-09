@@ -42,7 +42,10 @@ describe("affiliate invoice accounting", () => {
 
   it("derives earnings from invoice transactions rather than customer counts", () => {
     const dashboard = read("app/affiliate/page.tsx");
-    expect(dashboard).toContain("prisma.affiliateCommission.findMany");
+    expect(dashboard).toContain("tx.affiliateCommission.findMany");
+    expect(dashboard).toContain("tx.affiliateCommission.aggregate");
+    expect(dashboard).toContain("tx.affiliateReferral.count");
+    expect(dashboard).not.toMatch(/const active = referrals\.filter/);
     expect(dashboard).not.toMatch(/active[^\n]*\*[^\n]*(commission|rate)/i);
     const payout = read("app/api/admin/affiliates/payouts/route.ts");
     expect(payout).toContain("commissionAmountPence");
@@ -54,6 +57,29 @@ describe("affiliate invoice accounting", () => {
     for (const event of ["invoice.paid", "invoice.payment_failed", "customer.subscription.updated", "customer.subscription.deleted", "refund.created", "charge.refunded", "charge.dispute.created"]) expect(webhook).toContain(event);
     expect(webhook).toContain("constructEvent");
     expect(webhook).toContain('runAsDatabaseWorker("stripe_billing"');
+    expect(webhook).toContain("after(runProductionMonitoringSafely)");
+  });
+
+  it("notifies affiliates and administrators when a referred subscription is cancelled", () => {
+    const ledger = read("lib/affiliates/stripe-ledger.ts");
+    const migration = read("supabase/migrations/20260809193000_affiliate_cancellation_admin_alerts.sql");
+    expect(ledger).toContain('source: "AFFILIATE_LIFECYCLE"');
+    expect(ledger).toContain("affiliate-cancellation-scheduled:");
+    expect(ledger).toContain("affiliate-cancellation-completed:");
+    expect(ledger).toContain("tx.productionAlert.createMany");
+    expect(migration).toContain("production_alert_stripe_affiliate_insert");
+    expect(migration).toContain("bridge_private.is_trusted_worker('stripe_billing')");
+    expect(migration).toContain("fingerprint LIKE 'affiliate-cancellation-%'");
+  });
+
+  it("keeps affiliate dashboards live with an RLS-protected recovery path", () => {
+    const refresh = read("components/affiliate/realtime-refresh.tsx");
+    for (const table of ["affiliate_referrals", "affiliate_commissions", "affiliate_notifications", "affiliate_payouts"]) expect(refresh).toContain(table);
+    expect(refresh).toContain('schema: "bridge_ai"');
+    expect(refresh).toContain("affiliateId=eq.${affiliateId}");
+    expect(refresh).toContain("router.refresh()");
+    expect(refresh).toContain("60_000");
+    expect(refresh).toContain('document.addEventListener("visibilitychange"');
   });
 
   it("forces RLS and prevents cross-affiliate reads", () => {

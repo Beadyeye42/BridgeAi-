@@ -860,6 +860,15 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'affiliate portal Data API grants audit is missing';
   END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname='bridge_ai'
+      AND tablename='ProductionAlert'
+      AND policyname='production_alert_stripe_affiliate_insert'
+      AND cmd='INSERT'
+  ) THEN
+    RAISE EXCEPTION 'affiliate cancellation administrator alert policy is missing';
+  END IF;
 END
 $test$;
 
