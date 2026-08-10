@@ -909,14 +909,13 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
       });
     }
     const assignedSupplierIds: string[] = [];
-    const invitationDeadline = addSupplierResponseHours(now, matchingConfiguration?.responseDeadlineHours ?? 8);
     for (const [index, match] of matches.entries()) {
       const assignment = await tx.supplierAssignment.create({
         data: {
           quoteRequestId: request.id,
           supplierCompanyId: match.id,
           status: "PENDING",
-          expiresAt: invitationDeadline < request.responseDueAt ? invitationDeadline : request.responseDueAt,
+          expiresAt: request.responseDueAt,
           assignedById: null,
           invitationRank: index + 1,
         },
@@ -944,7 +943,7 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
         supplierCompanyIds: assignedSupplierIds,
         reference: request.reference,
         title: request.title,
-        responseDueAt: invitationDeadline < request.responseDueAt ? invitationDeadline : request.responseDueAt,
+        responseDueAt: request.responseDueAt,
       });
       await tx.quoteRequest.update({
         where: { id: request.id },
@@ -1033,6 +1032,20 @@ async function quoteHistoryReply(conversation: LoadedJob["conversation"]) {
     draft?.title ? "Reply CANCEL DRAFT to clear only that unfinished job." : null,
     "Reply NEW QUOTE to start another request. For the latest supplier prices on your active request, reply QUOTES.",
   ].filter(Boolean).join("\n\n");
+}
+
+async function confirmedRequestReply(conversation: NonNullable<LoadedJob["conversation"]>) {
+  const request = await runAsDatabaseWorker("whatsapp_ai", (tx) => tx.quoteRequest.findFirst({
+    where: {
+      customerContactId: conversation.customerContactId,
+      status: { in: ["OPEN", "MATCHING", "QUOTED"] },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { reference: true },
+  }));
+  return request
+    ? `Your confirmation is already safely recorded — request ${request.reference} is live. I’ll bring the available prices and lead times back here. Reply QUOTES for an update, or NEW QUOTE to price another job.`
+    : "Your confirmation is already safely recorded. Reply MY QUOTES to see your recent requests, or NEW QUOTE to price another job.";
 }
 
 async function loadIndustryChoices() {
@@ -1410,6 +1423,11 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
       preferredFirstName,
       true,
     ));
+    return undefined;
+  }
+
+  if (stage === "QUOTE_CREATED" && isQuoteConfirmation(text)) {
+    await sendReply(job, refreshed.conversation, await confirmedRequestReply(refreshed.conversation));
     return undefined;
   }
 

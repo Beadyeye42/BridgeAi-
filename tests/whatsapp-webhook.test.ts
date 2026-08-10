@@ -89,4 +89,22 @@ describe("Meta WhatsApp webhook boundary", () => {
     expect(JSON.stringify(parsed.summary)).not.toContain("drawing.pdf");
     expect(JSON.stringify(parsed.summary)).not.toContain("Fabrication drawing");
   });
+
+  it("turns interactive confirmations into the visible reply text", () => {
+    const interactive = structuredClone(fixture);
+    interactive.entry[0].changes[0].value.messages[0] = {
+      from: "447700900142",
+      id: "wamid.interactive-1",
+      timestamp: "1785751200",
+      type: "interactive",
+      interactive: {
+        type: "button_reply",
+        button_reply: { id: "confirm-quote", title: "Confirm quote" },
+      },
+    } as never;
+    expect(parseMetaWebhook(interactive).messages[0]).toMatchObject({
+      messageType: "INTERACTIVE",
+      body: "Confirm quote",
+    });
+  });
 });

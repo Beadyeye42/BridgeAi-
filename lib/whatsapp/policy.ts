@@ -45,7 +45,8 @@ export function firstContactConsentReply(input: FirstContactReplyInput) {
 }
 
 export function isQuoteConfirmation(value: string) {
-  return /^(?:confirm|yes|yes please|yep|correct|yes,? (?:that(?:'s| is) right|correct)|that(?:'s| is) right|looks right|go ahead|send it)$/i.test(value.trim());
+  const reply = value.trim().replace(/\s+/g, " ").replace(/[.!?]+$/g, "").trim();
+  return /^(?:confirm(?: (?:it|this|quote|request))?|yes(?: please)?|yes and confirm(?: it)?|yep|correct|yes,? (?:that(?:'s| is) right|correct)|that(?:'s| is) right|looks right|go ahead|send it)(?:\s*[👍✅])?$/iu.test(reply);
 }
 
 export function isIndustryQuoteOfferAccepted(value: string) {

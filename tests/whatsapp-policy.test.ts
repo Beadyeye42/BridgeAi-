@@ -141,7 +141,19 @@ describe("WhatsApp messaging policy", () => {
   });
 
   it("accepts a natural yes only as an explicit quote confirmation", () => {
-    expect(["YES", "yes please", "That's right", "correct", "go ahead", "send it"].every(isQuoteConfirmation)).toBe(true);
+    expect([
+      "YES",
+      "yes please",
+      "That's right",
+      "correct",
+      "go ahead",
+      "send it",
+      "confirm it",
+      "confirm quote",
+      "yes and confirm it",
+      "Yes.",
+      "yes 👍",
+    ].every(isQuoteConfirmation)).toBe(true);
     expect(isQuoteConfirmation("maybe")).toBe(false);
     expect(isQuoteConfirmation("yes, but change the colour")).toBe(false);
   });

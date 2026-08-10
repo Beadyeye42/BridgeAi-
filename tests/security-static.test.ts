@@ -295,11 +295,17 @@ describe("security foundation static controls", () => {
   it("uses the shared request deadline and selects no more than three suppliers", () => {
     const validation = read("lib/auth/validation.ts");
     const assignmentRoute = read("app/api/admin/assignments/route.ts");
+    const whatsappProcessor = read("lib/whatsapp/processor.ts");
+    const replacementMatcher = read("lib/matching/replacements.ts");
     const migration = read("supabase/migrations/20260803182630_enforce_supplier_response_rules.sql");
     expect(validation).toContain("supplierCompanyIds: z.array");
     expect(validation).toContain(".max(3)");
     expect(assignmentRoute).toMatch(/expiresAt:\s*quote\.responseDueAt/);
     expect(assignmentRoute).not.toContain("parsed.data.expiresAt");
+    expect(whatsappProcessor).toMatch(/expiresAt:\s*request\.responseDueAt/);
+    expect(whatsappProcessor).not.toContain("invitationDeadline");
+    expect(replacementMatcher).toMatch(/expiresAt:\s*quote\.responseDueAt/);
+    expect(replacementMatcher).not.toContain("replacementDeadline");
     expect(migration).toContain('"distributionLimit" BETWEEN 1 AND 5');
     expect(migration).toContain("Friday 15:00 until Monday 08:00");
   });

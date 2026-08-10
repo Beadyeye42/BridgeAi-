@@ -2,7 +2,6 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import { runAsDatabaseWorker } from "@/lib/db";
 import { evaluateSupplierMatches, resolveDeliveryLocation } from "@/lib/matching/suppliers";
-import { addSupplierResponseHours } from "@/lib/quotes/response-clock";
 import { queueSupplierAssignmentNotifications } from "@/lib/notifications/assignment-notifications";
 
 const ACTIVE_ASSIGNMENT_STATUSES = ["PENDING", "VIEWED", "ACCEPTED"] as const;
@@ -41,9 +40,8 @@ export async function inviteNextEligibleSupplier(quoteRequestId: string, replace
     }
     if (!next) return { invited: false, reason: "no_eligible_supplier" };
 
-    const replacementDeadline = addSupplierResponseHours(now, configuration?.responseDeadlineHours ?? 8);
     const assignment = await tx.supplierAssignment.create({
-      data: { quoteRequestId, supplierCompanyId: next.id, status: "PENDING", expiresAt: replacementDeadline < quote.responseDueAt ? replacementDeadline : quote.responseDueAt, assignedById: null, invitationRank: totalInvitations + 1, replacementForId: replacementForId ?? null },
+      data: { quoteRequestId, supplierCompanyId: next.id, status: "PENDING", expiresAt: quote.responseDueAt, assignedById: null, invitationRank: totalInvitations + 1, replacementForId: replacementForId ?? null },
     });
     await queueSupplierAssignmentNotifications(tx, {
       supplierCompanyIds: [next.id],

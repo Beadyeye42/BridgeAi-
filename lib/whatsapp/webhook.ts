@@ -123,7 +123,7 @@ function messageContent(message: z.infer<typeof messageSchema>) {
   if (message.type === "location" && message.location) return { messageType: "LOCATION" as const, body: JSON.stringify(message.location) };
   if (message.type === "interactive" && message.interactive) {
     const reply = message.interactive.button_reply ?? message.interactive.list_reply;
-    return { messageType: "INTERACTIVE" as const, body: reply ? JSON.stringify(reply) : undefined };
+    return { messageType: "INTERACTIVE" as const, body: reply?.title ?? reply?.id };
   }
   return { messageType: "SYSTEM" as const };
 }
