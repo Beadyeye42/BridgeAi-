@@ -3,6 +3,7 @@ import { requireSupplierPage } from "@/lib/auth/guards";
 import { PortalPage, identity } from "@/components/dashboard/portal-page";
 import { CoverageManager } from "@/components/dashboard/management-forms";
 import { DEFAULT_PLAN_IDS, effectiveMembershipLimits } from "@/lib/billing/membership-plans";
+import { isMembershipActive } from "@/lib/billing/pricing";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,8 @@ export default async function CoveragePage() {
       subscription: { include: { membershipPlan: true } },
     },
   });
-  const plan = company.subscription?.membershipPlan
+  const activeSubscription = isMembershipActive(company.subscription) ? company.subscription : null;
+  const plan = activeSubscription?.membershipPlan
     ?? await prisma.membershipPlan.findUnique({ where: { id: DEFAULT_PLAN_IDS.LOCAL } });
   const limits = plan ? effectiveMembershipLimits(plan, company) : null;
 
@@ -50,6 +52,7 @@ export default async function CoveragePage() {
         maximumRadiusMiles: limits.maximumRadiusMiles,
         nationwideAllowed: limits.nationwideAllowed,
         maximumActiveOpportunities: limits.maximumActiveOpportunities,
+        onboardingDefault: !activeSubscription?.membershipPlan,
       } : null}
     />
   </PortalPage>;

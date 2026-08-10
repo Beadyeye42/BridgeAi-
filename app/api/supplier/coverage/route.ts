@@ -7,6 +7,7 @@ import { writeAuditLog } from "@/lib/audit";
 import { lookupPostcode, PostcodeLookupError } from "@/lib/location/postcodes";
 import { distanceMiles } from "@/lib/matching/coverage";
 import { DEFAULT_PLAN_IDS, effectiveMembershipLimits } from "@/lib/billing/membership-plans";
+import { isMembershipActive } from "@/lib/billing/pricing";
 
 export async function POST(request: Request) {
   const auth = await requireSupplierApi(); if ("error" in auth) return auth.error;
@@ -18,7 +19,8 @@ export async function POST(request: Request) {
     include: { subscription: { include: { membershipPlan: true } } },
   });
   if (!company) return NextResponse.json({ error: "Supplier company not found" }, { status: 404 });
-  const plan = company.subscription?.membershipPlan
+  const activeSubscription = isMembershipActive(company.subscription) ? company.subscription : null;
+  const plan = activeSubscription?.membershipPlan
     ?? await prisma.membershipPlan.findUnique({ where: { id: DEFAULT_PLAN_IDS.LOCAL } });
   if (!plan) return NextResponse.json({ error: "Membership plans are not configured" }, { status: 503 });
   const limits = effectiveMembershipLimits(plan, company);
@@ -101,7 +103,7 @@ export async function POST(request: Request) {
         });
       }
       const saved = await tx.coverageArea.create({ data });
-      await writeAuditLog({ actorUserId: auth.session.userId, supplierCompanyId: auth.companyId, action: "COVERAGE.CREATED", entityType: "CoverageArea", entityId: saved.id, summary: `${saved.purpose.toLowerCase()} coverage ${saved.label} created`, metadata: { type: saved.type, purpose: saved.purpose, radiusMiles: saved.radiusMiles, membershipPlanId: plan.id }, request }, tx);
+      await writeAuditLog({ actorUserId: auth.session.userId, supplierCompanyId: auth.companyId, action: "COVERAGE.CREATED", entityType: "CoverageArea", entityId: saved.id, summary: `${saved.purpose.toLowerCase()} coverage ${saved.label} created`, metadata: { type: saved.type, purpose: saved.purpose, radiusMiles: saved.radiusMiles, membershipPlanId: plan.id, onboardingDefault: !activeSubscription?.membershipPlan }, request }, tx);
       return { area: saved, alreadyExists: false };
     });
     return NextResponse.json({ ok: true, ...result }, { status: result.alreadyExists ? 200 : 201 });

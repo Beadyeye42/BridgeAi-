@@ -43,10 +43,13 @@ BEGIN
   INSERT INTO bridge_ai.portal_profiles (id,email,"firstName","lastName",status,"createdAt","updatedAt") VALUES
     (user_a,'rls-a@bridge.test','Supplier','A','ACTIVE',now(),now()),
     (user_b,'rls-b@bridge.test','Supplier','B','ACTIVE',now(),now());
-  INSERT INTO bridge_ai.supplier_companies (id,"legalName","contactEmail","contactPhone",status,"foundingMemberNumber","createdAt","updatedAt") VALUES
-    ('security_company_a','Security Company A','a@bridge.test','1','APPROVED',founding_a,now(),now()),
-    ('security_company_b','Security Company B','b@bridge.test','2','APPROVED',founding_b,now(),now()),
-    ('security_company_c','Security Company C','c@bridge.test','3','PENDING',NULL,now(),now());
+  INSERT INTO bridge_ai.supplier_companies (
+    id,"legalName","contactEmail","contactPhone",postcode,"geographicOriginPostcode",
+    "geographicOriginLatitude","geographicOriginLongitude",status,"foundingMemberNumber","createdAt","updatedAt"
+  ) VALUES
+    ('security_company_a','Security Company A','a@bridge.test','1','GL52 6TD','GL52 6TD',51.900000,-2.080000,'APPROVED',founding_a,now(),now()),
+    ('security_company_b','Security Company B','b@bridge.test','2','GL52 6TD','GL52 6TD',51.900000,-2.080000,'APPROVED',founding_b,now(),now()),
+    ('security_company_c','Security Company C','c@bridge.test','3',NULL,NULL,NULL,NULL,'PENDING',NULL,now(),now());
   INSERT INTO bridge_ai.company_memberships (id,"userId","supplierCompanyId",role,status,"isPrimary","joinedAt") VALUES
     ('security_membership_a',user_a,'security_company_a','OWNER','ACTIVE',true,now()),
     ('security_membership_b',user_b,'security_company_b','OWNER','ACTIVE',true,now());
@@ -121,6 +124,32 @@ BEGIN
     RAISE EXCEPTION 'Supplier A inserted a Supplier B coverage rule';
   EXCEPTION WHEN insufficient_privilege OR check_violation THEN NULL;
   END;
+
+  -- Supplier B has no active subscription. It may complete safe Local Partner
+  -- geography during onboarding, but the database must reject a wider boundary.
+  EXECUTE 'RESET ROLE';
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  PERFORM set_config('request.jwt.claim.sub', user_b::text, true);
+  INSERT INTO bridge_ai."CoverageArea" (
+    id,"supplierCompanyId",type,purpose,label,"centrePostcode","radiusMiles",latitude,longitude,active,"createdAt","updatedAt"
+  ) VALUES (
+    'security_preplan_coverage_b','security_company_b','DISTANCE','DELIVERY','Pre-plan delivery','GL52 6TD',40,51.900000,-2.080000,true,now(),now()
+  );
+  BEGIN
+    INSERT INTO bridge_ai."CoverageArea" (
+      id,"supplierCompanyId",type,purpose,label,"centrePostcode","radiusMiles",latitude,longitude,active,"createdAt","updatedAt"
+    ) VALUES (
+      'security_preplan_too_wide_b','security_company_b','DISTANCE','DELIVERY','Too wide','GL52 6TD',41,51.900000,-2.080000,true,now(),now()
+    );
+    RAISE EXCEPTION 'Supplier without a plan exceeded the safe onboarding radius';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+  DELETE FROM bridge_ai."CoverageArea" WHERE id = 'security_preplan_coverage_b';
+  EXECUTE 'RESET ROLE';
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  PERFORM set_config('request.jwt.claim.sub', user_a::text, true);
 
   BEGIN
     INSERT INTO bridge_ai.company_memberships (id,"userId","supplierCompanyId",role,status,"isPrimary","joinedAt")

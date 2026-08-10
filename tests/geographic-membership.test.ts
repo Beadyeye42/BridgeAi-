@@ -72,6 +72,21 @@ describe("geographic memberships and controlled distribution", () => {
     expect(migration).toContain("automatic assignment would exceed the active supplier limit");
   });
 
+  it("allows safe pre-plan onboarding geography without opening lead access", () => {
+    const api = read("app/api/supplier/coverage/route.ts");
+    const page = read("app/dashboard/coverage/page.tsx");
+    const migration = read("supabase/migrations/20260810193926_allow_preplan_onboarding_coverage.sql");
+    const originalMembershipMigration = read("supabase/migrations/20260807163701_geographic_membership_intelligent_matching.sql");
+    expect(api).toContain("isMembershipActive(company.subscription)");
+    expect(page).toContain("isMembershipActive(company.subscription)");
+    expect(migration).toContain("coverage_configuration_limits");
+    expect(migration).toContain("'plan_local_partner'");
+    expect(migration).toContain("coverage_configuration_limits(NEW.\"supplierCompanyId\")");
+    expect(originalMembershipMigration).toContain("effective_membership_limits(NEW.\"supplierCompanyId\")");
+    expect(migration).not.toContain("CREATE OR REPLACE FUNCTION bridge_private.enforce_automatic_assignment_limits");
+    expect(migration).toContain("SYSTEM.PREPLAN_COVERAGE_ENABLED");
+  });
+
   it("keeps upgrade statistics anonymous and replacement invitations ranked", () => {
     const dashboard = read("lib/data/supplier-dashboard.ts");
     const replacement = read("lib/matching/replacements.ts");
