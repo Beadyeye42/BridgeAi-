@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/auth/api";
 import { writeAuditLog } from "@/lib/audit";
 import { runProductionMonitoring } from "@/lib/monitoring/operational-alerts";
+import { processWhatsAppJobs } from "@/lib/whatsapp/processor";
 
 export const runtime = "nodejs";
 
@@ -17,8 +18,9 @@ export async function POST(request: Request) {
       metadata: { status: "STARTED" },
       request,
     });
+    const processedWhatsAppJobs = await processWhatsAppJobs({ limit: 20 });
     const result = await runProductionMonitoring();
-    return NextResponse.json({ ok: true, ...result });
+    return NextResponse.json({ ok: true, processedWhatsAppJobs, ...result });
   } catch (error) {
     console.error("Administrator production monitoring check failed", error);
     return NextResponse.json({ error: "Production monitoring check failed" }, { status: 500 });

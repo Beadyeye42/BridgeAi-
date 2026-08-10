@@ -53,6 +53,7 @@ describe("production monitoring", () => {
     expect(cron).toContain('request.headers.get("authorization") !== `Bearer ${secret}`');
     expect(manual).toContain("requireAdminApi()");
     expect(manual).toContain("ADMIN.PRODUCTION_MONITORING_RUN");
+    expect(manual).toContain("processWhatsAppJobs({ limit: 20 })");
     expect(manual.indexOf("ADMIN.PRODUCTION_MONITORING_RUN")).toBeLessThan(manual.indexOf("runProductionMonitoring()"));
     expect(manual).not.toContain("trustedPrisma");
   });
