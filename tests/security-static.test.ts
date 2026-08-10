@@ -240,7 +240,9 @@ describe("security foundation static controls", () => {
     expect(processor).toContain("wasReplyRecentlySent");
     expect(processor).toContain("earlier.status IN ('PENDING', 'PROCESSING')");
     expect(processor).toContain("STALE_JOB_EXHAUSTED");
-    expect(processor).toContain("quote-summary:${quotation.quoteRequestId}:first");
+    expect(processor).toContain("quote-summary:${quotation.quoteRequestId}:quotation:${quotation.id}");
+    expect(processor).toContain("To choose this quote, reply SELECT 1");
+    expect(processor).toContain("so I haven’t selected one");
     expect(processor).toContain("META_QUOTE_TEMPLATE_REQUIRED");
     expect(processor).toContain("META_CONTACT_TEMPLATE_REQUIRED");
     expect(processor).toContain('type: "SEND_INTAKE_FALLBACK"');

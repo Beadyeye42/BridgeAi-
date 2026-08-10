@@ -1454,8 +1454,8 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     }
     if (!selectionIntent) {
       await sendReply(job, refreshed.conversation, request.quotations.length === 1
-        ? "There is one quote available. Reply YES or ACCEPT and I’ll confirm it for you."
-        : `Which quote would you like? Reply with just its number, from 1 to ${request.quotations.length}.`);
+        ? "There is one quote available. Reply SELECT 1 and I’ll confirm that exact quote for you."
+        : `Which quote would you like? Reply SELECT followed by its number, from 1 to ${request.quotations.length}. For example, SELECT 2.`);
       return undefined;
     }
     if (selectionIntent.kind === "REFERENCE" && selectionIntent.reference !== request.reference.toUpperCase()) {
@@ -1463,7 +1463,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
       return undefined;
     }
     if (selectionIntent.kind !== "POSITION" && request.quotations.length > 1) {
-      await sendReply(job, refreshed.conversation, `There are ${request.quotations.length} quotes available. Reply with just the quote number you want, from 1 to ${request.quotations.length}.`);
+      await sendReply(job, refreshed.conversation, `There are ${request.quotations.length} quotes available, so I haven’t selected one. Reply SELECT followed by the number you want, from 1 to ${request.quotations.length}. For example, SELECT 2.`);
       return undefined;
     }
     const displayedPosition = selectionIntent.kind === "POSITION" ? selectionIntent.position : 1;
@@ -1874,8 +1874,8 @@ async function currentQuoteSummary(conversationId: string) {
       `Current prices for ${request.reference}. Supplier identities remain private:`,
       lines.join("\n"),
       quotes.length === 1
-        ? "To accept this quote, simply reply YES or ACCEPT. There are no introduction or winning fees."
-        : `To choose, reply with just the quote number (1 to ${quotes.length}). There are no introduction or winning fees.`,
+        ? "To choose this quote, reply SELECT 1. There are no introduction or winning fees."
+        : `To choose, reply SELECT followed by the quote number (1 to ${quotes.length}). For example, SELECT 2. There are no introduction or winning fees.`,
     ].join("\n\n"),
   };
 }
@@ -2010,7 +2010,10 @@ export async function enqueueQuoteSummary(quotationId: string) {
       where: { id: quotationId }, include: { quoteRequest: true },
     });
     if (!quotation?.quoteRequest.conversationId || quotation.status !== "SUBMITTED") return null;
-    const idempotencyKey = `quote-summary:${quotation.quoteRequestId}:first`;
+    // Each newly submitted quotation may change the customer's numbered list.
+    // Keying the job to the quotation refreshes that list once per supplier quote,
+    // while retries of the same submission remain idempotent.
+    const idempotencyKey = `quote-summary:${quotation.quoteRequestId}:quotation:${quotation.id}`;
     const created = await tx.whatsAppJob.createMany({
       data: [{
         type: "SEND_QUOTE_SUMMARY",

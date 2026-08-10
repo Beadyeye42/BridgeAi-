@@ -65,6 +65,7 @@ describe("WhatsApp messaging policy", () => {
     expect(quoteSelectionIntent("accept")).toEqual({ kind: "CURRENT" });
     expect(quoteSelectionIntent("Yes please")).toEqual({ kind: "CURRENT" });
     expect(quoteSelectionIntent("accept 1")).toEqual({ kind: "POSITION", position: 1 });
+    expect(quoteSelectionIntent("select 1")).toEqual({ kind: "POSITION", position: 1 });
     expect(quoteSelectionIntent("choose quote 2")).toEqual({ kind: "POSITION", position: 2 });
     expect(quoteSelectionIntent("3")).toEqual({ kind: "POSITION", position: 3 });
     expect(quoteSelectionIntent("accept BA-2026-951A09F8")).toEqual({
