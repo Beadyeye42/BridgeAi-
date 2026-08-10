@@ -822,6 +822,7 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
       return { request: existing, assignmentCount };
     }
     const matchingConfiguration = await tx.matchingConfiguration.findUnique({ where: { id: "default" } });
+    const configuredResponseHours = matchingConfiguration?.responseDeadlineHours ?? quoteResponseHours;
     const request = await tx.quoteRequest.create({
       data: {
         reference,
@@ -844,7 +845,7 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
         fulfilmentMode: draft.fulfilmentMode ?? (draft.collectionRequired ? "COLLECTION" : "DELIVERY"),
         status: "OPEN",
         distributionLimit,
-        responseDueAt: addSupplierResponseHours(now, quoteResponseHours),
+        responseDueAt: addSupplierResponseHours(now, configuredResponseHours),
         publishedAt: now,
         items: { create: draft.items.map((item, index) => ({ ...item, displayOrder: index })) },
       },

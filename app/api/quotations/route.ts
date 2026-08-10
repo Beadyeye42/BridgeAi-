@@ -5,6 +5,7 @@ import { quotationSchema, validationError } from "@/lib/auth/validation";
 import { writeAuditLog } from "@/lib/audit";
 import { enqueueQuoteSummary, processWhatsAppJobs } from "@/lib/whatsapp/processor";
 import { isMembershipActive } from "@/lib/billing/pricing";
+import { quotationValidUntil } from "@/lib/quotes/validity";
 
 export const runtime = "nodejs";
 
@@ -37,6 +38,7 @@ export async function POST(request: Request) {
   }
 
   const submittedAt = new Date();
+  const validUntil = quotationValidUntil(submittedAt, parsed.data.validUntil);
   let quotation;
   try {
     quotation = await prisma.$transaction(async (tx) => {
@@ -53,11 +55,11 @@ export async function POST(request: Request) {
       }
       const saved = await tx.supplierQuotation.upsert({
         where: { assignmentId: assignment.id },
-        update: { price: parsed.data.price, leadTimeDays: parsed.data.leadTimeDays, validUntil: parsed.data.validUntil, notes: parsed.data.notes, status: "SUBMITTED", submittedAt },
-        create: { quoteRequestId: assignment.quoteRequestId, supplierCompanyId: companyId, assignmentId: assignment.id, price: parsed.data.price, leadTimeDays: parsed.data.leadTimeDays, validUntil: parsed.data.validUntil, notes: parsed.data.notes, status: "SUBMITTED", submittedAt, createdAt: submittedAt },
+        update: { price: parsed.data.price, leadTimeDays: parsed.data.leadTimeDays, validUntil, notes: parsed.data.notes, status: "SUBMITTED", submittedAt },
+        create: { quoteRequestId: assignment.quoteRequestId, supplierCompanyId: companyId, assignmentId: assignment.id, price: parsed.data.price, leadTimeDays: parsed.data.leadTimeDays, validUntil, notes: parsed.data.notes, status: "SUBMITTED", submittedAt, createdAt: submittedAt },
       });
       await tx.supplierAssignment.update({ where: { id: assignment.id }, data: { status: "QUOTED", respondedAt: submittedAt } });
-      await writeAuditLog({ actorUserId: session.userId, supplierCompanyId: companyId, action: "QUOTATION.SUBMITTED", entityType: "SupplierQuotation", entityId: saved.id, summary: "Supplier quotation submitted", metadata: { price: parsed.data.price, leadTimeDays: parsed.data.leadTimeDays }, request }, tx);
+      await writeAuditLog({ actorUserId: session.userId, supplierCompanyId: companyId, action: "QUOTATION.SUBMITTED", entityType: "SupplierQuotation", entityId: saved.id, summary: "Supplier quotation submitted", metadata: { price: parsed.data.price, leadTimeDays: parsed.data.leadTimeDays, validUntil: validUntil.toISOString() }, request }, tx);
       return saved;
     });
   } catch (error) {

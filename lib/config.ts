@@ -90,7 +90,7 @@ function boundedInteger(name: string, fallback: number, minimum: number, maximum
 
 export function whatsappConciergeConfig() {
   return {
-    quoteResponseHours: boundedInteger("QUOTE_RESPONSE_HOURS", 24, 1, 336),
+    quoteResponseHours: boundedInteger("QUOTE_RESPONSE_HOURS", 48, 1, 336),
     distributionLimit: boundedInteger("DEFAULT_QUOTE_DISTRIBUTION_LIMIT", 3, 1, 5),
   };
 }
