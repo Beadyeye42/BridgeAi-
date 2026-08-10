@@ -21,7 +21,7 @@ export function AffiliateCreateForm() {
       setMessageTone("error");
       return setMessage(result.error ?? "Affiliate could not be created.");
     }
-    target.reset(); setMessageTone("success"); setMessage("Affiliate invitation sent."); router.refresh();
+    target.reset(); setMessageTone("success"); setMessage("Affiliate invitation accepted for delivery by Resend."); router.refresh();
   }
   return <form className="affiliate-create-form" onSubmit={submit}>
     <div className="affiliate-form-grid">
@@ -55,6 +55,24 @@ export function AffiliateStatusControl({ id, status }: { id: string; status: str
     router.refresh();
   }
   return <div><select aria-label="Affiliate status" value={status} disabled={busy} onChange={(event) => void update(event.target.value)}>{["PENDING","ACTIVE","SUSPENDED","REJECTED"].map((option) => <option key={option}>{option}</option>)}</select>{error && <small className="error-text">{error}</small>}</div>;
+}
+
+export function AffiliateInvitationControl({ id }: { id: string }) {
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [tone, setTone] = useState<"success" | "error">("success");
+  async function resend() {
+    setBusy(true); setMessage("");
+    const response = await fetch(`/api/admin/affiliates/${id}/resend-invitation`, { method: "POST" });
+    const result = await response.json().catch(() => ({}));
+    setBusy(false);
+    setTone(response.ok ? "success" : "error");
+    setMessage(response.ok ? "Invitation accepted for delivery." : result.error ?? "Invitation could not be sent.");
+  }
+  return <div>
+    <button className="button button-outline" type="button" disabled={busy} onClick={() => void resend()}>{busy ? "Sending…" : "Resend invitation"}</button>
+    {message && <small className={tone === "error" ? "error-text" : "success-text"} role="status" aria-live="polite">{message}</small>}
+  </div>;
 }
 
 export function AffiliatePayoutControls({ affiliateId, scheduled }: { affiliateId: string; scheduled: Array<{ id: string; reference: string }> }) {
