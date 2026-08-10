@@ -21,11 +21,19 @@ export async function POST(request: Request) {
   try {
     const created = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM bridge_ai."QuoteRequest" WHERE id = ${parsed.data.quoteRequestId} FOR UPDATE`;
-      const quote = await tx.quoteRequest.findUnique({ where: { id: parsed.data.quoteRequestId }, include: { items: true } });
+      let quote = await tx.quoteRequest.findUnique({ where: { id: parsed.data.quoteRequestId }, include: { items: true } });
       if (!quote) throw new Error("REQUEST_NOT_FOUND");
       if (quote.deliveryPostcode !== preflight.deliveryPostcode) throw new Error("REQUEST_CHANGED");
       if (!["OPEN", "MATCHING"].includes(quote.status)) throw new Error("REQUEST_NOT_OPEN");
       if (quote.responseDueAt <= new Date()) throw new Error("RESPONSE_WINDOW_CLOSED");
+      if ((quote.deliveryLatitude === null || quote.deliveryLongitude === null)
+        && resolution.location.latitude !== null && resolution.location.longitude !== null) {
+        quote = await tx.quoteRequest.update({
+          where: { id: quote.id },
+          data: { deliveryLatitude: resolution.location.latitude, deliveryLongitude: resolution.location.longitude },
+          include: { items: true },
+        });
+      }
 
       const current = await tx.supplierAssignment.count({ where: { quoteRequestId: quote.id, status: { notIn: ["WITHDRAWN"] } } });
       const unique = [...new Set(parsed.data.supplierCompanyIds)];

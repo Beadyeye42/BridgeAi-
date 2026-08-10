@@ -27,8 +27,8 @@ export async function POST(request: Request) {
   const purposeRadius = parsed.data.purpose === "SERVICE"
     ? limits.maximumServiceRadiusMiles
     : limits.maximumDeliveryRadiusMiles;
-  if (parsed.data.type === "NATIONWIDE" && !limits.nationwideAllowed) {
-    return NextResponse.json({ error: `${plan.name} does not include nationwide coverage` }, { status: 403 });
+  if (parsed.data.type === "NATIONWIDE" && (!limits.nationwideAllowed || purposeRadius !== null)) {
+    return NextResponse.json({ error: `${plan.name} does not include unrestricted nationwide coverage for this service` }, { status: 403 });
   }
   if (parsed.data.type === "POSTCODE") {
     return NextResponse.json({ error: "Postcode-area rules are no longer used. Choose one honest radius from your company base." }, { status: 422 });

@@ -25,11 +25,16 @@ describe("geographic supplier memberships", () => {
 
   it("seeds and protects plan limits in PostgreSQL", () => {
     const migration = read("supabase/migrations/20260807163701_geographic_membership_intelligent_matching.sql");
+    const hardening = read("supabase/migrations/20260810195356_enforce_live_geographic_membership_boundaries.sql");
     expect(migration).toContain("plan_local_partner");
     expect(migration).toContain("plan_regional_partner");
     expect(migration).toContain("plan_nationwide_partner");
     expect(migration).toContain("enforce_coverage_membership_limit");
     expect(migration).toContain("enforce_automatic_assignment_limits");
     expect(migration).toContain('FORCE ROW LEVEL SECURITY');
+    expect(hardening).toContain("tier = 'LOCAL' AND \"maximumRadiusMiles\" = 40");
+    expect(hardening).toContain("tier = 'REGIONAL' AND \"maximumRadiusMiles\" = 100");
+    expect(hardening).toContain("manualAssignmentsEnforced");
+    expect(hardening).toContain("downgradeReconciliationEnabled");
   });
 });

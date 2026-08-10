@@ -11,6 +11,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const { id } = await params;
   const current = await prisma.membershipPlan.findUnique({ where: { id } });
   if (!current) return NextResponse.json({ error: "Membership plan not found" }, { status: 404 });
+  if (current.tier === "LOCAL" && parsed.data.maximumRadiusMiles !== 40) return NextResponse.json({ error: "Local Partner is fixed at a maximum 40-mile radius" }, { status: 400 });
+  if (current.tier === "REGIONAL" && parsed.data.maximumRadiusMiles !== 100) return NextResponse.json({ error: "Regional Partner is fixed at a maximum 100-mile radius" }, { status: 400 });
   if (current.tier === "NATIONWIDE" && (!parsed.data.nationwideAllowed || parsed.data.maximumRadiusMiles !== null)) return NextResponse.json({ error: "Nationwide membership must retain nationwide eligibility and no mileage ceiling" }, { status: 400 });
   if (current.tier !== "NATIONWIDE" && (parsed.data.nationwideAllowed || parsed.data.maximumRadiusMiles === null)) return NextResponse.json({ error: "Local and Regional plans require a mileage ceiling and cannot enable nationwide eligibility" }, { status: 400 });
   const priceChanged = current.monthlyPricePence !== parsed.data.monthlyPricePence || current.taxEnabled !== parsed.data.taxEnabled;

@@ -17,10 +17,18 @@ export async function inviteNextEligibleSupplier(quoteRequestId: string, replace
 
   return runAsDatabaseWorker("whatsapp_ai", async (tx) => {
     await tx.$queryRaw`SELECT id FROM bridge_ai."QuoteRequest" WHERE id = ${quoteRequestId} FOR UPDATE`;
-    const quote = await tx.quoteRequest.findUnique({ where: { id: quoteRequestId }, include: { items: { select: { quantity: true } } } });
+    let quote = await tx.quoteRequest.findUnique({ where: { id: quoteRequestId }, include: { items: { select: { quantity: true } } } });
     const configuration = await tx.matchingConfiguration.findUnique({ where: { id: "default" } });
     const now = new Date();
     if (!quote || !["OPEN", "MATCHING", "QUOTED"].includes(quote.status) || quote.responseDueAt <= now) return { invited: false, reason: "request_closed" };
+    if ((quote.deliveryLatitude === null || quote.deliveryLongitude === null)
+      && resolution.location.latitude !== null && resolution.location.longitude !== null) {
+      quote = await tx.quoteRequest.update({
+        where: { id: quote.id },
+        data: { deliveryLatitude: resolution.location.latitude, deliveryLongitude: resolution.location.longitude },
+        include: { items: { select: { quantity: true } } },
+      });
+    }
     if (configuration && !configuration.automaticNextSupplierInvitation) return { invited: false, reason: "automatic_replacement_disabled" };
     const maximumSuppliers = Math.min(quote.distributionLimit, configuration?.maximumSuppliersPerRequest ?? 3, 3);
     const activeAssignments = await tx.supplierAssignment.count({ where: { quoteRequestId, status: { in: [...ACTIVE_ASSIGNMENT_STATUSES] }, expiresAt: { gt: now } } });

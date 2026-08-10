@@ -46,6 +46,28 @@ describe("geographic memberships and controlled distribution", () => {
     expect(effectiveMembershipLimits(plan("NATIONWIDE", null, 20), noOverrides)).toMatchObject({ maximumRadiusMiles: null, maximumActiveOpportunities: 20, nationwideAllowed: true });
   });
 
+  it("never lets company overrides expand the purchased geography", () => {
+    const attemptedExpansion = {
+      membershipTierOverride: "NATIONWIDE" as const,
+      maximumActiveOpportunitiesOverride: 99,
+      maximumServiceRadiusOverride: 500,
+      maximumDeliveryRadiusOverride: 500,
+    };
+    expect(effectiveMembershipLimits(plan("LOCAL", 40, 5), attemptedExpansion)).toMatchObject({
+      tier: "LOCAL",
+      maximumRadiusMiles: 40,
+      maximumServiceRadiusMiles: 40,
+      maximumDeliveryRadiusMiles: 40,
+      maximumActiveOpportunities: 5,
+      nationwideAllowed: false,
+    });
+    expect(effectiveMembershipLimits(plan("REGIONAL", 100, 10), { ...attemptedExpansion, membershipTierOverride: "LOCAL" })).toMatchObject({
+      tier: "LOCAL",
+      maximumRadiusMiles: 40,
+      nationwideAllowed: false,
+    });
+  });
+
   it("reduces confidence when capacity is stale using the configured period", () => {
     const now = new Date("2026-08-07T12:00:00Z");
     const capability = {
@@ -65,11 +87,25 @@ describe("geographic memberships and controlled distribution", () => {
 
   it("enforces server and database controls instead of trusting browser radius values", () => {
     const api = read("app/api/supplier/coverage/route.ts");
-    const migration = read("supabase/migrations/20260807163701_geographic_membership_intelligent_matching.sql");
+    const migration = read("supabase/migrations/20260810195356_enforce_live_geographic_membership_boundaries.sql");
     expect(api).toContain("offsetFromCompanyBase + parsed.data.radiusMiles > purposeRadius");
+    expect(api).toContain("!limits.nationwideAllowed || purposeRadius !== null");
     expect(api).toContain("Postcode-area rules are no longer used");
-    expect(migration).toContain("coverage boundary exceeds the membership radius from the company base");
-    expect(migration).toContain("automatic assignment would exceed the active supplier limit");
+    expect(migration).toContain("coverage boundary exceeds the membership or onboarding radius from the company base");
+    expect(migration).toContain("assignment would exceed the active supplier limit");
+    expect(migration).toContain("opportunity is outside the supplier current membership radius");
+    expect(migration).toContain("NOT limits.nationwide OR permitted IS NOT NULL");
+    expect(migration).not.toContain('NEW."assignedById" IS NOT NULL');
+    expect(migration).toContain("reconcile_supplier_geographic_membership");
+    expect(migration).toContain("tier = 'LOCAL' AND \"maximumRadiusMiles\" = 40");
+    expect(migration).toContain("tier = 'REGIONAL' AND \"maximumRadiusMiles\" = 100");
+  });
+
+  it("checks live requests from the registered company base as well as saved coverage", () => {
+    const matching = read("lib/matching/suppliers.ts");
+    expect(matching).toContain("companyDistance > purposeRadius");
+    expect(matching).toContain("Registered company-base coordinates are required");
+    expect(matching).toContain("effectiveRadiusMiles: purposeRadius");
   });
 
   it("allows safe pre-plan onboarding geography without opening lead access", () => {

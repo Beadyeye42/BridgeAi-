@@ -21,6 +21,23 @@ export type MembershipLimits = {
   maximumDeliveryRadiusMiles: number | null;
 };
 
+const TIER_RANK: Record<MembershipTier, number> = { LOCAL: 1, REGIONAL: 2, NATIONWIDE: 3 };
+const TIER_RADIUS: Record<MembershipTier, number | null> = { LOCAL: 40, REGIONAL: 100, NATIONWIDE: null };
+
+function restrictedTier(planTier: MembershipTier, override: MembershipTier | null): MembershipTier {
+  if (!override || TIER_RANK[override] > TIER_RANK[planTier]) return planTier;
+  return override;
+}
+
+function restrictedNumber(override: number | null, purchasedLimit: number): number {
+  return override === null ? purchasedLimit : Math.min(override, purchasedLimit);
+}
+
+function restrictedRadius(override: number | null, purchasedLimit: number | null): number | null {
+  if (purchasedLimit === null) return override;
+  return override === null ? purchasedLimit : Math.min(override, purchasedLimit);
+}
+
 type GeographicOverrides = Pick<SupplierCompany,
   "membershipTierOverride" |
   "maximumActiveOpportunitiesOverride" |
@@ -29,15 +46,22 @@ type GeographicOverrides = Pick<SupplierCompany,
 >;
 
 export function effectiveMembershipLimits(plan: MembershipPlan, company: GeographicOverrides): MembershipLimits {
-  const tier = company.membershipTierOverride ?? plan.tier;
-  const planRadius = tier === "NATIONWIDE" ? null : plan.maximumRadiusMiles;
+  // Company overrides are safety restrictions only. They must never turn a
+  // Local subscription into Regional or Nationwide access without an upgrade.
+  const tier = restrictedTier(plan.tier, company.membershipTierOverride);
+  const canonicalTierRadius = TIER_RADIUS[tier];
+  const purchasedRadius = plan.maximumRadiusMiles === null
+    ? canonicalTierRadius
+    : canonicalTierRadius === null
+      ? plan.maximumRadiusMiles
+      : Math.min(plan.maximumRadiusMiles, canonicalTierRadius);
   return {
     tier,
-    maximumRadiusMiles: planRadius,
-    nationwideAllowed: tier === "NATIONWIDE" || plan.nationwideAllowed,
-    maximumActiveOpportunities: company.maximumActiveOpportunitiesOverride ?? plan.maximumActiveOpportunities,
-    maximumServiceRadiusMiles: company.maximumServiceRadiusOverride ?? planRadius,
-    maximumDeliveryRadiusMiles: company.maximumDeliveryRadiusOverride ?? planRadius,
+    maximumRadiusMiles: purchasedRadius,
+    nationwideAllowed: tier === "NATIONWIDE" && plan.tier === "NATIONWIDE" && plan.nationwideAllowed,
+    maximumActiveOpportunities: restrictedNumber(company.maximumActiveOpportunitiesOverride, plan.maximumActiveOpportunities),
+    maximumServiceRadiusMiles: restrictedRadius(company.maximumServiceRadiusOverride, purchasedRadius),
+    maximumDeliveryRadiusMiles: restrictedRadius(company.maximumDeliveryRadiusOverride, purchasedRadius),
   };
 }
 

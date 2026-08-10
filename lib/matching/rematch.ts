@@ -62,12 +62,20 @@ export async function rematchOpenRequestsForSupplier({
     const resolution = await resolveDeliveryLocation(candidate);
     const result = await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
       await tx.$queryRaw`SELECT id FROM bridge_ai."QuoteRequest" WHERE id = ${candidate.id} FOR UPDATE`;
-      const quote = await tx.quoteRequest.findUnique({
+      let quote = await tx.quoteRequest.findUnique({
         where: { id: candidate.id },
         include: { items: { select: { quantity: true } } },
       });
       if (!quote || !["OPEN", "MATCHING"].includes(quote.status) || quote.responseDueAt <= new Date()) {
         return { outcome: "SKIPPED" as const, reasons: [] as string[] };
+      }
+      if ((quote.deliveryLatitude === null || quote.deliveryLongitude === null)
+        && resolution.location.latitude !== null && resolution.location.longitude !== null) {
+        quote = await tx.quoteRequest.update({
+          where: { id: quote.id },
+          data: { deliveryLatitude: resolution.location.latitude, deliveryLongitude: resolution.location.longitude },
+          include: { items: { select: { quantity: true } } },
+        });
       }
 
       const assignmentCount = await tx.supplierAssignment.count({

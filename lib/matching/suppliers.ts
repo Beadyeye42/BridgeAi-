@@ -313,9 +313,14 @@ export async function evaluateSupplierMatches(
     const purpose = purposeForRequest;
     const categoryEligible = supplier.categories.length > 0;
     const planLimits = plan ? effectiveMembershipLimits(plan, supplier) : null;
+    const purposeRadius = planLimits
+      ? purpose === "SERVICE"
+        ? planLimits.maximumServiceRadiusMiles
+        : planLimits.maximumDeliveryRadiusMiles
+      : null;
     const configuredRules = supplier.coverageAreas.filter((area) => area.purpose === purpose).map((area) => ({
       ...area,
-      radiusMiles: planLimits?.maximumRadiusMiles === null || area.radiusMiles === null ? area.radiusMiles : Math.min(area.radiusMiles, planLimits?.maximumRadiusMiles ?? 0),
+      radiusMiles: purposeRadius === null || area.radiusMiles === null ? area.radiusMiles : Math.min(area.radiusMiles, purposeRadius ?? 0),
     }));
     const collection = request.fulfilmentMode === "COLLECTION" || request.collectionRequired;
     const coverage = collection && supplier.collectionLocations[0]
@@ -329,7 +334,7 @@ export async function evaluateSupplierMatches(
       : null;
     const fallbackCoverage: CoverageMatch = { type: "DISTANCE", label: "Outside configured area", description: `Outside configured ${purpose.toLowerCase()} coverage`, distanceMiles: companyDistance };
     const capability = supplier.capabilities[0];
-    const base = { id: supplier.id, name: supplier.tradingName ?? supplier.legalName, postcode: supplier.postcode, match: coverage ?? fallbackCoverage, membershipTier: planLimits?.tier ?? null, coveragePurpose: purpose, distanceMiles: coverage?.distanceMiles ?? companyDistance };
+    const base = { id: supplier.id, name: supplier.tradingName ?? supplier.legalName, postcode: supplier.postcode, match: coverage ?? fallbackCoverage, membershipTier: planLimits?.tier ?? null, coveragePurpose: purpose, distanceMiles: companyDistance ?? coverage?.distanceMiles ?? null };
     const mandatoryRejections: string[] = [];
     if (purpose === "SERVICE" && configuration?.serviceMatchingEnabled === false) mandatoryRejections.push("Automatic service matching is disabled by an administrator");
     if (purpose === "DELIVERY" && configuration?.deliveryMatchingEnabled === false) mandatoryRejections.push("Automatic delivery matching is disabled by an administrator");
@@ -338,6 +343,10 @@ export async function evaluateSupplierMatches(
     if (collection && !supplier.collectionLocations.length) mandatoryRejections.push("Collection is required but no active collection location is configured");
     if (!collection && !coverage) mandatoryRejections.push(`Delivery postcode is outside configured ${purpose.toLowerCase()} coverage`);
     if (coverage?.type === "NATIONWIDE" && !planLimits?.nationwideAllowed) mandatoryRejections.push("Membership tier does not allow nationwide coverage");
+    if (planLimits && purposeRadius !== null && companyDistance === null) mandatoryRejections.push("Registered company-base coordinates are required for mileage-controlled matching");
+    if (planLimits && purposeRadius !== null && companyDistance !== null && companyDistance > purposeRadius + 0.01) {
+      mandatoryRejections.push(`${plan?.name ?? planLimits.tier} is limited to ${purposeRadius} miles from the registered company base`);
+    }
     if (planLimits && supplier._count.assignments >= planLimits.maximumActiveOpportunities) mandatoryRejections.push(`${plan?.name ?? planLimits.tier} active opportunity limit of ${planLimits.maximumActiveOpportunities} has been reached`);
     if (!capability) {
       evaluations.push({ ...base, outcome: "REJECTED", score: 0, reasons: [...mandatoryRejections, "Supplier has not confirmed capability for this product"], capabilitySnapshot: { missing: true }, rankingSnapshot: { membershipTier: planLimits?.tier ?? null, activeOpportunities: supplier._count.assignments } });
@@ -361,7 +370,10 @@ export async function evaluateSupplierMatches(
       + reliability * weights.reliability;
     const totalWeight = Object.values(weights).reduce((sum, weight) => sum + weight, 0) || 1;
     const score = Math.round(Math.min(100, Math.max(0, weightedPoints / totalWeight * 100)));
-    const reasons = mandatoryRejections.length ? mandatoryRejections : [...result.reasons, responseRate > 0 ? `${Math.round(responseRate * 100)}% recent opportunity response rate` : "No response history yet"];
+    const geographyReason = companyDistance !== null && purposeRadius !== null
+      ? `${companyDistance.toFixed(1)} miles from registered company base, within the ${purposeRadius}-mile ${plan?.name ?? planLimits?.tier} limit`
+      : null;
+    const reasons = mandatoryRejections.length ? mandatoryRejections : [...result.reasons, ...(geographyReason ? [geographyReason] : []), responseRate > 0 ? `${Math.round(responseRate * 100)}% recent opportunity response rate` : "No response history yet"];
     const outcome = mandatoryRejections.length ? "REJECTED" as const : result.outcome;
     evaluations.push({
       ...base,
@@ -395,7 +407,8 @@ export async function evaluateSupplierMatches(
         capacityStaleDays: configuration?.capacityStaleDays ?? DEFAULT_CAPACITY_STALE_DAYS,
         leadTimeStaleDays: configuration?.leadTimeStaleDays ?? DEFAULT_LEAD_TIME_STALE_DAYS,
         coverageType: coverage?.type ?? null,
-        distanceMiles: coverage?.distanceMiles ?? null,
+        distanceMilesFromCompanyBase: companyDistance,
+        effectiveRadiusMiles: purposeRadius,
       },
     });
   }
