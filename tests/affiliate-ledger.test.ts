@@ -86,6 +86,19 @@ describe("affiliate invoice accounting", () => {
     expect(shell).toContain("<LogoutButton compact />");
   });
 
+  it("keeps affiliate invitations administrator-only and readable", () => {
+    const page = read("app/admin/affiliates/page.tsx");
+    const form = read("components/admin/affiliate-manager.tsx");
+    const guard = read("lib/auth/guards.ts");
+    expect(page).toContain("await requireAdminPage()");
+    expect(page).toContain("admin-affiliate-invite");
+    expect(page).toContain("They will receive their own separate portal and will never see this administrator console.");
+    expect(form).toContain("affiliate-form-grid");
+    expect(form).toContain('htmlFor="affiliate-email"');
+    expect(form).toContain("Activate this affiliate immediately");
+    expect(guard).toContain('session.user.role !== "ADMINISTRATOR"');
+  });
+
   it("forces RLS and prevents cross-affiliate reads", () => {
     const migration = read("supabase/migrations/20260809131748_affiliate_invoice_ledger.sql");
     for (const table of ["affiliates", "affiliate_referrals", "affiliate_commissions", "affiliate_payouts", "affiliate_notifications", "affiliate_audit_logs"]) {

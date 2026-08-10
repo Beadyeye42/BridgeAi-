@@ -6,6 +6,7 @@ import { useState } from "react";
 export function AffiliateCreateForm() {
   const router = useRouter();
   const [message, setMessage] = useState("");
+  const [messageTone, setMessageTone] = useState<"success" | "error">("success");
   const [busy, setBusy] = useState(false);
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setMessage("");
@@ -16,10 +17,30 @@ export function AffiliateCreateForm() {
     const response = await fetch("/api/admin/affiliates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     const result = await response.json().catch(() => ({}));
     setBusy(false);
-    if (!response.ok) return setMessage(result.error ?? "Affiliate could not be created.");
-    target.reset(); setMessage("Affiliate invitation sent."); router.refresh();
+    if (!response.ok) {
+      setMessageTone("error");
+      return setMessage(result.error ?? "Affiliate could not be created.");
+    }
+    target.reset(); setMessageTone("success"); setMessage("Affiliate invitation sent."); router.refresh();
   }
-  return <form className="settings-form" onSubmit={submit}><div className="field-row"><label>First name<input name="firstName" required /></label><label>Last name<input name="lastName" required /></label></div><div className="field-row"><label>Display name<input name="displayName" required /></label><label>Business email<input name="email" type="email" required /></label></div><label>Referral code<input name="code" required minLength={4} maxLength={24} pattern="[A-Za-z0-9]+" placeholder="AFF123" /></label><label className="check-field"><input type="checkbox" name="activate" /><span>Activate immediately (counts toward the 10-place limit)</span></label>{message && <p className="form-alert" role="status">{message}</p>}<button className="button button-primary" disabled={busy}>{busy ? "Creating…" : "Create affiliate and send invite"}</button></form>;
+  return <form className="affiliate-create-form" onSubmit={submit}>
+    <div className="affiliate-form-grid">
+      <label className="affiliate-form-field" htmlFor="affiliate-first-name"><span>First name</span><input id="affiliate-first-name" name="firstName" autoComplete="given-name" required /></label>
+      <label className="affiliate-form-field" htmlFor="affiliate-last-name"><span>Last name</span><input id="affiliate-last-name" name="lastName" autoComplete="family-name" required /></label>
+      <label className="affiliate-form-field" htmlFor="affiliate-display-name"><span>Affiliate or business name</span><input id="affiliate-display-name" name="displayName" autoComplete="organization" required /></label>
+      <label className="affiliate-form-field" htmlFor="affiliate-email"><span>Business email</span><input id="affiliate-email" name="email" type="email" autoComplete="email" required /></label>
+      <label className="affiliate-form-field affiliate-code-field" htmlFor="affiliate-code"><span>Referral code</span><input id="affiliate-code" name="code" required minLength={4} maxLength={24} pattern="[A-Za-z0-9]+" placeholder="AFF123" autoCapitalize="characters" /><small>Use 4–24 letters or numbers. This becomes part of their private referral link.</small></label>
+    </div>
+    <label className="affiliate-activation-choice">
+      <input type="checkbox" name="activate" />
+      <span><b>Activate this affiliate immediately</b><small>Leave unticked to create the account as pending. Activating uses one of the ten affiliate places.</small></span>
+    </label>
+    {message && <p className={`form-alert ${messageTone}`} role="status" aria-live="polite">{message}</p>}
+    <div className="affiliate-form-footer">
+      <p>A secure invitation email will be sent to the business email above.</p>
+      <button className="button button-primary" disabled={busy}>{busy ? "Creating…" : "Create affiliate and send invite"}</button>
+    </div>
+  </form>;
 }
 
 export function AffiliateStatusControl({ id, status }: { id: string; status: string }) {
