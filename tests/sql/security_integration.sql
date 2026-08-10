@@ -777,6 +777,10 @@ BEGIN
   END IF;
 
   IF has_function_privilege('anon','bridge_private.attribute_supplier_referral(text,uuid,text)','EXECUTE')
+     OR has_function_privilege('anon','bridge_private.preflight_supplier_registration(text,text)','EXECUTE')
+     OR has_function_privilege('authenticated','bridge_private.preflight_supplier_registration(text,text)','EXECUTE')
+     OR has_function_privilege('service_role','bridge_private.preflight_supplier_registration(text,text)','EXECUTE')
+     OR NOT has_function_privilege('bridge_ai_app','bridge_private.preflight_supplier_registration(text,text)','EXECUTE')
      OR has_function_privilege('authenticated','bridge_private.record_affiliate_paid_invoice(text,text,text,text,text,text,integer,integer,integer,timestamptz,timestamptz,timestamptz)','EXECUTE')
      OR has_function_privilege('authenticated','bridge_private.validate_affiliate_commissions()','EXECUTE')
      OR NOT has_function_privilege('bridge_ai_app','bridge_private.validate_affiliate_commissions()','EXECUTE') THEN

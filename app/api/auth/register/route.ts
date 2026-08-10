@@ -5,11 +5,13 @@ import { registerSchema, validationError } from "@/lib/auth/validation";
 import { createClient } from "@/lib/supabase/auth-server";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { applicationOrigin } from "@/lib/config";
+import { authUserWasCreatedForRequest, supplierBootstrapError } from "@/lib/auth/registration-safety";
 
 export const runtime = "nodejs";
 const TERMS_VERSION = "supplier-terms-2026-08-02";
 
 export async function POST(request: Request) {
+  const registrationStartedAt = Date.now();
   const parsed = registerSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: validationError(parsed.error) }, { status: 400 });
   let origin: string;
@@ -18,6 +20,31 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Account registration is not configured." }, { status: 503 });
   }
+
+  if (!parsed.data.invitationToken) {
+    try {
+      const [preflight] = await trustedPrisma.$queryRaw<Array<{ status: string }>>`
+        SELECT bridge_private.preflight_supplier_registration(
+          ${parsed.data.email}, ${parsed.data.referralCode ?? null}
+        ) AS status
+      `;
+      if (preflight?.status === "EMAIL_EXISTS") {
+        return NextResponse.json({
+          error: "This email is already linked to a Bridge AI account. Sign in, reset the password, or contact support if you cannot access it.",
+        }, { status: 409 });
+      }
+      if (preflight?.status === "INVALID_REFERRAL") {
+        return NextResponse.json({ error: "This affiliate referral link is no longer valid." }, { status: 400 });
+      }
+      if (preflight?.status !== "OK") {
+        return NextResponse.json({ error: "Account registration is temporarily unavailable." }, { status: 503 });
+      }
+    } catch (cause) {
+      console.error("Supplier registration preflight failed", cause);
+      return NextResponse.json({ error: "Account registration is temporarily unavailable." }, { status: 503 });
+    }
+  }
+
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signUp({
     email: parsed.data.email,
@@ -56,9 +83,14 @@ export async function POST(request: Request) {
       }
     }
   } catch (cause) {
-    await getSupabaseAdmin().auth.admin.deleteUser(data.user.id).catch(() => undefined);
+    if (authUserWasCreatedForRequest(data.user.created_at, registrationStartedAt)) {
+      await getSupabaseAdmin().auth.admin.deleteUser(data.user.id).catch((cleanupCause) => {
+        console.error("Supplier Auth cleanup failed", cleanupCause);
+      });
+    }
     console.error("Supplier bootstrap failed", cause);
-    return NextResponse.json({ error: "We could not create your supplier workspace." }, { status: 500 });
+    const failure = supplierBootstrapError(cause);
+    return NextResponse.json({ error: failure.message }, { status: failure.status });
   }
 
   return NextResponse.json({
