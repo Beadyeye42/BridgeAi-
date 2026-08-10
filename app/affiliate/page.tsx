@@ -4,6 +4,7 @@ import type { AffiliateCommissionStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireAffiliatePage } from "@/lib/auth/guards";
 import { affiliateStatusLabel, money } from "@/lib/affiliates/display";
+import { getCurrentAffiliateReferralSummaries } from "@/lib/affiliates/referral-summaries";
 
 const RANGE_OPTIONS = [1, 3, 6, 12] as const;
 const INCLUDED_LEDGER_STATUSES = { notIn: ["REVERSED", "NOT_ELIGIBLE"] as AffiliateCommissionStatus[] };
@@ -27,12 +28,8 @@ export default async function AffiliateDashboardPage({ searchParams }: { searchP
   // without competing with Stripe and WhatsApp work for the deliberately small pool.
   const snapshot = await prisma.$transaction(async (tx) => {
     const programme = await tx.affiliateProgramme.findUniqueOrThrow({ where: { id: "default" } });
-    const referrals = await tx.affiliateReferral.findMany({
-      where: { affiliateId: affiliate.id },
-      include: { supplierCompany: { include: { subscription: { include: { membershipPlan: true } } } } },
-      orderBy: { referredAt: "desc" },
-      take: 8,
-    });
+    const referralSummaries = await getCurrentAffiliateReferralSummaries(tx);
+    const referrals = referralSummaries.slice(0, 8);
     const chartEntries = await tx.affiliateCommission.findMany({
       where: { affiliateId: affiliate.id, earnedAt: { gte: chartStart }, status: INCLUDED_LEDGER_STATUSES },
       select: { earnedAt: true, commissionAmountPence: true },
@@ -41,9 +38,7 @@ export default async function AffiliateDashboardPage({ searchParams }: { searchP
     const clicks = await tx.referralClick.count({ where: { affiliateId: affiliate.id } });
     const payouts = await tx.affiliatePayout.aggregate({ where: { affiliateId: affiliate.id, status: "PAID" }, _sum: { amountPaidPence: true } });
     const notices = await tx.affiliateNotification.findMany({ where: { affiliateId: affiliate.id, readAt: null }, orderBy: { createdAt: "desc" }, take: 4 });
-    const active = await tx.affiliateReferral.count({
-      where: { affiliateId: affiliate.id, supplierCompany: { subscription: { is: { status: "ACTIVE", accessSource: "STRIPE" } } } },
-    });
+    const active = referralSummaries.filter((referral) => referral.subscriptionStatus === "ACTIVE" && referral.subscriptionAccessSource === "STRIPE").length;
     const qualifying = await tx.affiliateReferral.count({ where: { affiliateId: affiliate.id, status: "QUALIFICATION_MONTH" } });
     const earning = await tx.affiliateReferral.count({ where: { affiliateId: affiliate.id, status: "COMMISSION_ACTIVE" } });
     const lostThisMonth = await tx.affiliateReferral.count({ where: { affiliateId: affiliate.id, cancelledAt: { gte: monthStart } } });
@@ -86,7 +81,7 @@ export default async function AffiliateDashboardPage({ searchParams }: { searchP
     </section>
     <section className="panel affiliate-metrics-panel"><div className="panel-heading"><div><p className="eyebrow">Financial position</p><h2>Programme metrics</h2></div><Link href="/affiliate/earnings">Inspect ledger</Link></div><dl className="affiliate-metrics-grid"><div><dt>Commission-earning suppliers</dt><dd>{snapshot.earning}</dd></div><div><dt>Pending earnings</dt><dd>{money(snapshot.pending._sum?.commissionAmountPence ?? 0)}</dd></div><div><dt>Total paid</dt><dd>{money(paid)}</dd></div><div><dt>Lifetime earnings</dt><dd>{money(snapshot.lifetime._sum?.commissionAmountPence ?? 0)}</dd></div><div><dt>Lost suppliers this month</dt><dd>{snapshot.lostThisMonth}</dd></div><div><dt>Eligible subscription revenue</dt><dd>{money(snapshot.lifetime._sum?.eligibleRevenuePence ?? 0)}</dd></div></dl></section>
     <div className="dashboard-grid"><section className="panel panel-wide"><div className="panel-heading"><div><p className="eyebrow">Recent referrals</p><h2>Supplier progress</h2></div><Link href="/affiliate/referrals">View all</Link></div>
-      <div className="data-list">{snapshot.referrals.length ? snapshot.referrals.map((referral) => <div className="data-row" key={referral.id}><div><b>{referral.supplierCompany.legalName}</b><small>{referral.supplierCompany.subscription?.membershipPlan?.name ?? "No paid plan yet"}</small></div><div><b>{affiliateStatusLabel(referral.status)}</b><small>{referral.eligibleCommissionPeriodsCompleted} of 12 commission months</small></div></div>) : <div className="empty-state">No referred suppliers yet. Your private referral link is ready whenever you are.</div>}</div>
+      <div className="data-list">{snapshot.referrals.length ? snapshot.referrals.map((referral) => <div className="data-row" key={referral.referralId}><div><b>{referral.supplierName}</b><small>{referral.planName ?? referral.planCode ?? "No paid plan yet"}</small></div><div><b>{affiliateStatusLabel(referral.referralStatus)}</b><small>{referral.eligibleCommissionPeriodsCompleted} of 12 commission months</small></div></div>) : <div className="empty-state">No referred suppliers yet. Your private referral link is ready whenever you are.</div>}</div>
     </section><aside className="panel affiliate-share-panel"><p className="eyebrow">Your referral link</p><h2>Grow your circle</h2><p className="mono-field">{`${process.env.APP_URL ?? "https://bridge-ai-sable.vercel.app"}/join?ref=${affiliate.code}`}</p><p><b>{snapshot.clicks}</b> recorded referral-link clicks</p><small>Every valid signup is permanently attributed to you before subscription billing begins.</small></aside></div>
     {snapshot.notices.length > 0 && <section className="panel"><div className="panel-heading"><div><p className="eyebrow">Updates</p><h2>Needs your attention</h2></div><Link href="/affiliate/notifications">All notifications</Link></div>{snapshot.notices.map((notice) => <div className="data-row" key={notice.id}><div><b>{notice.title}</b><small>{notice.body}</small></div></div>)}</section>}
   </>;

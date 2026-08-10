@@ -122,6 +122,26 @@ describe("affiliate invoice accounting", () => {
     expect(migration).toContain("REVOKE INSERT, DELETE");
   });
 
+  it("uses a narrow identity-derived supplier summary instead of bypassing company isolation", () => {
+    const migration = read("supabase/migrations/20260810202500_affiliate_supplier_summary.sql");
+    const dashboard = read("app/affiliate/page.tsx");
+    const referrals = read("app/affiliate/referrals/page.tsx");
+    const earnings = read("app/affiliate/earnings/page.tsx");
+    expect(migration).toContain("current_affiliate_referral_summaries");
+    expect(migration).toContain('affiliate."userId" = bridge_private.current_user_id()');
+    expect(migration).toContain("SECURITY DEFINER");
+    expect(migration).toContain("REVOKE ALL ON FUNCTION");
+    for (const privateField of ["contactEmail", "contactPhone", "address", "companyProfile"]) {
+      expect(migration).not.toMatch(new RegExp(`company\\.\\"${privateField}\\"`));
+    }
+    expect(dashboard).toContain("getCurrentAffiliateReferralSummaries");
+    expect(referrals).toContain("getCurrentAffiliateReferralSummaries");
+    expect(earnings).toContain("getCurrentAffiliateReferralSummaries");
+    expect(dashboard).not.toContain("include: { supplierCompany");
+    expect(referrals).not.toContain("include: { supplierCompany");
+    expect(earnings).not.toContain("include: { supplierCompany");
+  });
+
   it("indexes ledger relationships used by high-volume accounting queries", () => {
     const migration = read("supabase/migrations/20260809151500_affiliate_ledger_foreign_key_indexes.sql");
     for (const field of ['"subscriptionId"', '"membershipPlanId"', '"sourceCommissionId"']) expect(migration).toContain(field);
