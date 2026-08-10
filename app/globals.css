@@ -277,9 +277,9 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .portal-main { margin-left: 0; padding: 20px 15px 92px; }
   .demo-banner { align-items: flex-start; flex-wrap: wrap; font-size: 10px; line-height: 1.5; }
   .demo-banner a { width: 100%; margin: 2px 0 0 23px; }
-  .page-heading { align-items: flex-start; margin-bottom: 20px; }
+  .page-heading { align-items: flex-start; flex-wrap: wrap; margin-bottom: 20px; }
   .page-heading h1 { font-size: 29px; }
-  .heading-actions { display: none; }
+  .heading-actions { width: 100%; display: flex; align-items: flex-start; flex-wrap: wrap; }
   .attention-card { align-items: flex-start; flex-wrap: wrap; padding: 15px; }
   .attention-card > div:nth-child(2) { flex: 1; }
   .attention-card p { line-height: 1.45; }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import { buildAffiliateInvitationEmail } from "@/lib/notifications/affiliate-invitation-email";
 import { affiliateInvitationCallbackUrl, affiliateInvitationIdempotencyKey } from "@/lib/affiliates/invitations";
 
@@ -23,5 +24,11 @@ describe("affiliate invitation delivery", () => {
     const key = affiliateInvitationIdempotencyKey("user-id", "hashed-secret-token");
     expect(key).toMatch(/^bridge-ai-affiliate-invite-user-id-[a-f0-9]{20}$/);
     expect(key).not.toContain("hashed-secret-token");
+  });
+
+  it("keeps invitation recovery controls visible on narrow administrator screens", () => {
+    const styles = readFileSync("app/globals.css", "utf8");
+    expect(styles).toContain(".heading-actions { width: 100%; display: flex;");
+    expect(styles).not.toContain(".heading-actions { display: none; }");
   });
 });
