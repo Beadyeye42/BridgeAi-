@@ -1,5 +1,5 @@
 import { after, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { prisma, runAsDatabaseWorker } from "@/lib/db";
 import { getCurrentSession, getPrimarySupplierCompanyId } from "@/lib/auth/session";
 import { quotationSchema, validationError } from "@/lib/auth/validation";
 import { writeAuditLog } from "@/lib/audit";
@@ -55,11 +55,11 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
-    if (message.includes("REQUEST_CLOSED") || message.includes("QUOTE_REQUEST_CLOSED") || message.includes("ASSIGNMENT_CLOSED")) {
+    if (message.includes("REQUEST_CLOSED") || message.includes("QUOTE_REQUEST_CLOSED") || message.includes("ASSIGNMENT_CLOSED") || message.includes("QUOTATION_ASSIGNMENT_NOT_FOUND")) {
       return NextResponse.json({ error: "This request has closed and can no longer receive quotations" }, { status: 409 });
     }
     console.error("Quotation submission failed", { assignmentId: assignment.id, error });
-    await prisma.systemEvent.create({ data: { severity: "ERROR", source: "quotation", code: "QUOTATION_SUBMIT_FAILED", message: error instanceof Error ? error.message.slice(0, 1000) : "Quotation submission failed", context: { assignmentId: assignment.id, supplierCompanyId: companyId } } }).catch(() => undefined);
+    await runAsDatabaseWorker("production_monitoring", (tx) => tx.systemEvent.create({ data: { severity: "ERROR", source: "quotation", code: "QUOTATION_SUBMIT_FAILED", message: error instanceof Error ? error.message.slice(0, 1000) : "Quotation submission failed", context: { assignmentId: assignment.id, supplierCompanyId: companyId } } })).catch(() => undefined);
     return NextResponse.json({ error: "The quotation could not be submitted. Please try again." }, { status: 500 });
   }
   after(async () => {

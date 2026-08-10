@@ -16,7 +16,7 @@ describe("production monitoring", () => {
       failedWhatsAppJobs: [{ id: "job_1", type: "PROCESS_INBOUND", attempts: 3, errorCode: "OPENAI_TIMEOUT" }],
       failedStripeWebhooks: [{ id: "hook_1", eventType: "checkout.session.completed", retryCount: 2, failureReason: "Database unavailable" }],
       problemAttachments: [{ id: "file_1", fileName: "drawing.pdf", scanStatus: "PENDING", createdAt: new Date() }],
-      storageEvents: [],
+      operationalEvents: [],
     }, "https://bridge.example");
     expect(alerts.map((alert) => alert.fingerprint)).toEqual([
       "whatsapp-job:job_1",
@@ -25,6 +25,20 @@ describe("production monitoring", () => {
     ]);
     expect(alerts.every((alert) => alert.actionUrl === "https://bridge.example/admin/system")).toBe(true);
     expect(JSON.stringify(alerts)).not.toContain("customerContact");
+  });
+
+  it("turns a quotation submission failure into an administrator alert", () => {
+    const alerts = buildOperationalAlertCandidates({
+      failedWhatsAppJobs: [],
+      failedStripeWebhooks: [],
+      problemAttachments: [],
+      operationalEvents: [{ id: "event_quote_1", source: "quotation", severity: "ERROR", code: "QUOTATION_SUBMIT_FAILED", message: "Database guard rejected the write" }],
+    }, "https://bridge.example");
+    expect(alerts).toEqual([expect.objectContaining({
+      fingerprint: "system-event:event_quote_1",
+      source: "QUOTATION",
+      title: "Supplier quotation submission failed",
+    })]);
   });
 
   it("reports missing email configuration honestly", () => {

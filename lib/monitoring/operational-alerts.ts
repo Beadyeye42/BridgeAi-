@@ -16,7 +16,7 @@ function monitoringOrigin() {
 
 export async function discoverOperationalAlerts(now = new Date()) {
   const staleAttachmentBefore = new Date(now.getTime() - STALE_ATTACHMENT_MS);
-  const [failedWhatsAppJobs, failedStripeWebhooks, problemAttachments, storageEvents] = await runAsDatabaseWorker("production_monitoring", (tx) => Promise.all([
+  const [failedWhatsAppJobs, failedStripeWebhooks, problemAttachments, operationalEvents] = await runAsDatabaseWorker("production_monitoring", (tx) => Promise.all([
     tx.whatsAppJob.findMany({
       where: {
         status: "FAILED",
@@ -45,12 +45,13 @@ export async function discoverOperationalAlerts(now = new Date()) {
         status: { not: "RESOLVED" },
         severity: { in: ["ERROR", "CRITICAL"] },
         OR: [
-          { source: { in: ["storage", "attachment"] } },
+          { source: { in: ["storage", "attachment", "quotation"] } },
           { code: { contains: "UPLOAD_FAILED" } },
           { code: { contains: "ATTACHMENT" } },
+          { code: "QUOTATION_SUBMIT_FAILED" },
         ],
       },
-      select: { id: true, severity: true, code: true, message: true },
+      select: { id: true, source: true, severity: true, code: true, message: true },
       take: 100,
     }),
   ]));
@@ -58,7 +59,7 @@ export async function discoverOperationalAlerts(now = new Date()) {
     failedWhatsAppJobs,
     failedStripeWebhooks,
     problemAttachments,
-    storageEvents: storageEvents.map((event) => ({
+    operationalEvents: operationalEvents.map((event) => ({
       ...event,
       severity: event.severity as "ERROR" | "CRITICAL",
     })),

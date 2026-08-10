@@ -2,7 +2,7 @@ export type OperationalIssueSnapshot = {
   failedWhatsAppJobs: Array<{ id: string; type: string; attempts: number; errorCode: string | null }>;
   failedStripeWebhooks: Array<{ id: string; eventType: string; retryCount: number; failureReason: string | null }>;
   problemAttachments: Array<{ id: string; fileName: string; scanStatus: string; createdAt: Date }>;
-  storageEvents: Array<{ id: string; severity: "ERROR" | "CRITICAL"; code: string; message: string }>;
+  operationalEvents: Array<{ id: string; source: string; severity: "ERROR" | "CRITICAL"; code: string; message: string }>;
 };
 
 export type OperationalAlertCandidate = {
@@ -48,12 +48,12 @@ export function buildOperationalAlertCandidates(
       body: `${attachment.fileName.slice(0, 120)} is ${attachment.scanStatus.toLowerCase()} and is not available to authorised suppliers.`,
       actionUrl: operationsUrl,
     })),
-    ...snapshot.storageEvents.map((event) => ({
+    ...snapshot.operationalEvents.map((event) => ({
       fingerprint: `system-event:${event.id}`,
-      source: "ATTACHMENT",
+      source: event.source === "quotation" ? "QUOTATION" : "ATTACHMENT",
       severity: event.severity,
-      title: "Attachment storage operation failed",
-      body: `${event.code}: ${safeDetail(event.message, "Storage operation failed")}.`,
+      title: event.source === "quotation" ? "Supplier quotation submission failed" : "Attachment storage operation failed",
+      body: `${event.code}: ${safeDetail(event.message, event.source === "quotation" ? "Quotation submission failed" : "Storage operation failed")}.`,
       actionUrl: operationsUrl,
     })),
   ];

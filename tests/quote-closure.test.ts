@@ -26,4 +26,19 @@ describe("customer quote selection closure", () => {
     expect(migration).toContain("supplier_quotation_open_request_guard");
     expect(migration).toContain("QUOTE_REQUEST_CLOSED");
   });
+
+  it("lets the private trigger verify a valid assigned request without exposing an RPC bypass", () => {
+    const migration = read("supabase/migrations/20260810203219_fix_supplier_quotation_submission_rls_guard.sql");
+    expect(migration).toContain("SECURITY DEFINER");
+    expect(migration).toContain("SET search_path = ''");
+    expect(migration).toContain('assignment.id = NEW."assignmentId"');
+    expect(migration).toContain('assignment."supplierCompanyId" = NEW."supplierCompanyId"');
+    expect(migration).toContain("FROM PUBLIC, anon, authenticated, service_role, bridge_ai_app");
+  });
+
+  it("records unexpected supplier quotation failures through the monitoring worker", () => {
+    const source = read("app/api/quotations/route.ts");
+    expect(source).toContain('runAsDatabaseWorker("production_monitoring"');
+    expect(source).toContain('code: "QUOTATION_SUBMIT_FAILED"');
+  });
 });
