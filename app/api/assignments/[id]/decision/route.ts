@@ -5,6 +5,7 @@ import { assignmentDecisionSchema, validationError } from "@/lib/auth/validation
 import { writeAuditLog } from "@/lib/audit";
 import { inviteNextEligibleSupplier } from "@/lib/matching/replacements";
 import { processSupplierEmailsSafely } from "@/lib/notifications/email-worker";
+import { isMembershipActive } from "@/lib/billing/pricing";
 
 export const runtime = "nodejs";
 
@@ -13,6 +14,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!session || session.user.role !== "SUPPLIER") return NextResponse.json({ error: "Sign in required" }, { status: 401 });
   const companyId = getPrimarySupplierCompanyId(session);
   if (!companyId) return NextResponse.json({ error: "No supplier company membership" }, { status: 403 });
+
+  const subscription = await prisma.subscription.findUnique({ where: { supplierCompanyId: companyId } });
+  if (!isMembershipActive(subscription)) {
+    return NextResponse.json({
+      error: "Your Bridge AI membership is not active. Renew your membership to respond to quote opportunities.",
+      code: "MEMBERSHIP_REQUIRED",
+      actionUrl: "/dashboard/subscription",
+    }, { status: 402 });
+  }
 
   const parsed = assignmentDecisionSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: validationError(parsed.error) }, { status: 400 });

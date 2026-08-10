@@ -4,6 +4,7 @@ import { processSupplierEmailsSafely } from "@/lib/notifications/email-worker";
 import { processWhatsAppJobs } from "@/lib/whatsapp/processor";
 import { validateMatureAffiliateCommissions } from "@/lib/affiliates/accounting-worker";
 import { processAffiliateEmailsSafely } from "@/lib/affiliates/email-worker";
+import { expireElapsedMemberships } from "@/lib/billing/expiry";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,12 +15,14 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
+    const membershipExpiry = await expireElapsedMemberships();
     const processedWhatsAppJobs = await processWhatsAppJobs({ limit: 50 });
     const supplierEmails = await processSupplierEmailsSafely({ limit: 50 });
     const affiliateValidation = await validateMatureAffiliateCommissions();
     const affiliateEmails = await processAffiliateEmailsSafely();
     return NextResponse.json({
       ok: true,
+      membershipExpiry,
       processedWhatsAppJobs,
       supplierEmails,
       affiliateValidation: affiliateValidation.map((result) => ({ ...result, availableAmountPence: result.availableAmountPence.toString() })),

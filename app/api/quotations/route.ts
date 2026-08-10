@@ -4,6 +4,7 @@ import { getCurrentSession, getPrimarySupplierCompanyId } from "@/lib/auth/sessi
 import { quotationSchema, validationError } from "@/lib/auth/validation";
 import { writeAuditLog } from "@/lib/audit";
 import { enqueueQuoteSummary, processWhatsAppJobs } from "@/lib/whatsapp/processor";
+import { isMembershipActive } from "@/lib/billing/pricing";
 
 export const runtime = "nodejs";
 
@@ -27,7 +28,13 @@ export async function POST(request: Request) {
   const company = await prisma.supplierCompany.findUnique({ where: { id: companyId }, select: { status: true } });
   const subscription = await prisma.subscription.findUnique({ where: { supplierCompanyId: companyId } });
   if (!company || company.status !== "APPROVED") return NextResponse.json({ error: "An approved supplier account is required before submitting a quotation" }, { status: 403 });
-  if (!subscription || subscription.status !== "ACTIVE" || (subscription.currentPeriodEnd && subscription.currentPeriodEnd <= new Date())) return NextResponse.json({ error: "An active Bridge AI supplier membership is required before submitting a quotation" }, { status: 402 });
+  if (!isMembershipActive(subscription)) {
+    return NextResponse.json({
+      error: "Your Bridge AI membership is not active. Renew your membership to submit quotations.",
+      code: "MEMBERSHIP_REQUIRED",
+      actionUrl: "/dashboard/subscription",
+    }, { status: 402 });
+  }
 
   const submittedAt = new Date();
   let quotation;
@@ -57,6 +64,13 @@ export async function POST(request: Request) {
     const message = error instanceof Error ? error.message : "";
     if (message.includes("REQUEST_CLOSED") || message.includes("QUOTE_REQUEST_CLOSED") || message.includes("ASSIGNMENT_CLOSED") || message.includes("QUOTATION_ASSIGNMENT_NOT_FOUND")) {
       return NextResponse.json({ error: "This request has closed and can no longer receive quotations" }, { status: 409 });
+    }
+    if (message.includes("ACTIVE_MEMBERSHIP_REQUIRED") || message.includes("active geographic supplier membership")) {
+      return NextResponse.json({
+        error: "Your Bridge AI membership ended before this quotation was submitted. Renew your membership to continue.",
+        code: "MEMBERSHIP_REQUIRED",
+        actionUrl: "/dashboard/subscription",
+      }, { status: 402 });
     }
     console.error("Quotation submission failed", { assignmentId: assignment.id, error });
     await runAsDatabaseWorker("production_monitoring", (tx) => tx.systemEvent.create({ data: { severity: "ERROR", source: "quotation", code: "QUOTATION_SUBMIT_FAILED", message: error instanceof Error ? error.message.slice(0, 1000) : "Quotation submission failed", context: { assignmentId: assignment.id, supplierCompanyId: companyId } } })).catch(() => undefined);
