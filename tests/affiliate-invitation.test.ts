@@ -31,4 +31,10 @@ describe("affiliate invitation delivery", () => {
     expect(styles).toContain(".heading-actions { width: 100%; display: flex;");
     expect(styles).not.toContain(".heading-actions { display: none; }");
   });
+
+  it("never strands an active affiliate on the supplier restriction page", () => {
+    const restrictedPage = readFileSync("app/account-restricted/page.tsx", "utf8");
+    expect(restrictedPage).toContain('session?.user.role === "AFFILIATE"');
+    expect(restrictedPage).toContain('redirect("/affiliate")');
+  });
 });
