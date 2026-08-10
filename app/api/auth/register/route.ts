@@ -12,7 +12,7 @@ import {
 } from "@/lib/auth/registration-safety";
 
 export const runtime = "nodejs";
-const TERMS_VERSION = "supplier-terms-2026-08-02";
+const TERMS_VERSION = "supplier-terms-2026-08-10-v2";
 
 export async function POST(request: Request) {
   const registrationStartedAt = Date.now();

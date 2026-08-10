@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { CheckCircle2, CreditCard, MapPin, ShieldCheck } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { requireSupplierPage } from "@/lib/auth/guards";
@@ -34,7 +35,8 @@ export default async function SubscriptionPage() {
         <div><dt>Winning fees</dt><dd>None</dd></div>
         <div><dt>Current period ends</dt><dd>{sub?.currentPeriodEnd?.toLocaleDateString("en-GB") ?? "—"}</dd></div>
       </dl>
-      {active && sub?.providerCustomerId && !complimentary && <a className="button button-outline" href="/api/billing/portal">Manage payment details</a>}
+      {sub?.cancelAtPeriodEnd && active && <div className="honesty-note">Cancellation is scheduled. Your current access continues until {sub.currentPeriodEnd?.toLocaleDateString("en-GB") ?? "the end of the paid period"}, then new opportunity and quotation access ends.</div>}
+      {active && sub?.providerCustomerId && !complimentary && <a className="button button-outline" href="/api/billing/portal">Manage billing or cancel</a>}
     </section>
     <div className="pricing-grid">
       {plans.map((plan) => {
@@ -52,6 +54,6 @@ export default async function SubscriptionPage() {
         </section>;
       })}
     </div>
-    <section className="panel form-section"><div className="section-heading"><div><p className="eyebrow">Secure billing</p><h2>Managed by Stripe</h2></div><ShieldCheck size={20}/></div><p className="body-copy">Bridge AI never stores card details. Plan prices and geographic limits are controlled centrally. VAT collection remains disabled unless Ironbridge Group Ltd becomes VAT registered and an administrator enables tax for a plan.</p></section>
+    <section className="panel form-section"><div className="section-heading"><div><p className="eyebrow">Secure billing</p><h2>Managed by Stripe</h2></div><ShieldCheck size={20}/></div><p className="body-copy">Bridge AI never stores card details. Plan prices and geographic limits are controlled centrally. VAT collection remains disabled unless Ironbridge Group Ltd becomes VAT registered and an administrator enables tax for a plan.</p><p className="body-copy">Review the <Link href="/legal/terms">supplier terms</Link> and <Link href="/legal/cancellation">subscription and cancellation policy</Link>. Cancellation normally takes effect at the end of the current paid monthly period.</p></section>
   </PortalPage>;
 }

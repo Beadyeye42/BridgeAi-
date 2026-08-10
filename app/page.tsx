@@ -166,7 +166,11 @@ export default function Home() {
         <div><Link className="button button-dark" href="/register">Join Bridge AI <ArrowRight size={15} /></Link><Link className="text-link" href="/demo">See the portal first</Link></div>
       </section>
 
-      <footer className="home-footer"><BrandMark /><span>© {new Date().getFullYear()} Ironbridge Group Ltd</span><nav><Link href="/legal/privacy">Privacy</Link><Link href="/legal/terms">Terms</Link><Link href="/help">Help</Link></nav></footer>
+      <footer className="home-footer">
+        <BrandMark />
+        <span>© {new Date().getFullYear()} Ironbridge Group Ltd · Company 16757150 · Registered in England and Wales · 60 Suffolk Road, Cheltenham, GL50 2AQ</span>
+        <nav aria-label="Legal and help links"><Link href="/legal/privacy">Privacy</Link><Link href="/legal/terms">Supplier terms</Link><Link href="/legal/customer-terms">Customer terms</Link><Link href="/legal/cancellation">Cancellation</Link><Link href="/legal/cookies">Cookies</Link><Link href="/help">Help</Link></nav>
+      </footer>
     </main>
   );
 }
