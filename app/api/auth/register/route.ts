@@ -5,7 +5,11 @@ import { registerSchema, validationError } from "@/lib/auth/validation";
 import { createClient } from "@/lib/supabase/auth-server";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { applicationOrigin } from "@/lib/config";
-import { authUserWasCreatedForRequest, supplierBootstrapError } from "@/lib/auth/registration-safety";
+import {
+  authUserWasCreatedForRequest,
+  supplierBootstrapError,
+  supplierSignUpError,
+} from "@/lib/auth/registration-safety";
 
 export const runtime = "nodejs";
 const TERMS_VERSION = "supplier-terms-2026-08-02";
@@ -52,7 +56,17 @@ export async function POST(request: Request) {
     options: { emailRedirectTo: `${origin}/auth/callback?next=/dashboard` },
   });
   if (error || !data.user || data.user.identities?.length === 0) {
-    return NextResponse.json({ error: error?.message ?? "An account already exists for this email" }, { status: 409 });
+    const failure = supplierSignUpError(error, Boolean(data.user && data.user.identities?.length === 0));
+    console.warn("Supplier Auth signup was not completed", { code: error?.code, status: error?.status });
+    return NextResponse.json(
+      { error: failure.message },
+      {
+        status: failure.status,
+        headers: failure.retryAfterSeconds
+          ? { "Retry-After": String(failure.retryAfterSeconds) }
+          : undefined,
+      },
+    );
   }
 
   try {

@@ -21,3 +21,39 @@ export function supplierBootstrapError(cause: unknown) {
   }
   return { status: 500, message: "We could not create your supplier workspace." } as const;
 }
+
+type AuthProviderError = {
+  code?: string;
+  message?: string;
+  status?: number;
+};
+
+export function supplierSignUpError(error: AuthProviderError | null | undefined, identitiesMissing = false) {
+  const code = error?.code?.toLowerCase() ?? "";
+  const message = error?.message?.toLowerCase() ?? "";
+  const emailDeliveryLimited = error?.status === 429
+    || code === "over_email_send_rate_limit"
+    || message.includes("email rate limit");
+
+  if (emailDeliveryLimited) {
+    return {
+      status: 429,
+      message: "We cannot send the verification email just now. Please wait up to one hour and try again. Your supplier account has not been created.",
+      retryAfterSeconds: 3_600,
+    } as const;
+  }
+
+  if (identitiesMissing || code === "user_already_exists") {
+    return {
+      status: 409,
+      message: "This email is already linked to a Bridge AI account. Sign in, reset the password, or contact support if you cannot access it.",
+      retryAfterSeconds: null,
+    } as const;
+  }
+
+  return {
+    status: 503,
+    message: "We could not create your account just now. Please try again shortly.",
+    retryAfterSeconds: null,
+  } as const;
+}
