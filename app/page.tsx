@@ -43,8 +43,8 @@ export default function Home() {
       <section className="home-hero">
         <div className="home-hero-copy">
           <p className="home-kicker"><MessageCircleMore size={15} /> Built around the way customers already buy</p>
-          <h1>Your next trade customer is already on <em>WhatsApp.</em></h1>
-          <p className="home-intro">Bridge AI turns customer messages, photos, drawings and PDFs into clear quote opportunities—then matches each job with approved suppliers for the right product and delivery area.</p>
+          <h1>What do you need?<br /><em>Bridge it.</em></h1>
+          <p className="home-intro">A buyer sends a message, photo, drawing or document through WhatsApp. Bridge AI identifies what they need, where and when they need it, then finds approved suppliers with the right capability, coverage and live capacity.</p>
           <div className="home-actions">
             <Link className="button button-dark home-primary" href="/register">Apply as a supplier <ArrowRight size={16} /></Link>
             <Link className="button button-outline home-secondary" href="/demo">Explore the supplier portal</Link>
@@ -73,7 +73,7 @@ export default function Home() {
           <div className="home-match-card">
             <div className="home-card-heading">
               <span><FileCheck2 size={19} /></span>
-              <div><b>New matched opportunity</b><small>Quote pack ready</small></div>
+              <div><b>New Bridge Request</b><small>Quote pack ready</small></div>
               <i className="ready">READY</i>
             </div>
             <div className="home-match-title"><span>BA-2026-1842</span><b>Windows & composite door</b></div>
@@ -107,7 +107,7 @@ export default function Home() {
         <div className="home-benefit-grid">
           <article><span><Zap size={20} /></span><h3>Less friction for buyers</h3><p>A familiar WhatsApp conversation makes it easy to start an enquiry and continue it from any phone.</p></article>
           <article><span><Paperclip size={20} /></span><h3>The real job stays attached</h3><p>Photos, drawings and PDFs travel with the request, so suppliers can understand what needs pricing.</p></article>
-          <article><span><Sparkles size={20} /></span><h3>AI creates the structure</h3><p>Bridge AI identifies the product, delivery area and requirements before a quote opportunity is published.</p></article>
+          <article><span><Sparkles size={20} /></span><h3>AI creates the structure</h3><p>Bridge AI identifies what is needed, where, when, quantity, specification and fulfilment before a request is published.</p></article>
           <article><span><Route size={20} /></span><h3>Relevant suppliers see it</h3><p>Matching uses the products you supply and the distance or postcode areas your business covers.</p></article>
         </div>
       </section>

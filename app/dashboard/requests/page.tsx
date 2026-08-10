@@ -46,7 +46,7 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
     take: 100,
   });
 
-  return <PortalPage {...identity(session, company)} eyebrow="Capability-matched requests" title="Quote requests" description="Only requests assigned to this supplier company are shown. New matches use confirmed products, coverage, lead times and capacity.">
+  return <PortalPage {...identity(session, company)} eyebrow="Capability-matched requests" title="Bridge Requests" description="Only requests assigned to this supplier company are shown. New matches use confirmed products, coverage, deadlines, lead times and live capacity.">
     {!membershipActive && <section className="panel honesty-note" role="status"><b>Membership required for live quote opportunities</b><p>Your paid access has ended. Existing submitted, won and lost quotations remain available as read-only history, but new opportunities and quotation submission are locked.</p><Link className="button button-dark" href="/dashboard/subscription">Renew membership</Link></section>}
     <nav className="filter-tabs">{views.map((item) => <Link className={item === view ? "active" : ""} href={`/dashboard/requests?view=${item}`} key={item}>{item}</Link>)}</nav>
     <section className="panel request-browser">

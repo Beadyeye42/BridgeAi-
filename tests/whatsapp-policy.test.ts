@@ -109,10 +109,11 @@ describe("WhatsApp messaging policy", () => {
   it("offers a warm two-choice menu and explains file support", () => {
     const menu = quoteMenu(true);
     expect(menu).toContain("industry partner");
-    expect(menu).toContain("1 — NEW QUOTE");
+    expect(menu).toContain("What do you need? Bridge it.");
+    expect(menu).toContain("1 — BRIDGE A REQUEST");
     expect(menu).toContain("2 — MY QUOTES");
     expect(menu).toContain("3 — CANCEL DRAFT");
-    expect(menu).toContain("photo, drawing or PDF");
+    expect(menu).toContain("photo, drawing or document");
     expect(menu).toContain("One unsent draft is open");
     expect(menu).toContain("Confirmed requests stay safe");
   });
@@ -123,10 +124,11 @@ describe("WhatsApp messaging policy", () => {
       hasMedia: true,
       hasText: false,
     });
-    expect(reply).toContain("say “Hi”");
-    expect(reply).toContain("Can I have a quote please?");
-    expect(reply).toContain("photo, drawing or PDF");
-    expect(reply).toContain("choose the correct industry using a number");
+    expect(reply).toContain("What do you need? Bridge it.");
+    expect(reply).toContain("photo, drawing or document");
+    expect(reply).toContain("where and when you need it");
+    expect(reply).toContain("right specialist category behind the scenes");
+    expect(reply).not.toContain("choose the correct industry");
     expect(reply).toContain("securely received your file");
     expect(reply).toContain("won’t analyse it until you choose to continue");
     expect(reply).toContain("Reply CONTINUE");

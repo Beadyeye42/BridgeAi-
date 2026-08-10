@@ -8,7 +8,7 @@ import { LogoutButton } from "@/components/auth/logout-button";
 
 const primary = [
   { label: "Overview", icon: LayoutDashboard, href: "/dashboard" },
-  { label: "Quote requests", icon: FileText, href: "/dashboard/requests" },
+  { label: "Bridge Requests", icon: FileText, href: "/dashboard/requests" },
   { label: "Performance", icon: BarChart3, href: "/dashboard/performance" },
 ];
 const management = [

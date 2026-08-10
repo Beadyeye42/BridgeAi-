@@ -437,6 +437,27 @@ describe("security foundation static controls", () => {
     expect(source).not.toMatch(/prisma\.|trustedPrisma|writeAuditLog/);
   });
 
+  it("keeps universal WhatsApp intake behind deterministic publishing gates", () => {
+    const intake = read("lib/whatsapp/intake-state.ts");
+    expect(intake).toContain('"REQUIRED_BY"');
+    expect(intake).toContain('"FULFILMENT"');
+    expect(intake).toContain('if (!draft.requiredBy) return "REQUIRED_BY"');
+    expect(intake).toContain('if (!draft.fulfilmentMode) return "FULFILMENT"');
+    expect(intake).toContain("What do you need? Bridge it.");
+    expect(intake).not.toContain("Which industry is this quote for?");
+
+    const processor = read("lib/whatsapp/processor.ts");
+    const completeness = processor.slice(
+      processor.indexOf("export function draftIsComplete"),
+      processor.indexOf("async function createQuoteRequest"),
+    );
+    expect(completeness).toContain("draft.requiredBy");
+    expect(completeness).toContain("draft.fulfilmentMode");
+    expect(processor).toContain('action: "WHATSAPP.UNSUPPORTED_UNIVERSAL_REQUEST_BLOCKED"');
+    expect(processor).toContain('action: "WHATSAPP.UNIVERSAL_REQUEST_DETAILS_REQUESTED"');
+    expect(processor).not.toContain("industrySelectionPrompt");
+  });
+
   it("unlocks customer contact only through the server-controlled selection transaction", () => {
     const webhook = read("app/api/webhooks/stripe/route.ts");
     const handler = webhook.slice(webhook.indexOf("export async function POST"));

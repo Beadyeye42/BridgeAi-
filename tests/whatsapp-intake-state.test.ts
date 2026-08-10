@@ -4,10 +4,7 @@ import {
   compositeDoorStylePhotoPrompt,
   conversationProgress,
   enforceTradeClarification,
-  industrySelectionPrompt,
   isRecognisedIndustryColour,
-  isNumberedIntakeReply,
-  numberedIntakeChoice,
   pheSpecificationDecision,
   pheSpecificationPrompt,
   quoteDraftFingerprint,
@@ -17,6 +14,7 @@ import {
   roofGlazingSpecificationDecision,
   roofGlazingSpecificationPrompt,
   tradeSpecificationClarification,
+  universalRequestPrompt,
 } from "../lib/whatsapp/intake-state";
 
 const completeDraft = {
@@ -24,6 +22,8 @@ const completeDraft = {
   categorySlug: "upvc-windows",
   title: "Five windows",
   summary: "Supply five white uPVC windows",
+  requiredBy: "2026-08-14T16:00:00.000Z",
+  fulfilmentMode: "DELIVERY" as const,
   items: [{ description: "Window", quantity: 5 }],
 };
 
@@ -35,40 +35,25 @@ describe("WhatsApp intake conversation state", () => {
   it("uses application-required fields even if the model proposes no question", () => {
     expect(requiredQuestionKey({ ...completeDraft, items: [] }, "NONE")).toBe("PRODUCT");
     expect(requiredQuestionKey({ ...completeDraft, deliveryPostcode: null }, "NONE")).toBe("DELIVERY_POSTCODE");
+    expect(requiredQuestionKey({ ...completeDraft, requiredBy: null }, "NONE")).toBe("REQUIRED_BY");
+    expect(requiredQuestionKey({ ...completeDraft, fulfilmentMode: null }, "NONE")).toBe("FULFILMENT");
     expect(requiredQuestionKey(completeDraft, "NONE")).toBe("NONE");
-    expect(requiredQuestionKey({ ...completeDraft, categorySlug: null, items: [] }, "NONE")).toBe("INDUSTRY");
+    expect(requiredQuestionKey({ ...completeDraft, categorySlug: null, items: [] }, "NONE")).toBe("PRODUCT");
     expect(requiredQuestionKey({ ...completeDraft, categorySlug: "windows" }, "NONE")).toBe("PRODUCT");
     expect(requiredQuestionKey({ ...completeDraft, categorySlug: "plumbing-heating-mechanical" }, "NONE")).toBe("PRODUCT");
-    expect(repeatClarification("INDUSTRY")).toContain("Which industry");
-    expect(industrySelectionPrompt([
-      { slug: "windows", name: "Windows, doors and glazing" },
-      { slug: "plumbing-heating-mechanical", name: "Plumbing, heating and mechanical" },
-    ])).toContain("2 — Plumbing, heating and mechanical");
-    expect(industrySelectionPrompt([{ slug: "windows", name: "Windows, doors and glazing" }]))
-      .not.toContain("Plumbing");
+    expect(repeatClarification("REQUIRED_BY")).toContain("When do you need it");
+    expect(repeatClarification("FULFILMENT")).toContain("delivery, collection");
   });
 
-  it("uses deterministic numbered industry and product choices", () => {
-    const industries = [
-      { slug: "windows", name: "Windows, doors and glazing" },
-      { slug: "plumbing-heating-mechanical", name: "Plumbing, heating and mechanical" },
-    ];
-    expect(industrySelectionPrompt(industries)).toContain("Reply with just the number");
-    expect(numberedIntakeChoice(" 2 ", industries)).toEqual(industries[1]);
-    expect(numberedIntakeChoice("3", industries)).toBeNull();
-    expect(numberedIntakeChoice("windows", industries)).toBeNull();
-    expect(isNumberedIntakeReply("1", "INDUSTRY")).toBe(true);
-    expect(isNumberedIntakeReply("1", "PRODUCT")).toBe(true);
-    expect(isNumberedIntakeReply("1", null)).toBe(false);
-
-    const products = [
-      { slug: "upvc-windows", name: "uPVC windows and doors" },
-      { slug: "aluminium-windows", name: "Aluminium windows and bifolds" },
-    ];
-    const prompt = productSelectionPrompt("Windows, doors and glazing", products);
-    expect(prompt).toContain("1 — uPVC windows and doors");
-    expect(prompt).toContain("photo, survey, drawing, schedule or PDF");
-    expect(numberedIntakeChoice("1", products)).toEqual(products[0]);
+  it("starts with one universal request instead of making customers choose an industry", () => {
+    const prompt = universalRequestPrompt();
+    expect(prompt).toContain("What do you need? Bridge it.");
+    expect(prompt).toContain("where you need it and when you need it");
+    expect(prompt).not.toContain("industry");
+    expect(prompt).not.toContain("Reply with just the number");
+    const productPrompt = productSelectionPrompt();
+    expect(productPrompt).toContain("identify the right specialist suppliers behind the scenes");
+    expect(productPrompt).toContain("photo, survey, drawing, schedule or PDF");
   });
 
   it("does not allow unresolved trade material or colour to reach confirmation", () => {

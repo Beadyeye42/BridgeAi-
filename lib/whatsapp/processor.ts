@@ -59,9 +59,6 @@ import {
   compositeDoorStylePhotoPrompt,
   conversationProgress,
   enforceTradeClarification,
-  industrySelectionPrompt,
-  isNumberedIntakeReply,
-  numberedIntakeChoice,
   pheSpecificationDecision,
   pheSpecificationPrompt,
   productSelectionPrompt,
@@ -71,6 +68,7 @@ import {
   roofGlazingSpecificationDecision,
   roofGlazingSpecificationPrompt,
   tradeSpecificationClarification,
+  universalRequestPrompt,
 } from "@/lib/whatsapp/intake-state";
 
 const MAX_ATTEMPTS = 3;
@@ -102,7 +100,7 @@ function errorCode(error: unknown) {
   return raw.replace(/[^A-Z0-9_:-]/gi, "_").slice(0, 120) || "UNKNOWN";
 }
 
-function emptyQuoteDraft(categorySlug: string): QuoteDraft {
+function emptyQuoteDraft(categorySlug: string | null = null): QuoteDraft {
   return quoteDraftSchema.parse({
     customerName: null,
     deliveryPostcode: null,
@@ -116,21 +114,9 @@ function emptyQuoteDraft(categorySlug: string): QuoteDraft {
     requiredFinish: null,
     requiredBy: null,
     collectionRequired: false,
-    fulfilmentMode: "DELIVERY",
+    fulfilmentMode: null,
     items: [],
   });
-}
-
-function industryChoices(categories: IntakeCategory[]) {
-  return categories
-    .filter((category) => !category.parent)
-    .map(({ slug, name }) => ({ slug, name }));
-}
-
-function productChoices(categories: IntakeCategory[], industrySlug: string) {
-  return categories
-    .filter((category) => category.parent?.slug === industrySlug)
-    .map(({ slug, name }) => ({ slug, name }));
 }
 
 function selectedIndustry(categories: IntakeCategory[], categorySlug: string | null | undefined) {
@@ -637,6 +623,13 @@ export function isConsent(value: string) {
 }
 
 export function formatConfirmation(draft: QuoteDraft, categoryName: string, attachmentCount = 0, firstName: string | null = null, responsibilityNotice: string | null = null) {
+  const fulfilmentLabels = {
+    SERVICE: "On-site service or repair",
+    INSTALLATION: "Supply and installation",
+    SUPPLY_ONLY: "Supply only",
+    DELIVERY: "Delivery",
+    COLLECTION: "Collection",
+  } as const;
   const items = draft.items.map((item, index) => (
     `${index + 1}. ${item.quantity} ${item.unit} — ${item.description}${item.specification ? ` — ${item.specification}` : ""}`
   )).join("\n");
@@ -652,7 +645,7 @@ export function formatConfirmation(draft: QuoteDraft, categoryName: string, atta
     draft.requiredColour ? `Colour: ${draft.requiredColour}` : null,
     draft.requiredFinish ? `Finish: ${draft.requiredFinish}` : null,
     draft.requiredBy ? `Required by: ${new Date(draft.requiredBy).toLocaleDateString("en-GB", { timeZone: "Europe/London" })}` : null,
-    draft.collectionRequired ? "Fulfilment: Collection required" : null,
+    draft.fulfilmentMode ? `How: ${fulfilmentLabels[draft.fulfilmentMode]}` : null,
     `Requirements: ${draft.summary}`,
     items,
     attachmentCount > 0
@@ -791,7 +784,15 @@ async function resolvePreferredFirstName(
 }
 
 export function draftIsComplete(draft: QuoteDraft) {
-  return Boolean(draft.deliveryPostcode && draft.categorySlug && draft.title && draft.summary && draft.items.length > 0);
+  return Boolean(
+    draft.deliveryPostcode
+    && draft.categorySlug
+    && draft.title
+    && draft.summary
+    && draft.requiredBy
+    && draft.fulfilmentMode
+    && draft.items.length > 0,
+  );
 }
 
 async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: QuoteDraft) {
@@ -1049,19 +1050,6 @@ async function confirmedRequestReply(conversation: NonNullable<LoadedJob["conver
     : "Your confirmation is already safely recorded. Reply MY QUOTES to see your recent requests, or NEW QUOTE to price another job.";
 }
 
-async function loadIndustryChoices() {
-  return runAsDatabaseWorker("whatsapp_ai", (tx) => tx.productCategory.findMany({
-    where: {
-      active: true,
-      parentId: null,
-      children: { some: { active: true } },
-    },
-    orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
-    select: { slug: true, name: true },
-    take: 20,
-  }));
-}
-
 async function startNewQuote(
   job: WhatsAppJob,
   conversation: NonNullable<LoadedJob["conversation"]>,
@@ -1079,7 +1067,7 @@ async function startNewQuote(
         aiSessionStartedAt: startedAt,
         aiDraftEncrypted: null,
         aiDraftFingerprint: null,
-        aiLastQuestionKey: announce ? "INDUSTRY" : null,
+        aiLastQuestionKey: announce ? "PRODUCT" : null,
         aiUnproductiveTurns: 0,
         aiLastProgressAt: startedAt,
         closedAt: null,
@@ -1108,10 +1096,9 @@ async function startNewQuote(
     return next;
   });
   if (announce) {
-    const prompt = industrySelectionPrompt(await loadIndustryChoices());
     await sendReply(job, updated, conversation.aiDraftEncrypted
-      ? `Done — I’ve cleared the previous unsent draft so the jobs cannot get mixed together. No confirmed request was changed.\n\n${prompt}`
-      : `Brilliant — let’s price another job.\n\n${prompt}`);
+      ? `Done — I’ve cleared the previous unsent draft so the jobs cannot get mixed together. No confirmed request was changed.\n\n${universalRequestPrompt()}`
+      : `Brilliant — let’s Bridge another request.\n\n${universalRequestPrompt()}`);
   }
   return updated;
 }
@@ -1149,7 +1136,7 @@ async function cancelQuoteDrafts(
         aiSessionStartedAt: startedAt,
         aiDraftEncrypted: null,
         aiDraftFingerprint: null,
-        aiLastQuestionKey: "INDUSTRY",
+        aiLastQuestionKey: "PRODUCT",
         aiUnproductiveTurns: 0,
         aiLastProgressAt: startedAt,
         closedAt: null,
@@ -1189,7 +1176,7 @@ async function cancelQuoteDrafts(
   await sendReply(
     job,
     result.next,
-    `${cleared} No confirmed or live quote requests were changed.\n\n${industrySelectionPrompt(await loadIndustryChoices())}`,
+    `${cleared} No confirmed or live quote requests were changed.\n\n${universalRequestPrompt()}`,
   );
   return result.next;
 }
@@ -1204,7 +1191,6 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   let nameCapturedThisTurn = false;
   const text = inbound.bodyEncrypted ? decryptPrivateValue(inbound.bodyEncrypted) : "";
   const selectionIntent = quoteSelectionIntent(text);
-  const numberedIntakeReply = isNumberedIntakeReply(text, conversation.aiLastQuestionKey);
 
   const controlMessage = isConversationOptOut(text)
     || isConsent(text)
@@ -1326,7 +1312,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     return undefined;
   }
 
-  if (conversation.aiStage !== "AWAITING_SELECTION" && !numberedIntakeReply && isNewQuoteRequest(text)) {
+  if (conversation.aiStage !== "AWAITING_SELECTION" && isNewQuoteRequest(text)) {
     const includesJobDetails = newQuoteDetails(text) !== null || Boolean(inbound.mediaIdEncrypted);
     conversation = await startNewQuote(job, conversation, inbound, !includesJobDetails);
     if (!includesJobDetails) return undefined;
@@ -1535,62 +1521,73 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
       }
       return parts;
     });
-  const availableIndustries = industryChoices(categories);
   const expectedQuestion = refreshed.conversation.aiLastQuestionKey;
   if (expectedQuestion === "QUOTE_OFFER" && isIndustryQuoteOfferAccepted(text)) {
     replaceLatestNumberedReply(messages, text, "[Customer accepted the offer to find a competitive supplier quote.]");
   }
   let initialExtraction: Awaited<ReturnType<typeof extractQuoteIntake>> | null = null;
   if (!draft?.categorySlug) {
-    const industry = expectedQuestion === "INDUSTRY"
-      ? numberedIntakeChoice(text, availableIndustries)
-      : null;
-    if (expectedQuestion === "INDUSTRY" && /^\d{1,2}$/.test(text.trim()) && !industry) {
-      await sendReply(
-        job,
-        refreshed.conversation,
-        `That number is not available.\n\n${industrySelectionPrompt(availableIndustries)}`,
-      );
-      return undefined;
-    }
-    if (industry) {
-      draft = emptyQuoteDraft(industry.slug);
-      replaceLatestNumberedReply(messages, text, `[Customer selected industry: ${industry.name}.]`);
-    } else {
-      initialExtraction = await extractQuoteIntake({
-        messages,
-        currentDraft: null,
-        categories,
-        safetyIdentifier: refreshed.conversation.customerContact.phoneHash,
-      });
-      draft = initialExtraction.result.draft.categorySlug
-        ? initialExtraction.result.draft
-        : null;
-    }
+    initialExtraction = await extractQuoteIntake({
+      messages,
+      currentDraft: draft ?? emptyQuoteDraft(),
+      categories,
+      safetyIdentifier: refreshed.conversation.customerContact.phoneHash,
+    });
+    draft = initialExtraction.result.draft;
     if (!draft?.categorySlug) {
+      if (initialExtraction.result.intent === "OTHER") {
+        await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
+          await tx.conversation.update({
+            where: { id: refreshed.conversation!.id },
+            data: {
+              aiStage: "COLLECTING",
+              aiDraftEncrypted: null,
+              aiDraftFingerprint: null,
+              aiLastQuestionKey: null,
+              aiUnproductiveTurns: 0,
+            },
+          });
+          await writeWhatsAppAudit(tx, {
+            action: "WHATSAPP.UNSUPPORTED_UNIVERSAL_REQUEST_BLOCKED",
+            entityType: "Conversation",
+            entityId: refreshed.conversation!.id,
+            summary: "A clear request outside the launched supplier network was not published",
+            metadata: { jobId: job.id, launchedCategoryCount: categories.length },
+          });
+        });
+        await sendReply(
+          job,
+          refreshed.conversation,
+          "Bridge AI does not yet have an approved supplier network for that request, so I won’t pretend I can source it. You can send a different request whenever you’re ready.",
+        );
+        return initialExtraction.telemetry;
+      }
+      const fingerprint = quoteDraftFingerprint(draft);
       await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
         await tx.conversation.update({
           where: { id: refreshed.conversation!.id },
-          data: { aiStage: "COLLECTING", aiLastQuestionKey: "INDUSTRY" },
+          data: {
+            aiStage: "COLLECTING",
+            aiDraftEncrypted: encryptPrivateValue(JSON.stringify(draft)),
+            aiDraftFingerprint: fingerprint,
+            aiLastQuestionKey: "PRODUCT",
+            aiUnproductiveTurns: 0,
+          },
         });
         await writeWhatsAppAudit(tx, {
-          action: "WHATSAPP.INDUSTRY_CHOICE_REQUESTED",
+          action: "WHATSAPP.UNIVERSAL_REQUEST_DETAILS_REQUESTED",
           entityType: "Conversation",
           entityId: refreshed.conversation!.id,
-          summary: "Customer was asked to choose a launched industry by number",
-          metadata: { jobId: job.id, availableIndustrySlugs: availableIndustries.map((choice) => choice.slug) },
+          summary: "Customer was asked what they need without exposing an industry selector",
+          metadata: { jobId: job.id, launchedCategoryCount: categories.length },
         });
       });
-      await sendReply(
-        job,
-        refreshed.conversation,
-        industrySelectionPrompt(availableIndustries),
-      );
+      await sendReply(job, refreshed.conversation, productSelectionPrompt());
       return undefined;
     }
   }
 
-  let activeIndustry = selectedIndustry(categories, draft.categorySlug);
+  const activeIndustry = selectedIndustry(categories, draft.categorySlug);
   if (!activeIndustry) {
     const unavailableCategorySlug = draft?.categorySlug ?? null;
     await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
@@ -1600,7 +1597,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
           aiStage: "COLLECTING",
           aiDraftEncrypted: null,
           aiDraftFingerprint: null,
-          aiLastQuestionKey: "INDUSTRY",
+          aiLastQuestionKey: "PRODUCT",
           aiUnproductiveTurns: 0,
         },
       });
@@ -1615,24 +1612,9 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     await sendReply(
       job,
       refreshed.conversation,
-      `That industry is no longer open for new quotes, so I’ve safely cleared this unfinished draft. No confirmed request was changed.\n\n${industrySelectionPrompt(availableIndustries)}`,
+      `That request is not in a category currently open for supplier matching, so I’ve safely cleared the unfinished draft. No confirmed request was changed.\n\n${universalRequestPrompt()}`,
     );
     return undefined;
-  }
-  const availableProducts = productChoices(categories, activeIndustry.slug);
-  if (expectedQuestion === "PRODUCT" && /^\d{1,2}$/.test(text.trim())) {
-    const product = numberedIntakeChoice(text, availableProducts);
-    if (!product) {
-      await sendReply(
-        job,
-        refreshed.conversation,
-        `That number is not available.\n\n${productSelectionPrompt(activeIndustry.name, availableProducts)}`,
-      );
-      return undefined;
-    }
-    draft = { ...draft, categorySlug: product.slug };
-    replaceLatestNumberedReply(messages, text, `[Customer selected product: ${product.name}.]`);
-    activeIndustry = selectedIndustry(categories, product.slug);
   }
   const intakeCategories = categories.filter((category) => (
     category.slug === activeIndustry?.slug || category.parent?.slug === activeIndustry?.slug
@@ -1812,28 +1794,21 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     ? attachmentInterpretation(currentAttachmentAnalyses.map((analysis) => analysis.summary))
       ?? `I’ve securely received and read ${currentAttachmentCount === 1 ? "that file" : `those ${currentAttachmentCount} files`} and added the useful details.`
     : null;
-  const resultIndustry = selectedIndustry(categories, result.draft.categorySlug);
-  const numberedQuestionPrompt = !ready && questionKey === "INDUSTRY"
-    ? industrySelectionPrompt(availableIndustries)
-    : !ready && questionKey === "PRODUCT" && resultIndustry
-      ? productSelectionPrompt(resultIndustry.name, productChoices(categories, resultIndustry.slug))
-      : null;
+  const productQuestionPrompt = !ready && questionKey === "PRODUCT"
+    ? productSelectionPrompt()
+    : null;
   const repeatedClarification = !ready && progress.repeatedQuestion && !progress.progressed
-    ? questionKey === "INDUSTRY"
-      ? industrySelectionPrompt(availableIndustries)
-      : questionKey === "PRODUCT" && resultIndustry
-        ? productSelectionPrompt(resultIndustry.name, productChoices(categories, resultIndustry.slug))
-        : repeatClarification(questionKey)
+    ? questionKey === "PRODUCT"
+      ? productSelectionPrompt()
+      : repeatClarification(questionKey)
     : null;
   const tradeClarification = !ready && questionKey === "SPECIFICATION"
     ? tradeSpecificationClarification(result.tradeClarification, result.draft.items[0]?.description)
     : null;
   const enforcedClarification = !ready && questionKey !== result.nextQuestionKey
-    ? questionKey === "INDUSTRY"
-      ? industrySelectionPrompt(availableIndustries)
-      : questionKey === "PRODUCT" && resultIndustry
-        ? productSelectionPrompt(resultIndustry.name, productChoices(categories, resultIndustry.slug))
-        : repeatClarification(questionKey)
+    ? questionKey === "PRODUCT"
+      ? productSelectionPrompt()
+      : repeatClarification(questionKey)
     : null;
   const reply = ready && category
       ? formatConfirmation(
@@ -1843,7 +1818,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
         preferredFirstName,
         categoryResponsibilityNotice(category.slug, category.parent?.slug),
       )
-      : `${mediaAcknowledgement ? `${mediaAcknowledgement}\n\n` : ""}${compositeDoorPhoto.shouldAsk ? compositeDoorStylePhotoPrompt() : roofGlazingSpecification.shouldAsk ? roofGlazingSpecificationPrompt(roofGlazingSpecification) : pheSpecification.shouldAsk ? pheSpecificationPrompt(pheSpecification.categorySlug) : tradeClarification ?? numberedQuestionPrompt ?? repeatedClarification ?? enforcedClarification ?? result.reply}${rejectedMedia ? "\n\nI couldn’t use one uploaded file for this quote, so I’ve safely left it out. Send another JPG, PNG or PDF, or describe the job here and I’ll keep going." : ""}`;
+      : `${mediaAcknowledgement ? `${mediaAcknowledgement}\n\n` : ""}${compositeDoorPhoto.shouldAsk ? compositeDoorStylePhotoPrompt() : roofGlazingSpecification.shouldAsk ? roofGlazingSpecificationPrompt(roofGlazingSpecification) : pheSpecification.shouldAsk ? pheSpecificationPrompt(pheSpecification.categorySlug) : tradeClarification ?? productQuestionPrompt ?? repeatedClarification ?? enforcedClarification ?? result.reply}${rejectedMedia ? "\n\nI couldn’t use one uploaded file for this quote, so I’ve safely left it out. Send another JPG, PNG or PDF, or describe the job here and I’ll keep going." : ""}`;
   await sendReply(
     job,
     refreshed.conversation,
