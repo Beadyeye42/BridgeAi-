@@ -10,7 +10,7 @@ const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.ur
 
 describe("transport, delivery and removals launch", () => {
   it("creates one live industry with exact service categories and an audit record", () => {
-    const migration = read("supabase/migrations/20260811184052_launch_transport_delivery_removals.sql");
+    const migration = read("supabase/migrations/20260811190418_launch_transport_delivery_removals.sql");
     expect(migration).toContain("category_transport_delivery_removals");
     expect(migration).toContain("man-with-a-van");
     expect(migration).toContain("trade-collection-delivery");
@@ -34,7 +34,8 @@ describe("transport, delivery and removals launch", () => {
 
   it("teaches WhatsApp the safe transport intake and excludes waste disposal", () => {
     const intake = read("lib/ai/quote-intake.ts");
-    expect(intake).toContain("both the collection and delivery postcodes");
+    expect(intake).toContain("full collection and delivery postcodes");
+    expect(intake).toContain("Transport intake must feel like a helpful conversation");
     expect(intake).toContain("Classify these requests as SERVICE");
     expect(intake).toContain("Do not route regulated waste disposal");
   });
