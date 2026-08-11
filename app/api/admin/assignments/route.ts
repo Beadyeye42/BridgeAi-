@@ -37,7 +37,7 @@ export async function POST(request: Request) {
 
       const current = await tx.supplierAssignment.count({ where: { quoteRequestId: quote.id, status: { notIn: ["WITHDRAWN"] } } });
       const unique = [...new Set(parsed.data.supplierCompanyIds)];
-      if (current + unique.length > quote.distributionLimit || current + unique.length > 3) throw new Error("DISTRIBUTION_LIMIT");
+      if (current + unique.length > quote.distributionLimit || current + unique.length > 5) throw new Error("DISTRIBUTION_LIMIT");
 
       const matches = await findSupplierMatches(tx, quote, resolution.location, { supplierIds: unique, limit: 5 });
       if (matches.length !== unique.length) throw new Error("INELIGIBLE_SUPPLIER");
@@ -114,7 +114,7 @@ export async function POST(request: Request) {
       REQUEST_CHANGED: ["The delivery details changed while matching. Retry the assignment.", 409],
       REQUEST_NOT_OPEN: ["Only open requests can be assigned", 409],
       RESPONSE_WINDOW_CLOSED: ["The supplier response window has closed", 409],
-      DISTRIBUTION_LIMIT: ["This assignment would exceed the three-supplier request limit", 409],
+      DISTRIBUTION_LIMIT: ["This assignment would exceed the five-supplier request limit", 409],
       INELIGIBLE_SUPPLIER: ["Every selected supplier must pass the current capability, capacity, subscription, category and coverage checks", 400],
     };
     const known = messages[code];

@@ -9,6 +9,7 @@ const schema = z.object({
   servesConsumer: z.boolean().optional(),
   servesTrade: z.boolean().optional(),
   servesBusiness: z.boolean().optional(),
+  hyperlocalEnabled: z.boolean().optional(),
 }).refine((value) => Object.values(value).some((item) => item !== undefined), "No changes supplied");
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminApi();
@@ -37,23 +38,29 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     servesBusiness: parsed.data.servesBusiness ?? category.servesBusiness,
   };
   const audienceChanged = parsed.data.servesConsumer !== undefined || parsed.data.servesTrade !== undefined || parsed.data.servesBusiness !== undefined;
+  const hyperlocalChanged = parsed.data.hyperlocalEnabled !== undefined;
   if (audienceChanged && !isGroup) return NextResponse.json({ error: "Buyer audiences are managed at industry level" }, { status: 400 });
+  if (hyperlocalChanged && !isGroup) return NextResponse.json({ error: "Hyperlocal availability is managed at industry level" }, { status: 400 });
   if (!audience.servesConsumer && !audience.servesTrade && !audience.servesBusiness) return NextResponse.json({ error: "Select at least one buyer audience" }, { status: 400 });
   await prisma.$transaction(async (tx) => {
     await tx.productCategory.update({ where: { id }, data: { ...parsed.data } });
     await writeAuditLog({
       actorUserId: auth.session.userId,
-      action: audienceChanged ? "ADMIN.INDUSTRY_AUDIENCE_UPDATED" : isGroup
+      action: hyperlocalChanged ? "ADMIN.INDUSTRY_HYPERLOCAL_UPDATED" : audienceChanged ? "ADMIN.INDUSTRY_AUDIENCE_UPDATED" : isGroup
         ? parsed.data.active ? "ADMIN.CATEGORY_GROUP_LAUNCHED" : "ADMIN.CATEGORY_GROUP_TAKEN_OFFLINE"
         : "ADMIN.CATEGORY_STATUS_UPDATED",
       entityType: "ProductCategory",
       entityId: id,
-      summary: audienceChanged
+      summary: hyperlocalChanged
+        ? `Hyperlocal membership ${parsed.data.hyperlocalEnabled ? "enabled" : "disabled"} for ${category.name}`
+        : audienceChanged
         ? `Buyer audiences updated for ${category.name}`
         : isGroup
         ? `Product group ${category.name} ${parsed.data.active ? "launched publicly" : "taken offline"}`
         : `Product category ${category.name} ${parsed.data.active ? "enabled" : "disabled"}`,
-      metadata: audienceChanged ? { before: { servesConsumer: category.servesConsumer, servesTrade: category.servesTrade, servesBusiness: category.servesBusiness }, after: audience } : undefined,
+      metadata: hyperlocalChanged
+        ? { before: { hyperlocalEnabled: category.hyperlocalEnabled }, after: { hyperlocalEnabled: parsed.data.hyperlocalEnabled } }
+        : audienceChanged ? { before: { servesConsumer: category.servesConsumer, servesTrade: category.servesTrade, servesBusiness: category.servesBusiness }, after: audience } : undefined,
       request,
     }, tx);
   });

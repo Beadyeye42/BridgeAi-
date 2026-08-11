@@ -1,12 +1,14 @@
 import type { MembershipPlan, MembershipTier, SupplierCompany } from "@prisma/client";
 
 export const DEFAULT_PLAN_IDS: Record<MembershipTier, string> = {
+  HYPERLOCAL: "plan_hyperlocal_partner",
   LOCAL: "plan_local_partner",
   REGIONAL: "plan_regional_partner",
   NATIONWIDE: "plan_nationwide_partner",
 };
 
 export const DEFAULT_PLAN_CODES: Record<MembershipTier, string> = {
+  HYPERLOCAL: "bridge-ai-hyperlocal-partner",
   LOCAL: "bridge-ai-local-partner",
   REGIONAL: "bridge-ai-regional-partner",
   NATIONWIDE: "bridge-ai-nationwide-partner",
@@ -21,8 +23,8 @@ export type MembershipLimits = {
   maximumDeliveryRadiusMiles: number | null;
 };
 
-const TIER_RANK: Record<MembershipTier, number> = { LOCAL: 1, REGIONAL: 2, NATIONWIDE: 3 };
-const TIER_RADIUS: Record<MembershipTier, number | null> = { LOCAL: 40, REGIONAL: 100, NATIONWIDE: null };
+const TIER_RANK: Record<MembershipTier, number> = { HYPERLOCAL: 0, LOCAL: 1, REGIONAL: 2, NATIONWIDE: 3 };
+const TIER_RADIUS: Record<MembershipTier, number | null> = { HYPERLOCAL: 10, LOCAL: 40, REGIONAL: 100, NATIONWIDE: null };
 
 function restrictedTier(planTier: MembershipTier, override: MembershipTier | null): MembershipTier {
   if (!override || TIER_RANK[override] > TIER_RANK[planTier]) return planTier;
@@ -70,5 +72,6 @@ export function formatPlanPrice(monthlyPricePence: number, currency = "GBP") {
 }
 
 export function planTaxLabel(plan: Pick<MembershipPlan, "taxEnabled">) {
-  return plan.taxEnabled ? "+ VAT/month" : "/month · VAT not currently charged";
+  void plan;
+  return "/month";
 }

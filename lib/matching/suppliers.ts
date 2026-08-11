@@ -39,7 +39,7 @@ export type SupplierMatch = {
   score: number;
   reasons: string[];
   capabilitySnapshot: Prisma.InputJsonValue;
-  membershipTier?: "LOCAL" | "REGIONAL" | "NATIONWIDE" | null;
+  membershipTier?: "HYPERLOCAL" | "LOCAL" | "REGIONAL" | "NATIONWIDE" | null;
   coveragePurpose?: "SERVICE" | "DELIVERY" | null;
   distanceMiles?: number | null;
   rankingSnapshot?: Prisma.InputJsonValue;
@@ -262,10 +262,10 @@ export async function evaluateSupplierMatches(
   const requestCategory = db.productCategory ? await db.productCategory.findUnique({
     where: { id: request.categoryId },
     select: {
-      name: true, servesConsumer: true, servesTrade: true, servesBusiness: true,
-      parent: { select: { name: true, servesConsumer: true, servesTrade: true, servesBusiness: true } },
+      name: true, servesConsumer: true, servesTrade: true, servesBusiness: true, hyperlocalEnabled: true,
+      parent: { select: { name: true, servesConsumer: true, servesTrade: true, servesBusiness: true, hyperlocalEnabled: true } },
     },
-  }) : { name: "Legacy industry", servesConsumer: false, servesTrade: true, servesBusiness: true, parent: null };
+  }) : { name: "Legacy industry", servesConsumer: false, servesTrade: true, servesBusiness: true, hyperlocalEnabled: false, parent: null };
   const industry = requestCategory?.parent ?? requestCategory;
   const buyerType = request.buyerType ?? "TRADE";
   const purposeForRequest = ["SERVICE", "INSTALLATION"].includes(request.fulfilmentMode ?? "DELIVERY") ? "SERVICE" as const : "DELIVERY" as const;
@@ -358,6 +358,7 @@ export async function evaluateSupplierMatches(
     if (purpose === "SERVICE" && configuration?.serviceMatchingEnabled === false) mandatoryRejections.push("Automatic service matching is disabled by an administrator");
     if (purpose === "DELIVERY" && configuration?.deliveryMatchingEnabled === false) mandatoryRejections.push("Automatic delivery matching is disabled by an administrator");
     if (!plan || !planLimits) mandatoryRejections.push("No active configured membership tier");
+    if (planLimits?.tier === "HYPERLOCAL" && !industry?.hyperlocalEnabled) mandatoryRejections.push("Hyperlocal membership is not enabled for this request industry");
     if (!categoryEligible) mandatoryRejections.push("Supplier has not selected this product category");
     if (collection && !supplier.collectionLocations.length) mandatoryRejections.push("Collection is required but no active collection location is configured");
     if (!collection && !coverage) mandatoryRejections.push(`Delivery postcode is outside configured ${purpose.toLowerCase()} coverage`);

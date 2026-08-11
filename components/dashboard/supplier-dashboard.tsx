@@ -40,7 +40,7 @@ export function SupplierDashboard({ data, demo = false, onboarding, supplierStat
 
         {data.upgradeInsight && data.upgradeInsight.tier !== "NATIONWIDE" && data.upgradeInsight.geographicMisses > 0 ? <section className="attention-card upgrade-insight">
           <div className="attention-icon"><MapPin size={21}/></div>
-          <div><b>{data.upgradeInsight.geographicMisses} otherwise suitable opportunit{data.upgradeInsight.geographicMisses === 1 ? "y was" : "ies were"} outside your chosen coverage in the last 30 days</b><p>{data.upgradeInsight.regionalBandMisses > 0 ? `${data.upgradeInsight.regionalBandMisses} were between 40 and 100 miles from your company base. ` : ""}Only anonymous totals are shown—no customer details or specifications are revealed.</p></div>
+          <div><b>{data.upgradeInsight.geographicMisses} otherwise suitable opportunit{data.upgradeInsight.geographicMisses === 1 ? "y was" : "ies were"} outside your chosen coverage in the last 30 days</b><p>{data.upgradeInsight.nextPlanBandMisses > 0 && data.upgradeInsight.nextPlanBandLabel ? `${data.upgradeInsight.nextPlanBandMisses} were ${data.upgradeInsight.nextPlanBandLabel} from your company base. ` : ""}Only anonymous totals are shown—no customer details or specifications are revealed.</p></div>
           <Link href={demo ? "/register" : "/dashboard/subscription"} className="button button-outline">Compare coverage plans <ArrowUpRight size={16}/></Link>
         </section> : null}
 

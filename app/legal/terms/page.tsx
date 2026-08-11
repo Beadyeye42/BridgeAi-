@@ -44,7 +44,7 @@ export default function TermsPage() {
     </LegalSection>
 
     <LegalSection id="payments" title="8. Charges, tax and plan changes">
-      <p>Current prices and plan limits are shown before checkout. Stripe processes payments and card details. VAT is not currently charged; if it becomes legally required, the applicable tax will be shown. Plan changes may result in a prorated charge or credit shown through Stripe before confirmation.</p>
+      <p>Current prices and plan limits are shown before checkout. Stripe processes payments and card details. Plan changes may result in a prorated charge or credit shown through Stripe before confirmation.</p>
       <p>Monthly fees are normally non-refundable once a billing period has started, except where required by law or where we agree that an incorrect charge or service failure justifies a refund.</p>
     </LegalSection>
 
@@ -64,4 +64,3 @@ export default function TermsPage() {
     </LegalSection>
   </LegalDocument>;
 }
-

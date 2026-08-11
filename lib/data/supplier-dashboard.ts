@@ -72,9 +72,26 @@ export async function getSupplierDashboard(supplierCompanyId: string, userId: st
       select: { reasons: true, distanceMiles: true },
       take: 1000,
     });
+    const isGeographyReason = (reason: unknown) => typeof reason === "string" && (
+      reason.toLowerCase().includes("outside configured")
+      || reason.toLowerCase().includes("is limited to")
+    );
+    // Count only decisions whose recorded rejection reasons are geographic.
+    // This avoids advertising jobs the supplier could not actually fulfil.
     const geographicMisses = rejectedMatches.filter((decision) => Array.isArray(decision.reasons)
-      && decision.reasons.some((reason) => typeof reason === "string" && reason.toLowerCase().includes("outside configured")));
-    const regionalBandMisses = geographicMisses.filter((decision) => decision.distanceMiles !== null && Number(decision.distanceMiles) > 40 && Number(decision.distanceMiles) <= 100).length;
+      && decision.reasons.length > 0
+      && decision.reasons.every(isGeographyReason));
+    const tier = company.subscription?.membershipPlan?.tier ?? null;
+    const upgradeBand = tier === "HYPERLOCAL"
+      ? { above: 10, upTo: 40, label: "between 10 and 40 miles" }
+      : tier === "LOCAL"
+        ? { above: 40, upTo: 100, label: "between 40 and 100 miles" }
+        : tier === "REGIONAL"
+          ? { above: 100, upTo: Number.POSITIVE_INFINITY, label: "beyond 100 miles" }
+          : null;
+    const nextPlanBandMisses = upgradeBand ? geographicMisses.filter((decision) => decision.distanceMiles !== null
+      && Number(decision.distanceMiles) > upgradeBand.above
+      && Number(decision.distanceMiles) <= upgradeBand.upTo).length : 0;
 
     const answeredAssignments = recentAssignments.filter((item) => item.respondedAt);
     const responseRate = recentAssignments.length
@@ -105,8 +122,9 @@ export async function getSupplierDashboard(supplierCompanyId: string, userId: st
       recentQuotations: recentQuotations.slice(0, 5),
       upgradeInsight: {
         geographicMisses: geographicMisses.length,
-        regionalBandMisses,
-        tier: company.subscription?.membershipPlan?.tier ?? null,
+        nextPlanBandMisses,
+        nextPlanBandLabel: upgradeBand?.label ?? null,
+        tier,
       },
     };
   }));

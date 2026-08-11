@@ -26,9 +26,9 @@ describe("supplier portal validation", () => {
     expect(adminAssignmentSchema.safeParse({ quoteRequestId: "request_1", supplierCompanyIds: [] }).success).toBe(false);
   });
 
-  it("never accepts more than three supplier assignment targets", () => {
-    expect(adminAssignmentSchema.safeParse({ quoteRequestId: "request_1", supplierCompanyIds: ["1", "2", "3"] }).success).toBe(true);
-    expect(adminAssignmentSchema.safeParse({ quoteRequestId: "request_1", supplierCompanyIds: ["1", "2", "3", "4"] }).success).toBe(false);
+  it("never accepts more than five supplier assignment targets", () => {
+    expect(adminAssignmentSchema.safeParse({ quoteRequestId: "request_1", supplierCompanyIds: ["1", "2", "3", "4", "5"] }).success).toBe(true);
+    expect(adminAssignmentSchema.safeParse({ quoteRequestId: "request_1", supplierCompanyIds: ["1", "2", "3", "4", "5", "6"] }).success).toBe(false);
   });
 
   it("accepts complete notification preferences", () => {
