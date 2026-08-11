@@ -4,7 +4,7 @@ import { requireSupplierApi } from "@/lib/auth/api";
 import { supplierCapabilitiesSchema, supplierCapabilityActivationSchema, validationError } from "@/lib/auth/validation";
 import { writeAuditLog } from "@/lib/audit";
 import { rematchOpenRequestsForSupplier } from "@/lib/matching/rematch";
-import { launchedSupplierCategoryWhere } from "@/lib/categories/catalogue";
+import { launchedSupplierCategoryWhere, transportDeliveryRootSlug } from "@/lib/categories/catalogue";
 import { processSupplierEmailsSafely } from "@/lib/notifications/email-worker";
 
 export const runtime = "nodejs";
@@ -26,13 +26,14 @@ export async function PATCH(request: Request) {
       id: parsed.data.productCategoryId,
       suppliers: { some: { supplierCompanyId: auth.companyId } },
     },
-    select: { name: true },
+    select: { name: true, parent: { select: { slug: true } } },
   });
   if (!selectedCategory) {
     return NextResponse.json({ error: "Select this product in Company profile before activating it" }, { status: 400 });
   }
 
   const confirmedAt = new Date();
+  const isTransport = selectedCategory.parent?.slug === transportDeliveryRootSlug;
   const capability = await prisma.$transaction(async (tx) => {
     const saved = await tx.supplierCapability.upsert({
       where: {
@@ -46,18 +47,20 @@ export async function PATCH(request: Request) {
         productCategoryId: parsed.data.productCategoryId,
         active: true,
         capacityStatus: "AVAILABLE",
-        standardLeadTimeDays: 14,
+        standardLeadTimeDays: isTransport ? 1 : 14,
+        supportsService: isTransport,
         deliveryDays: [1, 2, 3, 4, 5],
         lastConfirmedAt: confirmedAt,
         capacityLastConfirmedAt: confirmedAt,
         leadTimeLastConfirmedAt: confirmedAt,
-        currentLeadTimeDays: 14,
+        currentLeadTimeDays: isTransport ? 1 : 14,
       },
       update: {
         active: true,
         capacityStatus: "AVAILABLE",
         shortageNote: null,
         shortageUntil: null,
+        ...(isTransport ? { supportsService: true } : {}),
         lastConfirmedAt: confirmedAt,
         capacityLastConfirmedAt: confirmedAt,
         leadTimeLastConfirmedAt: confirmedAt,

@@ -20,6 +20,18 @@ const categories: ProductKnowledgeCategory[] = [
     description: "Air-source, ground-source and hybrid heat-pump equipment.",
     parent: { slug: "plumbing-heating-mechanical" },
   },
+  {
+    slug: "man-with-a-van",
+    name: "Man with a van",
+    description: "Flexible van-and-driver transport.",
+    parent: { slug: "transport-delivery-removals" },
+  },
+  {
+    slug: "same-day-courier",
+    name: "Same-day courier",
+    description: "Urgent direct courier work.",
+    parent: { slug: "transport-delivery-removals" },
+  },
 ];
 
 describe("WhatsApp product knowledge safety net", () => {
@@ -65,5 +77,20 @@ describe("WhatsApp product knowledge safety net", () => {
 
   it("does not claim support for a category that is not launched", () => {
     expect(recogniseCatalogueProduct("I need a roller shutter", categories)).toBeNull();
+  });
+
+  it.each([
+    "I need a man with a van",
+    "Can you find a van and driver?",
+    "I need a van with a driver",
+  ])("recognises everyday man-with-a-van wording: %s", (message) => {
+    expect(recogniseCatalogueProduct(message, categories)?.categorySlug).toBe("man-with-a-van");
+  });
+
+  it("asks for the two locations and load details during provider recovery", () => {
+    const recognition = recogniseCatalogueProduct("I need a man and a van", categories);
+    expect(recognition?.parentSlug).toBe("transport-delivery-removals");
+    expect(productRecoveryReply(recognition!, "I need a man and a van"))
+      .toContain("collection and delivery postcodes");
   });
 });

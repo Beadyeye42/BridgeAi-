@@ -8,11 +8,14 @@ import {
   isRalColourMarker,
   isStandardColour,
   isPheCapabilityCategory,
+  isTransportCapabilityCategory,
   PHE_MANUFACTURER_OPTIONS_BY_CATEGORY,
   PHE_SYSTEM_OPTIONS_BY_CATEGORY,
   PROFILE_SYSTEM_OPTIONS_BY_CATEGORY,
   RAL_COLOUR_MARKER,
   STANDARD_COLOUR_OPTIONS,
+  TRANSPORT_SERVICE_FEATURE_OPTIONS,
+  TRANSPORT_VEHICLE_OPTIONS,
 } from "@/lib/capabilities/options";
 
 type CapacityStatus = "AVAILABLE" | "LIMITED" | "URGENT_ONLY" | "FULL" | "PAUSED" | "HOLIDAY" | "NOT_ACCEPTING";
@@ -111,6 +114,7 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
       const selectedManufacturers = stringList(form.getAll(`${prefix}:manufacturer`));
       const selectedSystems = stringList(form.getAll(`${prefix}:system`));
       const selectedColours = stringList(form.getAll(`${prefix}:colour`));
+      const selectedFeatures = stringList(form.getAll(`${prefix}:feature`));
       return {
         productCategoryId: prefix,
         manufacturerNames: uniqueList([...selectedProfiles, ...selectedManufacturers, ...splitList(form.get(`${prefix}:manufacturers`))]),
@@ -120,7 +124,7 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
           ...splitList(form.get(`${prefix}:ralCodes`)),
           ...splitList(form.get(`${prefix}:otherColours`)),
         ]),
-        finishNames: splitList(form.get(`${prefix}:finishes`)),
+        finishNames: uniqueList([...selectedFeatures, ...splitList(form.get(`${prefix}:finishes`))]),
         minimumOrderValue: nullableNumber(form.get(`${prefix}:minimumValue`)),
         minimumOrderQuantity: nullableNumber(form.get(`${prefix}:minimumQuantity`)),
         standardLeadTimeDays: Number(form.get(`${prefix}:standardLead`)),
@@ -194,6 +198,7 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
       const prefix = capability.productCategoryId;
       const active = activeByCategory[prefix];
       const isPhe = isPheCapabilityCategory(capability.categorySlug);
+      const isTransport = isTransportCapabilityCategory(capability.categorySlug);
       const profileOptions = PROFILE_SYSTEM_OPTIONS_BY_CATEGORY[capability.categorySlug] ?? [];
       const manufacturerOptions = PHE_MANUFACTURER_OPTIONS_BY_CATEGORY[capability.categorySlug] ?? [];
       const systemOptions = PHE_SYSTEM_OPTIONS_BY_CATEGORY[capability.categorySlug] ?? [];
@@ -203,6 +208,8 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
       const otherColours = capability.colourNames.filter((value) => !isStandardColour(value) && !isRalColourMarker(value) && !isRalCode(value));
       const otherSystems = capability.systemNames.filter((value) => ![...profileOptions, ...systemOptions].some((option) => includesCapabilityValue([value], option)));
       const otherManufacturers = capability.manufacturerNames.filter((value) => ![...profileOptions, ...manufacturerOptions].some((option) => includesCapabilityValue([value], option)));
+      const otherTransportVehicles = capability.systemNames.filter((value) => !TRANSPORT_VEHICLE_OPTIONS.some((option) => includesCapabilityValue([value], option)));
+      const otherTransportFeatures = capability.finishNames.filter((value) => !TRANSPORT_SERVICE_FEATURE_OPTIONS.some((option) => includesCapabilityValue([value], option)));
       return <section className="panel capability-advanced-card" key={prefix}>
         <details>
           <summary>
@@ -211,7 +218,22 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
           </summary>
           <div className="capability-advanced-content">
             <label className="toggle-row"><span><b>Use this product for matching</b><small>Turn this off and save to pause this product</small></span><input type="checkbox" name={`${prefix}:active`} checked={active} onChange={(event) => setActiveByCategory((current) => ({ ...current, [prefix]: event.target.checked }))}/></label>
-            {profileOptions.length ? <div className="capability-option-section">
+            {isTransport ? <>
+              <div className="honesty-note">This setup is specific to transport and removals. Select only vehicles, crew and handling services you can genuinely provide; Bridge AI uses these details to avoid unsuitable jobs.</div>
+              <div className="capability-option-section">
+                <div className="capability-option-heading"><b>Vehicles available</b><small>Tick every vehicle type you can allocate to this service.</small></div>
+                <div className="capability-option-grid">
+                  {TRANSPORT_VEHICLE_OPTIONS.map((option) => <OptionCard key={option} name={`${prefix}:system`} value={option} checked={includesCapabilityValue(capability.systemNames, option)} />)}
+                </div>
+                <Field name={`${prefix}:systems`} label="Other vehicle types (optional)" value={otherTransportVehicles.join(", ")} placeholder="Add other vehicles, separated by commas" />
+              </div>
+              <div className="capability-option-section">
+                <div className="capability-option-heading"><b>Crew and service features</b><small>Select the handling and delivery options you actively offer.</small></div>
+                <div className="capability-option-grid">
+                  {TRANSPORT_SERVICE_FEATURE_OPTIONS.map((option) => <OptionCard key={option} name={`${prefix}:feature`} value={option} checked={includesCapabilityValue(capability.finishNames, option)} />)}
+                </div>
+              </div>
+            </> : profileOptions.length ? <div className="capability-option-section">
               <div className="capability-option-heading"><b>Profile systems</b><small>Tick every system or brand your company supplies.</small></div>
               <div className="capability-option-grid">
                 {profileOptions.map((option) => <OptionCard key={option} name={`${prefix}:profile`} value={option} checked={includesCapabilityValue(knownProfileValues, option)} />)}
@@ -240,7 +262,7 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
               <Field name={`${prefix}:manufacturers`} label="Manufacturers" value={capability.manufacturerNames.join(", ")} placeholder="Add manufacturers, separated by commas" />
               <Field name={`${prefix}:systems`} label="Systems or brands" value={capability.systemNames.join(", ")} placeholder="Add systems or brands, separated by commas" />
             </div>}
-            {!isPhe ? <div className="capability-option-section">
+            {!isPhe && !isTransport ? <div className="capability-option-section">
               <div className="capability-option-heading"><b>Colours supplied</b><small>Tick every standard colour you supply. Tick RAL colours only if you can supply RAL-specified finishes.</small></div>
               <div className="capability-option-grid capability-colour-grid">
                 {STANDARD_COLOUR_OPTIONS.map((option) => <OptionCard key={option} name={`${prefix}:colour`} value={option} checked={includesCapabilityValue(capability.colourNames, option)} />)}
@@ -252,24 +274,29 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
               </div>
             </div> : null}
             <div className="form-grid capability-fields">
-              <Field name={`${prefix}:finishes`} label={isPhe ? "Technical variants or specifications" : "Finishes supplied"} value={capability.finishNames.join(", ")} placeholder={isPhe ? "For example low-temperature, potable-water, commercial duty" : "Foil, powder coat, anodised"} />
+              <Field name={`${prefix}:finishes`} label={isTransport ? "Other handling or service features" : isPhe ? "Technical variants or specifications" : "Finishes supplied"} value={isTransport ? otherTransportFeatures.join(", ") : capability.finishNames.join(", ")} placeholder={isTransport ? "For example fragile loads, evening collections" : isPhe ? "For example low-temperature, potable-water, commercial duty" : "Foil, powder coat, anodised"} />
               <Field name={`${prefix}:minimumQuantity`} label="Minimum order quantity" value={capability.minimumOrderQuantity ?? ""} type="number" min="1" />
               <Field name={`${prefix}:minimumValue`} label="Minimum order value (£)" value={capability.minimumOrderValue ?? ""} type="number" min="0" step="0.01" />
-              <Field name={`${prefix}:standardLead`} label="Standard lead time (days)" value={capability.standardLeadTimeDays} type="number" min="1" required />
-              <Field name={`${prefix}:currentLead`} label="Current lead time (days)" value={capability.currentLeadTimeDays ?? capability.standardLeadTimeDays} type="number" min="1" />
-              <Field name={`${prefix}:urgentLead`} label="Urgent lead time (days)" value={capability.urgentLeadTimeDays ?? ""} type="number" min="1" />
+              <Field name={`${prefix}:standardLead`} label={isTransport ? "Standard booking notice (days)" : "Standard lead time (days)"} value={capability.standardLeadTimeDays} type="number" min="1" required />
+              <Field name={`${prefix}:currentLead`} label={isTransport ? "Current booking notice (days)" : "Current lead time (days)"} value={capability.currentLeadTimeDays ?? capability.standardLeadTimeDays} type="number" min="1" />
+              <Field name={`${prefix}:urgentLead`} label={isTransport ? "Urgent booking notice (days)" : "Urgent lead time (days)"} value={capability.urgentLeadTimeDays ?? ""} type="number" min="1" />
               <label className="form-control"><span>Current capacity</span><select name={`${prefix}:capacity`} value={capacityByCategory[prefix]} onChange={(event) => setCapacityByCategory((current) => ({ ...current, [prefix]: event.target.value as CapacityStatus }))}><option value="AVAILABLE">Available</option><option value="LIMITED">Limited</option><option value="URGENT_ONLY">Urgent work only</option><option value="FULL">Temporarily full</option><option value="PAUSED">Paused</option><option value="HOLIDAY">Holiday</option><option value="NOT_ACCEPTING">Not accepting new work</option></select></label>
-              <label className="toggle-row"><span><b>Supply only</b><small>You supply products without installation</small></span><input type="checkbox" name={`${prefix}:supplyOnly`} defaultChecked={capability.supportsSupplyOnly}/></label>
-              <label className="toggle-row"><span><b>Delivery available</b><small>You can deliver products to the buyer</small></span><input type="checkbox" name={`${prefix}:delivery`} defaultChecked={capability.supportsDelivery}/></label>
-              <label className="toggle-row"><span><b>Installation available</b><small>Your team can install this product on site</small></span><input type="checkbox" name={`${prefix}:installation`} defaultChecked={capability.supportsInstallation}/></label>
-              <label className="toggle-row"><span><b>On-site service</b><small>Your staff or engineers travel to site</small></span><input type="checkbox" name={`${prefix}:service`} defaultChecked={capability.supportsService}/></label>
-              <label className="toggle-row"><span><b>Collection available</b><small>Customers may collect from you</small></span><input type="checkbox" name={`${prefix}:collection`} defaultChecked={capability.collectionAvailable}/></label>
+              {isTransport ? <>
+                <label className="toggle-row"><span><b>Transport service available</b><small>Your vehicle and driver can collect and deliver customer loads</small></span><input type="checkbox" name={`${prefix}:service`} defaultChecked={capability.supportsService}/></label>
+                <label className="toggle-row"><span><b>Depot drop-off available</b><small>Customers may bring items to your depot before onward transport</small></span><input type="checkbox" name={`${prefix}:collection`} defaultChecked={capability.collectionAvailable}/></label>
+              </> : <>
+                <label className="toggle-row"><span><b>Supply only</b><small>You supply products without installation</small></span><input type="checkbox" name={`${prefix}:supplyOnly`} defaultChecked={capability.supportsSupplyOnly}/></label>
+                <label className="toggle-row"><span><b>Delivery available</b><small>You can deliver products to the buyer</small></span><input type="checkbox" name={`${prefix}:delivery`} defaultChecked={capability.supportsDelivery}/></label>
+                <label className="toggle-row"><span><b>Installation available</b><small>Your team can install this product on site</small></span><input type="checkbox" name={`${prefix}:installation`} defaultChecked={capability.supportsInstallation}/></label>
+                <label className="toggle-row"><span><b>On-site service</b><small>Your staff or engineers travel to site</small></span><input type="checkbox" name={`${prefix}:service`} defaultChecked={capability.supportsService}/></label>
+                <label className="toggle-row"><span><b>Collection available</b><small>Customers may collect from you</small></span><input type="checkbox" name={`${prefix}:collection`} defaultChecked={capability.collectionAvailable}/></label>
+              </>}
               <Field name={`${prefix}:restrictedProducts`} label="Temporarily restricted products" value={capability.restrictedProducts.join(", ")} placeholder="Comma-separated products you cannot currently supply" />
               <Field name={`${prefix}:deliveryDelay`} label="Current delivery delay (days)" value={capability.deliveryDelayDays ?? ""} type="number" min="0" />
               <Field name={`${prefix}:shortageNote`} label="Temporary shortage" value={capability.shortageNote ?? ""} placeholder="Leave blank when there is no shortage" />
               <Field name={`${prefix}:shortageUntil`} label="Shortage expected until" value={capability.shortageUntil?.slice(0, 10) ?? ""} type="date" />
             </div>
-            <div className="form-control"><span>Normal delivery days</span><div className="inline-actions">{dayOptions.map(([day, label]) => <label className="choice-card day-choice" key={day}><input type="checkbox" name={`${prefix}:day:${day}`} defaultChecked={capability.deliveryDays.includes(day)}/><span><b>{label}</b></span></label>)}</div></div>
+            <div className="form-control"><span>{isTransport ? "Normal operating days" : "Normal delivery days"}</span><div className="inline-actions">{dayOptions.map(([day, label]) => <label className="choice-card day-choice" key={day}><input type="checkbox" name={`${prefix}:day:${day}`} defaultChecked={capability.deliveryDays.includes(day)}/><span><b>{label}</b></span></label>)}</div></div>
             <p className="body-copy">Last confirmed: {confirmedByCategory[prefix] ? new Date(confirmedByCategory[prefix]!).toLocaleString("en-GB") : "Not confirmed yet"}</p>
           </div>
         </details>

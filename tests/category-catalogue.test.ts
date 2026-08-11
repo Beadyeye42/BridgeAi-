@@ -8,6 +8,7 @@ import {
   launchCategoryRootId,
   normalizeLaunchCategorySlug,
   plumbingHeatingRootSlug,
+  transportDeliveryRootSlug,
   unavailableCatalogueForConversation,
 } from "../lib/categories/catalogue";
 
@@ -21,6 +22,7 @@ describe("launch product catalogue", () => {
   it("keeps one stable launch root", () => {
     expect(launchCategoryRootId).toBe("category_windows");
     expect(plumbingHeatingRootSlug).toBe("plumbing-heating-mechanical");
+    expect(transportDeliveryRootSlug).toBe("transport-delivery-removals");
   });
 
   it.each([
@@ -90,5 +92,20 @@ describe("launch product catalogue", () => {
       "I need an air source heat pump",
       ["plumbing-heating-mechanical", "boilers-heating-packages"],
     )?.code).toBe("PRODUCT_NOT_LAUNCHED");
+  });
+
+  it("blocks paused transport services and keeps operator responsibility explicit", () => {
+    expect(unavailableCatalogueForConversation("I need a man with a van", ["windows"])?.code)
+      .toBe("TRANSPORT_NOT_LAUNCHED");
+    expect(unavailableCatalogueForConversation(
+      "I need a same-day courier",
+      ["transport-delivery-removals", "man-with-a-van"],
+    )?.code).toBe("PRODUCT_NOT_LAUNCHED");
+    expect(unavailableCatalogueForConversation(
+      "I need a man with a van",
+      ["transport-delivery-removals", "man-with-a-van"],
+    )).toBeNull();
+    expect(categoryResponsibilityNotice("man-with-a-van", "transport-delivery-removals"))
+      .toContain("vehicle suitability");
   });
 });
