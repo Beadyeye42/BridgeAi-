@@ -48,6 +48,28 @@ const request = {
 };
 
 describe("live supplier capability matching", () => {
+  it("rejects consumer work unless the supplier explicitly opts in for that product", () => {
+    const result = evaluateCapability(
+      { ...request, buyerType: "CONSUMER" },
+      capability({ servesConsumer: false, servesTrade: true, servesBusiness: true }),
+      coverage,
+      now,
+    );
+    expect(result.outcome).toBe("REJECTED");
+    expect(result.reasons).toContain("Supplier does not serve consumer / homeowner requests for this product");
+  });
+
+  it("matches the same consumer request after an explicit supplier opt-in", () => {
+    const result = evaluateCapability(
+      { ...request, buyerType: "CONSUMER" },
+      capability({ servesConsumer: true }),
+      coverage,
+      now,
+    );
+    expect(result.outcome).toBe("MATCHED");
+    expect(result.reasons).toContain("Accepts consumer / homeowner requests for this product");
+  });
+
   it("matches a fresh supplier that satisfies every mandatory requirement", () => {
     const result = evaluateCapability(request, capability(), coverage, now);
     expect(result.outcome).toBe("MATCHED");

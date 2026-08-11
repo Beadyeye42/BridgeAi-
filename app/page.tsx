@@ -44,7 +44,7 @@ export default function Home() {
         <div className="home-hero-copy">
           <p className="home-kicker"><MessageCircleMore size={15} /> Built around the way customers already buy</p>
           <h1>What do you need?<br /><em>Bridge it.</em></h1>
-          <p className="home-intro">A buyer sends a message, photo, drawing or document through WhatsApp. Bridge AI identifies what they need, where and when they need it, then finds approved suppliers with the right capability, coverage and live capacity.</p>
+          <p className="home-intro">Bridge AI is the AI sourcing network. It is free for anyone who needs something sourced, hired, moved, made or done. Send a message, photo, drawing or document through WhatsApp; Bridge AI identifies what, where and when, then finds approved businesses with the right capability, coverage and live capacity.</p>
           <div className="home-actions">
             <Link className="button button-dark home-primary" href="/register">Apply as a supplier <ArrowRight size={16} /></Link>
             <Link className="button button-outline home-secondary" href="/demo">Explore the supplier portal</Link>
@@ -61,7 +61,7 @@ export default function Home() {
           <div className="home-phone-card">
             <div className="home-card-heading">
               <span><MessageCircleMore size={19} /></span>
-              <div><b>WhatsApp enquiry</b><small>Trade buyer · now</small></div>
+              <div><b>WhatsApp enquiry</b><small>Consumer, trade or business · now</small></div>
               <i>LIVE</i>
             </div>
             <div className="home-message customer">Morning, I need five anthracite uPVC windows and a composite back door. Can you get me prices?</div>
@@ -101,7 +101,7 @@ export default function Home() {
       <section className="home-section home-why">
         <div className="home-section-heading">
           <p className="eyebrow">Why conversation wins</p>
-          <h2>Meet customers where the job already starts.</h2>
+          <h2>One WhatsApp number for people, trades and businesses.</h2>
           <p>Customers should not need an account, a new app or a long form just to ask for a price. They send the information naturally; Bridge AI makes it useful to suppliers.</p>
         </div>
         <div className="home-benefit-grid">
@@ -116,7 +116,7 @@ export default function Home() {
         <div className="home-transformation-copy">
           <p className="eyebrow">From chat to opportunity</p>
           <h2>Not another lead list.<br />A quote pack you can act on.</h2>
-          <p>Bridge AI is designed to reduce the back-and-forth that slows trade quoting. You receive the information in one secure workspace and choose which opportunities fit your business.</p>
+          <p>Bridge AI is designed to reduce the back-and-forth that slows quoting. Buyer type, intent, requirements and evidence arrive in one secure workspace, and you receive only opportunities that fit the audiences and work your business has chosen.</p>
           <ul>
             <li><CheckCircle2 size={17} /> Clear product and delivery requirements</li>
             <li><CheckCircle2 size={17} /> Customer drawings, photos and PDFs together</li>

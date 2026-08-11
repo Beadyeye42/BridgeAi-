@@ -3,7 +3,7 @@ import { ArrowRight, Layers3 } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { requireAdminPage } from "@/lib/auth/guards";
 import { AdminHeading } from "@/components/admin/admin-shell";
-import { CategoryStatusButton, IndustryCreateForm } from "@/components/admin/admin-actions";
+import { CategoryStatusButton, IndustryAudienceControl, IndustryCreateForm } from "@/components/admin/admin-actions";
 import { industryExperience, industryLaunchBlocker } from "@/lib/categories/industry-registry";
 
 export default async function CategoriesPage() {
@@ -56,6 +56,7 @@ export default async function CategoriesPage() {
             <small>{experience.supplierExperience}</small>
             <small>{experience.whatsappExperience}</small>
           </div>
+          <IndustryAudienceControl id={industry.id} servesConsumer={industry.servesConsumer} servesTrade={industry.servesTrade} servesBusiness={industry.servesBusiness}/>
           <div className="industry-card-actions">
             <CategoryStatusButton id={industry.id} active={industry.active} isGroup lockedReason={launchBlocker}/>
             <Link className="button button-outline" href={`/admin/categories/${industry.id}`}>Manage industry <ArrowRight size={14}/></Link>
