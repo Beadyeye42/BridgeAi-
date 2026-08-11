@@ -5,10 +5,12 @@ import { DEFAULT_PLAN_CODES, DEFAULT_PLAN_IDS } from "@/lib/billing/membership-p
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
 describe("geographic supplier memberships", () => {
-  it("defines three stable plan identities", () => {
+  it("defines four stable plan identities", () => {
+    expect(DEFAULT_PLAN_IDS.HYPERLOCAL).toBe("plan_hyperlocal_partner");
     expect(DEFAULT_PLAN_IDS.LOCAL).toBe("plan_local_partner");
     expect(DEFAULT_PLAN_IDS.REGIONAL).toBe("plan_regional_partner");
     expect(DEFAULT_PLAN_IDS.NATIONWIDE).toBe("plan_nationwide_partner");
+    expect(DEFAULT_PLAN_CODES.HYPERLOCAL).toBe("bridge-ai-hyperlocal-partner");
     expect(DEFAULT_PLAN_CODES.LOCAL).toBe("bridge-ai-local-partner");
   });
 

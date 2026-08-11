@@ -9,7 +9,7 @@ import { evaluateCapability } from "../lib/matching/suppliers";
 const root = process.cwd();
 const read = (file: string) => fs.readFileSync(path.join(root, file), "utf8");
 
-function plan(tier: "LOCAL" | "REGIONAL" | "NATIONWIDE", maximumRadiusMiles: number | null, maximumActiveOpportunities: number): MembershipPlan {
+function plan(tier: "HYPERLOCAL" | "LOCAL" | "REGIONAL" | "NATIONWIDE", maximumRadiusMiles: number | null, maximumActiveOpportunities: number): MembershipPlan {
   return {
     id: `plan_${tier.toLowerCase()}`, code: tier.toLowerCase(), name: tier, tier, description: null,
     monthlyPricePence: 2999, currency: "GBP", maximumRadiusMiles, nationwideAllowed: tier === "NATIONWIDE",
@@ -27,6 +27,17 @@ describe("geographic memberships and controlled distribution", () => {
   it("accepts 39 miles and rejects 41 miles for Local", () => {
     expect(matchCoverageRule(rule(40), destination(39))).not.toBeNull();
     expect(matchCoverageRule(rule(40), destination(41))).toBeNull();
+  });
+
+  it("accepts the selected Hyperlocal radius and rejects work beyond it", () => {
+    expect(matchCoverageRule(rule(7), destination(6))).not.toBeNull();
+    expect(matchCoverageRule(rule(7), destination(8))).toBeNull();
+    expect(effectiveMembershipLimits(plan("HYPERLOCAL", 10, 3), noOverrides)).toMatchObject({
+      tier: "HYPERLOCAL",
+      maximumRadiusMiles: 10,
+      maximumActiveOpportunities: 3,
+      nationwideAllowed: false,
+    });
   });
 
   it("accepts 80 miles and rejects 105 miles for Regional", () => {
@@ -132,13 +143,13 @@ describe("geographic memberships and controlled distribution", () => {
     expect(replacement).toContain("invitationRank: totalInvitations + 1");
   });
 
-  it("retires free-for-all opportunity claiming and limits automatic competition to three", () => {
+  it("retires free-for-all opportunity claiming and limits automatic competition to five", () => {
     const claimRoute = read("app/api/opportunities/[reference]/claim/route.ts");
     const processor = read("lib/whatsapp/processor.ts");
     const migration = read("supabase/migrations/20260807163701_geographic_membership_intelligent_matching.sql");
     expect(claimRoute).toContain("status: 410");
     expect(claimRoute).toContain("Open opportunity claiming has been retired");
-    expect(processor).toContain("maximumSuppliersPerRequest ?? 3, 3");
+    expect(processor).toContain("maximumSuppliersPerRequest ?? 5, 5");
     expect(migration).toContain("automatic assignment would exceed the active supplier limit");
   });
 

@@ -302,14 +302,14 @@ describe("security foundation static controls", () => {
     expect(unlockWorker).toContain("SEND_CONTACT_UNLOCK");
   });
 
-  it("uses the shared request deadline and selects no more than three suppliers", () => {
+  it("uses the shared request deadline and selects no more than five suppliers", () => {
     const validation = read("lib/auth/validation.ts");
     const assignmentRoute = read("app/api/admin/assignments/route.ts");
     const whatsappProcessor = read("lib/whatsapp/processor.ts");
     const replacementMatcher = read("lib/matching/replacements.ts");
     const migration = read("supabase/migrations/20260803182630_enforce_supplier_response_rules.sql");
     expect(validation).toContain("supplierCompanyIds: z.array");
-    expect(validation).toContain(".max(3)");
+    expect(validation).toContain(".max(5)");
     expect(assignmentRoute).toMatch(/expiresAt:\s*quote\.responseDueAt/);
     expect(assignmentRoute).not.toContain("parsed.data.expiresAt");
     expect(whatsappProcessor).toMatch(/expiresAt:\s*request\.responseDueAt/);
@@ -375,7 +375,7 @@ describe("security foundation static controls", () => {
     const processor = read("lib/whatsapp/processor.ts");
     const migration = read("supabase/migrations/20260805130054_whatsapp_auto_distribution.sql");
     expect(processor).toContain("evaluateSupplierMatches(");
-    expect(processor).toContain("Math.min(distributionLimit, matchingConfiguration?.maximumSuppliersPerRequest ?? 3, 3)");
+    expect(processor).toContain("Math.min(distributionLimit, matchingConfiguration?.maximumSuppliersPerRequest ?? 5, 5)");
     expect(processor).toContain("supplierMatchDecision.upsert");
     expect(processor).toContain('action: "WHATSAPP.REQUEST_AUTO_ASSIGNED"');
     expect(processor).toContain("automaticAssignmentCount");

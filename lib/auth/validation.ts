@@ -180,11 +180,13 @@ export const membershipPlanAdminSchema = z.object({
   nationwideAllowed: z.boolean(),
   maximumActiveOpportunities: z.coerce.number().int().min(1).max(100),
   taxEnabled: z.boolean(),
+  providerPriceId: z.string().trim().regex(/^price_[A-Za-z0-9]+$/, "Enter a valid Stripe Price ID").nullable(),
+  displayOrder: z.coerce.number().int().min(0).max(1000),
   active: z.boolean(),
 });
 
 export const matchingConfigurationAdminSchema = z.object({
-  maximumSuppliersPerRequest: z.coerce.number().int().min(1).max(3),
+  maximumSuppliersPerRequest: z.coerce.number().int().min(1).max(5),
   capacityStaleDays: z.coerce.number().int().min(1).max(90),
   leadTimeStaleDays: z.coerce.number().int().min(1).max(90),
   responseDeadlineHours: z.coerce.number().int().min(1).max(168),
@@ -204,7 +206,7 @@ export const matchingConfigurationAdminSchema = z.object({
 });
 
 export const adminSupplierGeographySchema = z.object({
-  membershipTierOverride: z.enum(["LOCAL", "REGIONAL", "NATIONWIDE"]).nullable(),
+  membershipTierOverride: z.enum(["HYPERLOCAL", "LOCAL", "REGIONAL", "NATIONWIDE"]).nullable(),
   maximumActiveOpportunitiesOverride: z.coerce.number().int().min(1).max(100).nullable(),
   maximumServiceRadiusOverride: z.coerce.number().int().min(1).max(500).nullable(),
   maximumDeliveryRadiusOverride: z.coerce.number().int().min(1).max(500).nullable(),
@@ -212,7 +214,7 @@ export const adminSupplierGeographySchema = z.object({
 
 export const membershipPromotionAdminSchema = z.object({
   name: z.string().trim().min(2).max(120),
-  eligiblePlanCodes: z.array(z.string().trim().min(1).max(100)).min(1).max(3),
+  eligiblePlanCodes: z.array(z.string().trim().min(1).max(100)).min(1).max(4),
   promotionalPricePence: z.coerce.number().int().min(100).max(1_000_000),
   durationMonths: z.coerce.number().int().min(1).max(36),
   subscriberLimit: z.coerce.number().int().min(1).max(100_000).nullable(),
@@ -263,7 +265,7 @@ export const adminSupplierEditSchema = z.object({
 });
 export const adminAssignmentSchema = z.object({
   quoteRequestId: z.string().min(1).max(64),
-  supplierCompanyIds: z.array(z.string().min(1).max(64)).min(1).max(3),
+  supplierCompanyIds: z.array(z.string().min(1).max(64)).min(1).max(5),
 });
 export const productCategorySchema = z.object({ name: z.string().trim().min(2).max(100), slug: z.string().trim().min(2).max(100).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).optional(), description: optionalText(500), active: z.boolean().default(true), parentId: z.string().nullable().optional() });
 

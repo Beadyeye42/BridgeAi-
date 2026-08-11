@@ -33,7 +33,7 @@ export default function Home() {
       <div className="home-offer-bar">
         <span><Sparkles size={14} /> The AI sourcing network</span>
         <b>Free for people and businesses to use on WhatsApp</b>
-        <span>Supplier plans from £29.99 per month</span>
+        <span>Supplier plans from £14.99 per month</span>
         <Link href="/register">Join the network <ArrowRight size={14} /></Link>
       </div>
 
@@ -137,7 +137,7 @@ export default function Home() {
           <p className="eyebrow">For suppliers and service providers</p>
           <h2>Better-fit work, without the public lead scramble.</h2>
           <p>Tell Bridge AI what you provide, where you operate and what capacity you have. Only matched businesses are invited, and every opportunity arrives as a structured quote pack.</p>
-          <ul><li><Check size={15} /> Capability and geography matching</li><li><Check size={15} /> Photos, drawings and documents attached</li><li><Check size={15} /> Maximum three suppliers per request</li></ul>
+          <ul><li><Check size={15} /> Capability and geography matching</li><li><Check size={15} /> Photos, drawings and documents attached</li><li><Check size={15} /> Maximum five suppliers per request</li></ul>
           <Link href="/register">Join the supplier network <ArrowRight size={14} /></Link>
         </div>
       </section>
@@ -185,7 +185,7 @@ export default function Home() {
         <div className="home-flow">
           <div><span>01</span><b>The buyer messages Bridge AI</b><p>They describe the job and send any supporting photos, drawings or PDFs through WhatsApp.</p></div>
           <div><span>02</span><b>AI understands and qualifies it</b><p>Intent, location, deadline, quantity, specification and files become a structured opportunity.</p></div>
-          <div><span>03</span><b>The right businesses are invited</b><p>Up to three eligible suppliers receive it, based on industry, audience, capability, reach and live capacity.</p></div>
+          <div><span>03</span><b>The right businesses are invited</b><p>Up to five eligible suppliers receive it, based on industry, audience, capability, reach and live capacity.</p></div>
           <div><span>04</span><b>The customer selects</b><p>The chosen supplier and customer receive the details needed to move the order forward.</p></div>
         </div>
       </section>
@@ -198,10 +198,11 @@ export default function Home() {
           <div className="home-membership-points"><span><Check size={15} /> No introduction fees</span><span><Check size={15} /> No winning fees</span><span><Check size={15} /> Stripe-secured billing</span></div>
         </div>
         <div className="home-plan-stack">
+          <div className="home-price-card"><span>HYPERLOCAL PARTNER</span><div><sup>£</sup><strong>14.99</strong><small>per month</small></div><p>Choose a radius from 1–10 miles in eligible industries. Up to 3 live opportunities.</p></div>
           <div className="home-price-card"><span>LOCAL PARTNER</span><div><sup>£</sup><strong>29.99</strong><small>per month</small></div><p>Choose a service and delivery radius from 1–40 miles. Up to 5 live opportunities.</p></div>
           <div className="home-price-card"><span>REGIONAL PARTNER</span><div><sup>£</sup><strong>59.99</strong><small>per month</small></div><p>Choose a radius from 1–100 miles. Up to 10 live opportunities.</p></div>
           <div className="home-price-card"><span>NATIONWIDE PARTNER</span><div><sup>£</sup><strong>89.99</strong><small>per month</small></div><p>Great Britain eligibility with exact capability matching. Up to 20 live opportunities.</p></div>
-          <Link className="button button-dark" href="/register">Apply as a supplier <ArrowRight size={15} /></Link><small>Approval is required. VAT is not currently charged; it will be applied only if legally required and enabled.</small>
+          <Link className="button button-dark" href="/register">Apply as a supplier <ArrowRight size={15} /></Link><small>Approval is required. Choose the reach that fits your business.</small>
         </div>
       </section>
 

@@ -20,8 +20,31 @@ export async function POST(request: Request) {
 
   try {
     const plan = await prisma.membershipPlan.findFirst({ where: { id: parsed.data.membershipPlanId, active: true } });
-    const current = await prisma.subscription.findUnique({ where: { supplierCompanyId: auth.companyId } });
+    const current = await prisma.subscription.findUnique({ where: { supplierCompanyId: auth.companyId }, include: { membershipPlan: true } });
     if (!plan) return NextResponse.json({ error: "That membership plan is not available" }, { status: 404 });
+    if (plan.tier === "HYPERLOCAL") {
+      const eligibleCategory = await prisma.supplierProductCategory.findFirst({
+        where: {
+          supplierCompanyId: auth.companyId,
+          OR: [
+            { productCategory: { hyperlocalEnabled: true, parentId: null, active: true } },
+            { productCategory: { active: true, parent: { hyperlocalEnabled: true, active: true } } },
+          ],
+        },
+        select: { productCategoryId: true },
+      });
+      const activeCoverage = await prisma.coverageArea.findMany({
+        where: { supplierCompanyId: auth.companyId, active: true },
+        select: { type: true, radiusMiles: true },
+      });
+      if (!eligibleCategory) return NextResponse.json({ error: "Hyperlocal Partner is not available for the industries your company currently supplies" }, { status: 409 });
+      if (!activeCoverage.some((area) => area.type === "DISTANCE" && area.radiusMiles !== null && area.radiusMiles >= 1 && area.radiusMiles <= (plan.maximumRadiusMiles ?? 10))) {
+        return NextResponse.json({ error: `Choose a coverage radius between 1 and ${plan.maximumRadiusMiles ?? 10} miles before selecting Hyperlocal Partner`, actionUrl: "/dashboard/coverage" }, { status: 409 });
+      }
+      if (activeCoverage.some((area) => area.type === "NATIONWIDE" || (area.radiusMiles ?? 0) > (plan.maximumRadiusMiles ?? 10))) {
+        return NextResponse.json({ error: `Reduce every active coverage area to ${plan.maximumRadiusMiles ?? 10} miles or less before selecting Hyperlocal Partner`, actionUrl: "/dashboard/coverage" }, { status: 409 });
+      }
+    }
     const stripe = getStripe();
     const priceId = await ensureMembershipPlanStripePrice(plan);
     const origin = applicationOrigin(request.url);
@@ -58,7 +81,10 @@ export async function POST(request: Request) {
       });
       await runAsDatabaseWorker("stripe_billing", async (tx) => {
         await tx.subscription.update({ where: { id: current.id }, data: { membershipPlanId: plan.id, planCode: plan.code, promotionId: applicablePromotion?.id ?? null } });
-        await tx.auditLog.create({ data: { actorUserId: auth.session.userId, supplierCompanyId: auth.companyId, action: "BILLING.MEMBERSHIP_PLAN_CHANGED", entityType: "Subscription", entityId: current.id, summary: `Membership changed to ${plan.name}`, metadata: { membershipPlanId: plan.id, tier: plan.tier, monthlyPricePence: plan.monthlyPricePence } } });
+        const tierRank = { HYPERLOCAL: 0, LOCAL: 1, REGIONAL: 2, NATIONWIDE: 3 } as const;
+        const fromTier = current.membershipPlan?.tier ?? null;
+        const direction = fromTier === null || fromTier === plan.tier ? "UNCHANGED" : tierRank[plan.tier] > tierRank[fromTier] ? "UPGRADE" : "DOWNGRADE";
+        await tx.auditLog.create({ data: { actorUserId: auth.session.userId, supplierCompanyId: auth.companyId, action: "BILLING.MEMBERSHIP_PLAN_CHANGED", entityType: "Subscription", entityId: current.id, summary: `Membership changed to ${plan.name}`, metadata: { membershipPlanId: plan.id, fromTier, toTier: plan.tier, direction, monthlyPricePence: plan.monthlyPricePence } } });
       });
       return NextResponse.json({ url: `${origin}/dashboard/subscription?plan=changed` });
     }

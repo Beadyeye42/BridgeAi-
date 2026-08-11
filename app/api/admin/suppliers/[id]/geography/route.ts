@@ -23,8 +23,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const activeSubscription = existing.subscription?.status === "ACTIVE"
     && (!existing.subscription.currentPeriodEnd || existing.subscription.currentPeriodEnd > new Date());
   const purchasedTier = activeSubscription ? existing.subscription?.membershipPlan?.tier ?? "LOCAL" : "LOCAL";
-  const tierRank = { LOCAL: 1, REGIONAL: 2, NATIONWIDE: 3 } as const;
-  const purchasedRadius = purchasedTier === "LOCAL" ? 40 : purchasedTier === "REGIONAL" ? 100 : null;
+  const tierRank = { HYPERLOCAL: 0, LOCAL: 1, REGIONAL: 2, NATIONWIDE: 3 } as const;
+  const purchasedRadius = purchasedTier === "HYPERLOCAL" ? 10 : purchasedTier === "LOCAL" ? 40 : purchasedTier === "REGIONAL" ? 100 : null;
   if (parsed.data.membershipTierOverride && tierRank[parsed.data.membershipTierOverride] > tierRank[purchasedTier]) {
     return NextResponse.json({ error: "Upgrade the supplier membership plan to expand its geographic access." }, { status: 400 });
   }

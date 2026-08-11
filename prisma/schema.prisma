@@ -185,6 +185,7 @@ enum CoveragePurpose {
 }
 
 enum MembershipTier {
+  HYPERLOCAL
   LOCAL
   REGIONAL
   NATIONWIDE
@@ -715,25 +716,26 @@ model SupplierAccreditation {
 }
 
 model ProductCategory {
-  id             String                    @id @default(cuid())
-  name           String
-  slug           String                    @unique
-  description    String?
-  active         Boolean                   @default(true)
-  adminVisible  Boolean                    @default(true)
-  servesConsumer Boolean                   @default(false)
-  servesTrade    Boolean                   @default(true)
-  servesBusiness Boolean                   @default(true)
-  parentId       String?
-  displayOrder   Int                       @default(0)
-  createdAt      DateTime                  @default(now())
-  updatedAt      DateTime                  @updatedAt
-  parent         ProductCategory?          @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
-  children       ProductCategory[]         @relation("CategoryTree")
-  suppliers      SupplierProductCategory[]
-  quoteRequests  QuoteRequest[]
-  opportunities  SupplierOpportunity[]
-  capabilities   SupplierCapability[]
+  id                String                    @id @default(cuid())
+  name              String
+  slug              String                    @unique
+  description       String?
+  active            Boolean                   @default(true)
+  adminVisible      Boolean                   @default(true)
+  hyperlocalEnabled Boolean                   @default(false)
+  servesConsumer    Boolean                   @default(false)
+  servesTrade       Boolean                   @default(true)
+  servesBusiness    Boolean                   @default(true)
+  parentId          String?
+  displayOrder      Int                       @default(0)
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  parent            ProductCategory?          @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children          ProductCategory[]         @relation("CategoryTree")
+  suppliers         SupplierProductCategory[]
+  quoteRequests     QuoteRequest[]
+  opportunities     SupplierOpportunity[]
+  capabilities      SupplierCapability[]
 
   @@unique([parentId, name])
   @@index([active, displayOrder])
@@ -819,7 +821,7 @@ model QuoteRequest {
   fulfilmentMode                FulfilmentMode          @default(DELIVERY)
   currency                      String                  @default("GBP") @db.VarChar(3)
   status                        QuoteRequestStatus      @default(DRAFT)
-  distributionLimit             Int                     @default(3)
+  distributionLimit             Int                     @default(5)
   responseDueAt                 DateTime
   publishedAt                   DateTime?
   closedAt                      DateTime?
@@ -1114,7 +1116,7 @@ model MembershipPlan {
 
 model MatchingConfiguration {
   id                              String   @id @default("default")
-  maximumSuppliersPerRequest      Int      @default(3)
+  maximumSuppliersPerRequest      Int      @default(5)
   capacityStaleDays               Int      @default(7)
   leadTimeStaleDays               Int      @default(14)
   responseDeadlineHours           Int      @default(8)

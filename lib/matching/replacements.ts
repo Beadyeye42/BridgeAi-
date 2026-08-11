@@ -30,7 +30,7 @@ export async function inviteNextEligibleSupplier(quoteRequestId: string, replace
       });
     }
     if (configuration && !configuration.automaticNextSupplierInvitation) return { invited: false, reason: "automatic_replacement_disabled" };
-    const maximumSuppliers = Math.min(quote.distributionLimit, configuration?.maximumSuppliersPerRequest ?? 3, 3);
+    const maximumSuppliers = Math.min(quote.distributionLimit, configuration?.maximumSuppliersPerRequest ?? 5, 5);
     const activeAssignments = await tx.supplierAssignment.count({ where: { quoteRequestId, status: { in: [...ACTIVE_ASSIGNMENT_STATUSES] }, expiresAt: { gt: now } } });
     const validQuotes = await tx.supplierQuotation.count({ where: { quoteRequestId, status: { in: [...VALID_QUOTATION_STATUSES] } } });
     const totalInvitations = await tx.supplierAssignment.count({ where: { quoteRequestId } });

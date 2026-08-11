@@ -895,7 +895,7 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
     );
     const matches = evaluations
       .filter((evaluation) => evaluation.outcome === "MATCHED")
-      .slice(0, Math.min(distributionLimit, matchingConfiguration?.maximumSuppliersPerRequest ?? 3, 3));
+      .slice(0, Math.min(distributionLimit, matchingConfiguration?.maximumSuppliersPerRequest ?? 5, 5));
     const selectedSupplierIds = new Set(matches.map((match) => match.id));
     for (const evaluation of evaluations) {
       await tx.supplierMatchDecision.upsert({

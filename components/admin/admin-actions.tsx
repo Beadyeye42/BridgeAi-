@@ -198,7 +198,7 @@ export function AdminSupplierEdit({ supplier }: { supplier: AdminSupplierRecord 
 
 type SupplierGeographyOverrides = {
   id: string;
-  membershipTierOverride: "LOCAL" | "REGIONAL" | "NATIONWIDE" | null;
+  membershipTierOverride: "HYPERLOCAL" | "LOCAL" | "REGIONAL" | "NATIONWIDE" | null;
   maximumActiveOpportunitiesOverride: number | null;
   maximumServiceRadiusOverride: number | null;
   maximumDeliveryRadiusOverride: number | null;
@@ -221,7 +221,7 @@ export function SupplierGeographyOverride({ supplier }: { supplier: SupplierGeog
     } catch (error) { setMessage(error instanceof Error ? error.message : "Override failed"); }
     finally { setBusy(false); }
   }
-  return <form className="panel form-section spaced-section" onSubmit={submit}><div className="section-heading"><div><p className="eyebrow">Exceptional control</p><h2>Supplier geographic overrides</h2></div><ShieldAlert size={20}/></div><div className="honesty-note">Current paid or complimentary plan: {supplier.planName ?? "none"}. Leave fields blank to use the normal plan rules. Every override is audit logged.</div><div className="form-grid"><label className="form-control"><span>Tier override</span><select name="membershipTierOverride" defaultValue={supplier.membershipTierOverride ?? ""}><option value="">Use subscription plan</option><option value="LOCAL">Local</option><option value="REGIONAL">Regional</option><option value="NATIONWIDE">Nationwide</option></select></label><label className="form-control"><span>Maximum active opportunities</span><input name="maximumActiveOpportunitiesOverride" type="number" min="1" max="100" defaultValue={supplier.maximumActiveOpportunitiesOverride ?? ""} placeholder="Use plan limit"/></label><label className="form-control"><span>Service radius override</span><input name="maximumServiceRadiusOverride" type="number" min="1" max="500" defaultValue={supplier.maximumServiceRadiusOverride ?? ""} placeholder="Use plan radius"/></label><label className="form-control"><span>Delivery radius override</span><input name="maximumDeliveryRadiusOverride" type="number" min="1" max="500" defaultValue={supplier.maximumDeliveryRadiusOverride ?? ""} placeholder="Use plan radius"/></label></div><div className="form-actions"><p className="form-result">{message}</p><button className="button button-dark" disabled={busy}>{busy?<LoaderCircle className="spin" size={14}/>:<Check size={14}/>}Save geographic overrides</button></div></form>;
+  return <form className="panel form-section spaced-section" onSubmit={submit}><div className="section-heading"><div><p className="eyebrow">Exceptional control</p><h2>Supplier geographic overrides</h2></div><ShieldAlert size={20}/></div><div className="honesty-note">Current paid or complimentary plan: {supplier.planName ?? "none"}. Leave fields blank to use the normal plan rules. Every override is audit logged.</div><div className="form-grid"><label className="form-control"><span>Tier override</span><select name="membershipTierOverride" defaultValue={supplier.membershipTierOverride ?? ""}><option value="">Use subscription plan</option><option value="HYPERLOCAL">Hyperlocal</option><option value="LOCAL">Local</option><option value="REGIONAL">Regional</option><option value="NATIONWIDE">Nationwide</option></select></label><label className="form-control"><span>Maximum active opportunities</span><input name="maximumActiveOpportunitiesOverride" type="number" min="1" max="100" defaultValue={supplier.maximumActiveOpportunitiesOverride ?? ""} placeholder="Use plan limit"/></label><label className="form-control"><span>Service radius override</span><input name="maximumServiceRadiusOverride" type="number" min="1" max="500" defaultValue={supplier.maximumServiceRadiusOverride ?? ""} placeholder="Use plan radius"/></label><label className="form-control"><span>Delivery radius override</span><input name="maximumDeliveryRadiusOverride" type="number" min="1" max="500" defaultValue={supplier.maximumDeliveryRadiusOverride ?? ""} placeholder="Use plan radius"/></label></div><div className="form-actions"><p className="form-result">{message}</p><button className="button button-dark" disabled={busy}>{busy?<LoaderCircle className="spin" size={14}/>:<Check size={14}/>}Save geographic overrides</button></div></form>;
 }
 
 export function CoverageStatusButton({id,active}:{id:string;active:boolean}){const router=useRouter();const[busy,setBusy]=useState(false);return <button className="button button-outline" disabled={busy} onClick={async()=>{setBusy(true);try{await call(`/api/admin/coverage/${id}`,"PATCH",{active:!active});router.refresh()}finally{setBusy(false)}}}>{busy?<LoaderCircle className="spin" size={14}/>:null}{active?"Disable":"Enable"}</button>}
@@ -266,4 +266,20 @@ export function IndustryAudienceControl({ id, servesConsumer, servesTrade, serve
     <button className="button button-outline" disabled={busy}>{busy ? <LoaderCircle className="spin" size={14}/> : <Check size={14}/>}Save audiences</button>
     {message && <small className="form-result">{message}</small>}
   </form>;
+}
+
+export function IndustryHyperlocalControl({ id, enabled }: { id: string; enabled: boolean }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  return <div className="industry-audience-control">
+    <div><b>Hyperlocal Partner</b><small>Allow suppliers in this industry to choose the 1–10 mile membership.</small></div>
+    <button className="button button-outline" disabled={busy} onClick={async () => {
+      setBusy(true); setMessage("");
+      try { await call(`/api/admin/categories/${id}`, "PATCH", { hyperlocalEnabled: !enabled }); setMessage(enabled ? "Hyperlocal disabled." : "Hyperlocal enabled."); router.refresh(); }
+      catch (error) { setMessage(error instanceof Error ? error.message : "Hyperlocal update failed"); }
+      finally { setBusy(false); }
+    }}>{busy ? <LoaderCircle className="spin" size={14}/> : <Check size={14}/>} {enabled ? "Disable Hyperlocal" : "Enable Hyperlocal"}</button>
+    {message && <small className="form-result">{message}</small>}
+  </div>;
 }

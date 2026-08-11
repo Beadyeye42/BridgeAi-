@@ -24,7 +24,7 @@ describe("simple industry administration", () => {
   it("retires legacy catalogue roots without deleting their records", () => {
     const migration = read("supabase/migrations/20260807144722_simplify_industry_admin_catalogue.sql");
     const schema = read("prisma/schema.prisma");
-    expect(schema).toContain("adminVisible  Boolean");
+    expect(schema).toMatch(/adminVisible\s+Boolean/);
     expect(migration).toContain('ADD COLUMN IF NOT EXISTS "adminVisible"');
     expect(migration).toContain("category_doors");
     expect(migration).toContain("SYSTEM.INDUSTRY_ADMIN_SIMPLIFIED");
