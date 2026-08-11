@@ -9,6 +9,9 @@ export const intakeQuestionKeys = [
   "COMPOSITE_STYLE",
   "ROOF_GLAZING_SPECIFICATION",
   "PHE_SPECIFICATION",
+  "TRANSPORT_ROUTE_ITEM",
+  "TRANSPORT_ACCESS",
+  "TRANSPORT_HANDLING",
   "SPECIFICATION",
   "REQUIREMENTS",
   "NONE",
@@ -103,7 +106,113 @@ const industryRootCategorySlugs = new Set([
   "plumbing-heating-mechanical",
   "bespoke-metal-fabrication",
   "garage-industrial-specialist-doors",
+  "transport-delivery-removals",
 ]);
+
+const transportCategorySlugs = new Set([
+  "transport-delivery-removals",
+  "man-with-a-van",
+  "trade-collection-delivery",
+  "same-day-courier",
+  "furniture-small-removals",
+  "bulky-item-transport",
+  "building-material-deliveries",
+  "multi-drop-delivery",
+]);
+
+const ukPostcodePattern = /\b(?:GIR\s?0AA|[A-PR-UWYZ][A-HK-Y]?\d[A-Z\d]?\s?\d[ABD-HJLNP-UW-Z]{2})\b/gi;
+
+export type TransportIntakeDecision = {
+  isTransport: boolean;
+  itemKnown: boolean;
+  collectionPostcodeKnown: boolean;
+  deliveryPostcodeKnown: boolean;
+  accessKnown: boolean;
+  handlingKnown: boolean;
+  nextQuestionKey: "TRANSPORT_ROUTE_ITEM" | "TRANSPORT_ACCESS" | "TRANSPORT_HANDLING" | null;
+  shouldAsk: boolean;
+};
+
+function hasAnswerAfterPrompt(messages: IntakeConversationMessage[], promptPattern: RegExp) {
+  const promptIndex = messages.findLastIndex((message) => (
+    message.direction === "OUTBOUND" && promptPattern.test(message.text)
+  ));
+  return promptIndex >= 0 && messages.slice(promptIndex + 1).some((message) => (
+    message.direction === "INBOUND" && message.text.trim().length > 0
+  ));
+}
+
+export function transportIntakeDecision(
+  draft: TradeDraft & { deliveryPostcode?: string | null },
+  messages: IntakeConversationMessage[],
+): TransportIntakeDecision {
+  const isTransport = Boolean(draft.categorySlug && transportCategorySlugs.has(draft.categorySlug));
+  if (!isTransport) {
+    return {
+      isTransport: false,
+      itemKnown: false,
+      collectionPostcodeKnown: false,
+      deliveryPostcodeKnown: false,
+      accessKnown: false,
+      handlingKnown: false,
+      nextQuestionKey: null,
+      shouldAsk: false,
+    };
+  }
+  const inbound = messages
+    .filter((message) => message.direction === "INBOUND")
+    .map((message) => message.text)
+    .join("\n");
+  const evidence = [
+    inbound,
+    draft.title,
+    draft.summary,
+    ...draft.items.flatMap((item) => [item.description, item.specification]),
+  ].filter((value): value is string => Boolean(value)).join("\n");
+  const postcodes = new Set(Array.from(evidence.matchAll(ukPostcodePattern), (match) => match[0].replace(/\s+/g, "").toUpperCase()));
+  const itemKnown = draft.items.length > 0
+    && draft.items.some((item) => item.description.trim().length > 1);
+  const collectionPostcodeKnown = postcodes.size >= 2
+    || /\b(?:collection|collect(?:ion)?\s+from|pick[- ]?up)\b[^\n]{0,80}\b(?:GIR\s?0AA|[A-PR-UWYZ][A-HK-Y]?\d[A-Z\d]?\s?\d[ABD-HJLNP-UW-Z]{2})\b/i.test(evidence);
+  const deliveryPostcodeKnown = Boolean(draft.deliveryPostcode) || postcodes.size >= 2;
+  const accessKnown = /\b(?:ground[- ]?floor|first[- ]?floor|second[- ]?floor|upper[- ]?floor|stairs?|steps?|lift|elevator|level access|no stairs|access at both|access restrictions?)\b/i.test(inbound)
+    || hasAnswerAfterPrompt(messages, /ground floor at both addresses|stairs or a lift at either end/i);
+  const handlingKnown = /\b(?:driver (?:to )?help|help (?:to )?(?:carry|load|unload)|carry(?:ing)? help|loading help|unloading help|load it|unload it|two[- ]person|two man|extra crew|additional crew|someone (?:will )?help|help at both ends|no help (?:needed|required))\b/i.test(inbound)
+    || hasAnswerAfterPrompt(messages, /driver to help carry or load|someone help at both ends/i);
+  const nextQuestionKey = !itemKnown || !collectionPostcodeKnown || !deliveryPostcodeKnown
+    ? "TRANSPORT_ROUTE_ITEM"
+    : !accessKnown
+      ? "TRANSPORT_ACCESS"
+      : !handlingKnown
+        ? "TRANSPORT_HANDLING"
+        : null;
+  return {
+    isTransport,
+    itemKnown,
+    collectionPostcodeKnown,
+    deliveryPostcodeKnown,
+    accessKnown,
+    handlingKnown,
+    nextQuestionKey,
+    shouldAsk: nextQuestionKey !== null,
+  };
+}
+
+export function transportIntakePrompt(input: TransportIntakeDecision) {
+  if (input.nextQuestionKey === "TRANSPORT_ROUTE_ITEM") {
+    if (input.itemKnown) {
+      return "Please send the full collection and delivery postcodes. A photo of the item is helpful too, especially for furniture or anything bulky.";
+    }
+    return "Please send a photo or short description of what is moving, plus the full collection and delivery postcodes.";
+  }
+  if (input.nextQuestionKey === "TRANSPORT_ACCESS") {
+    return "Is it ground floor at both addresses, or are there stairs or a lift at either end?";
+  }
+  if (input.nextQuestionKey === "TRANSPORT_HANDLING") {
+    return "Will you need the driver to help carry or load it, or will someone help at both ends?";
+  }
+  return null;
+}
 
 const pheSpecificationEvidence: Record<string, RegExp> = {
   "boilers-heating-packages": /\b(?:gas|oil|electric|hybrid|combi|system|regular|heat only|\d+(?:\.\d+)?\s*kW|flue|boiler schedule)\b/i,
@@ -269,7 +378,7 @@ export function enforceTradeClarification(
   proposed: TradeClarification,
   customerMessages: string[],
 ): TradeClarification {
-  if (draft.categorySlug && pheCategorySlugs.has(draft.categorySlug)) {
+  if (draft.categorySlug && (pheCategorySlugs.has(draft.categorySlug) || transportCategorySlugs.has(draft.categorySlug))) {
     return { materialNeeded: false, colourNeeded: false, colourTerm: null };
   }
   const evidence = [
@@ -333,6 +442,9 @@ export function repeatClarification(questionKey: IntakeQuestionKey) {
     COMPOSITE_STYLE: compositeDoorStylePhotoPrompt(),
     ROOF_GLAZING_SPECIFICATION: "What are the internal opening size, frame/material and colour or finish for the roof glazing? Please label the measurements as INTERNAL.",
     PHE_SPECIFICATION: pheSpecificationPrompt(null),
+    TRANSPORT_ROUTE_ITEM: "Please send a photo or short description of what is moving, plus the full collection and delivery postcodes.",
+    TRANSPORT_ACCESS: "Is it ground floor at both addresses, or are there stairs or a lift at either end?",
+    TRANSPORT_HANDLING: "Will you need the driver to help carry or load it, or will someone help at both ends?",
     SPECIFICATION: "What important detail should suppliers price — for example size, material, colour or opening style?",
     REQUIREMENTS: "What would you like the supplier to include in this quote?",
   };

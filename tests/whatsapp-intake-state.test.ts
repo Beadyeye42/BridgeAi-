@@ -14,6 +14,8 @@ import {
   roofGlazingSpecificationDecision,
   roofGlazingSpecificationPrompt,
   tradeSpecificationClarification,
+  transportIntakeDecision,
+  transportIntakePrompt,
   universalRequestPrompt,
 } from "../lib/whatsapp/intake-state";
 
@@ -229,6 +231,71 @@ describe("WhatsApp intake conversation state", () => {
       { materialNeeded: true, colourNeeded: true, colourTerm: "white" },
       ["I need a heat pump"],
     )).toEqual({ materialNeeded: false, colourNeeded: false, colourTerm: null });
+  });
+
+  it("collects a furniture move in three short transport steps", () => {
+    const draft = {
+      categorySlug: "furniture-small-removals",
+      title: "Sofa move",
+      summary: "Move one sofa from Cheltenham to Birmingham on Saturday",
+      deliveryPostcode: null,
+      items: [{ description: "Sofa" }],
+    };
+    const route = transportIntakeDecision(draft, [{
+      direction: "INBOUND",
+      text: "Can someone move this sofa from Cheltenham to Birmingham Saturday?",
+    }]);
+    expect(route).toMatchObject({
+      isTransport: true,
+      itemKnown: true,
+      collectionPostcodeKnown: false,
+      deliveryPostcodeKnown: false,
+      nextQuestionKey: "TRANSPORT_ROUTE_ITEM",
+    });
+    expect(transportIntakePrompt(route)).toContain("full collection and delivery postcodes");
+    expect(transportIntakePrompt(route)).toContain("photo");
+
+    const accessMessages = [
+      { direction: "INBOUND" as const, text: "Can someone move this sofa from Cheltenham to Birmingham Saturday?" },
+      { direction: "OUTBOUND" as const, text: transportIntakePrompt(route)! },
+      { direction: "INBOUND" as const, text: "Collection GL52 6TD, delivery B1 1AA. Here is the photo." },
+    ];
+    const access = transportIntakeDecision({ ...draft, deliveryPostcode: "B1 1AA" }, accessMessages);
+    expect(access.nextQuestionKey).toBe("TRANSPORT_ACCESS");
+    expect(transportIntakePrompt(access)).toBe("Is it ground floor at both addresses, or are there stairs or a lift at either end?");
+
+    const handlingMessages = [
+      ...accessMessages,
+      { direction: "OUTBOUND" as const, text: transportIntakePrompt(access)! },
+      { direction: "INBOUND" as const, text: "Ground floor at both" },
+    ];
+    const handling = transportIntakeDecision({ ...draft, deliveryPostcode: "B1 1AA" }, handlingMessages);
+    expect(handling.nextQuestionKey).toBe("TRANSPORT_HANDLING");
+    expect(transportIntakePrompt(handling)).toContain("driver to help carry or load");
+
+    const complete = transportIntakeDecision({ ...draft, deliveryPostcode: "B1 1AA" }, [
+      ...handlingMessages,
+      { direction: "OUTBOUND", text: transportIntakePrompt(handling)! },
+      { direction: "INBOUND", text: "Yes, I need the driver to help carry it" },
+    ]);
+    expect(complete).toMatchObject({ shouldAsk: false, nextQuestionKey: null });
+  });
+
+  it("does not repeat a transport step after a short answer", () => {
+    const draft = {
+      categorySlug: "man-with-a-van",
+      title: "Furniture delivery",
+      summary: "Move a table from GL52 6TD to B1 1AA",
+      deliveryPostcode: "B1 1AA",
+      items: [{ description: "Table" }],
+    };
+    const access = transportIntakeDecision(draft, [
+      { direction: "OUTBOUND", text: "Is it ground floor at both addresses, or are there stairs or a lift at either end?" },
+      { direction: "INBOUND", text: "Yes" },
+    ]);
+    expect(access.accessKnown).toBe(true);
+    expect(access.nextQuestionKey).toBe("TRANSPORT_HANDLING");
+    expect(repeatClarification("TRANSPORT_ACCESS")).toContain("ground floor at both addresses");
   });
 
   it("does not mistake an external roof-glass measurement for the required internal size", () => {

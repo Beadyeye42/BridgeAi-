@@ -35,7 +35,10 @@ const productRules: ProductRule[] = [
     pattern: /\b(?:same[-\s]*day|urgent|express) courier(?:s)?\b/i,
     answer: "For a same-day courier quote, send the collection and delivery postcodes, when the item is ready, the delivery deadline, and the parcel count, dimensions and approximate weight.",
   },
-  { slug: "furniture-small-removals", pattern: /\b(?:furniture|small|house|office) removal(?:s)?\b|\bhouse move\b/i },
+  {
+    slug: "furniture-small-removals",
+    pattern: /\b(?:furniture|small|house|office) removal(?:s)?\b|\bhouse move\b|\b(?:move|collect|deliver|transport)\b[^.!?\n]{0,60}\b(?:sofa|settee|furniture|bed|wardrobe|table|chairs?|dresser|cabinet)\b|\b(?:sofa|settee|furniture|bed|wardrobe|table|chairs?|dresser|cabinet)\b[^.!?\n]{0,60}\b(?:move|collect|deliver|transport)\b/i,
+  },
   { slug: "bulky-item-transport", pattern: /\b(?:bulky|large|heavy|awkward)[-\s]*item(?:s)? (?:transport|delivery|collection)\b/i },
   { slug: "building-material-deliveries", pattern: /\b(?:building|trade) material(?:s)? deliver(?:y|ies)\b/i },
   { slug: "multi-drop-delivery", pattern: /\bmulti[-\s]*drop deliver(?:y|ies)\b/i },
@@ -129,7 +132,7 @@ export function productMessageIntent(text: string): "QUOTE_REQUEST" | "QUESTION"
   if (/\b(?:difference|compare|explain|tell me about)\b/i.test(trimmed)) {
     return "QUESTION";
   }
-  if (/\b(?:i\s+(?:need|want|would\s+like)|looking\s+for|quote|quotation|price|find\s+me|supply\s+me|can\s+i\s+(?:get|have|order)|(?:can|could|would)\s+you\s+(?:quote|source|find|supply))\b/i.test(trimmed)) {
+  if (/\b(?:i\s+(?:need|want|would\s+like)|looking\s+for|quote|quotation|price|find\s+me|supply\s+me|can\s+i\s+(?:get|have|order)|(?:can|could|would)\s+you\s+(?:quote|source|find|supply)|can\s+someone\s+(?:move|collect|deliver|transport))\b/i.test(trimmed)) {
     return "QUOTE_REQUEST";
   }
   if (/\b(?:what|which|why|how)\b/i.test(trimmed)
@@ -142,7 +145,7 @@ export function productMessageIntent(text: string): "QUOTE_REQUEST" | "QUESTION"
 export function productRecoveryReply(recognition: ProductRecognition, text: string) {
   if (productMessageIntent(text) === "QUESTION") return recognition.answer;
   if (recognition.parentSlug === "transport-delivery-removals") {
-    return `Yes — I can help you find a suitable approved operator for ${recognition.categoryName.toLocaleLowerCase("en-GB")}. What are the collection and delivery postcodes, and what needs moving? A photo is welcome too.`;
+    return "Yes — I can help. Please send a photo or short description of what is moving, plus the full collection and delivery postcodes.";
   }
   return `Yes — I can help you source ${recognition.categoryName.toLocaleLowerCase("en-GB")} from suitable approved suppliers. Roughly how many do you need? You can also send a photo, drawing or PDF.`;
 }

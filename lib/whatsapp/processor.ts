@@ -73,6 +73,8 @@ import {
   roofGlazingSpecificationDecision,
   roofGlazingSpecificationPrompt,
   tradeSpecificationClarification,
+  transportIntakeDecision,
+  transportIntakePrompt,
   universalRequestPrompt,
 } from "@/lib/whatsapp/intake-state";
 
@@ -1783,6 +1785,12 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   const compositeDoorPhoto = compositeDoorPhotoDecision(result.draft, messages);
   const roofGlazingSpecification = roofGlazingSpecificationDecision(result.draft, messages);
   const pheSpecification = pheSpecificationDecision(result.draft, messages);
+  const transportIntake = transportIntakeDecision(result.draft, messages);
+  if (transportIntake.isTransport) {
+    result.draft.fulfilmentMode = "SERVICE";
+    result.draft.collectionRequired = false;
+    result.tradeClarification = { materialNeeded: false, colourNeeded: false, colourTerm: null };
+  }
   const category = result.draft.categorySlug ? categories.find((item) => item.slug === result.draft.categorySlug) : undefined;
   const isIndustryRoot = Boolean(category && !category.parent);
   if (compositeDoorPhoto.handled && result.nextQuestionKey === "COMPOSITE_STYLE") {
@@ -1802,7 +1810,9 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
         ? "PRODUCT"
         : pheSpecification.shouldAsk
           ? "PHE_SPECIFICATION"
-          : requiredQuestionKey(result.draft, result.nextQuestionKey, result.tradeClarification);
+          : transportIntake.shouldAsk
+            ? transportIntake.nextQuestionKey!
+            : requiredQuestionKey(result.draft, result.nextQuestionKey, result.tradeClarification);
   const ready = result.readyForConfirmation && Boolean(category?.parent) && questionKey === "NONE" && draftIsComplete(result.draft);
   const fingerprint = quoteDraftFingerprint(result.draft);
   const progress = conversationProgress({
@@ -1905,7 +1915,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
         preferredFirstName,
         categoryResponsibilityNotice(category.slug, category.parent?.slug),
       )
-      : `${mediaAcknowledgement ? `${mediaAcknowledgement}\n\n` : ""}${compositeDoorPhoto.shouldAsk ? compositeDoorStylePhotoPrompt() : roofGlazingSpecification.shouldAsk ? roofGlazingSpecificationPrompt(roofGlazingSpecification) : pheSpecification.shouldAsk ? pheSpecificationPrompt(pheSpecification.categorySlug) : tradeClarification ?? productQuestionPrompt ?? repeatedClarification ?? enforcedClarification ?? result.reply}${rejectedMedia ? "\n\nI couldn’t use one uploaded file for this quote, so I’ve safely left it out. Send another JPG, PNG or PDF, or describe the job here and I’ll keep going." : ""}`;
+      : `${mediaAcknowledgement ? `${mediaAcknowledgement}\n\n` : ""}${compositeDoorPhoto.shouldAsk ? compositeDoorStylePhotoPrompt() : roofGlazingSpecification.shouldAsk ? roofGlazingSpecificationPrompt(roofGlazingSpecification) : pheSpecification.shouldAsk ? pheSpecificationPrompt(pheSpecification.categorySlug) : transportIntake.shouldAsk ? transportIntakePrompt(transportIntake) : tradeClarification ?? productQuestionPrompt ?? repeatedClarification ?? enforcedClarification ?? result.reply}${rejectedMedia ? "\n\nI couldn’t use one uploaded file for this quote, so I’ve safely left it out. Send another JPG, PNG or PDF, or describe the job here and I’ll keep going." : ""}`;
   await sendReply(
     job,
     refreshed.conversation,

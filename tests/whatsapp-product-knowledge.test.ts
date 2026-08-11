@@ -32,6 +32,12 @@ const categories: ProductKnowledgeCategory[] = [
     description: "Urgent direct courier work.",
     parent: { slug: "transport-delivery-removals" },
   },
+  {
+    slug: "furniture-small-removals",
+    name: "Furniture and small removals",
+    description: "Furniture moves, small house moves and bulky Marketplace collections.",
+    parent: { slug: "transport-delivery-removals" },
+  },
 ];
 
 describe("WhatsApp product knowledge safety net", () => {
@@ -85,6 +91,18 @@ describe("WhatsApp product knowledge safety net", () => {
     "I need a van with a driver",
   ])("recognises everyday man-with-a-van wording: %s", (message) => {
     expect(recogniseCatalogueProduct(message, categories)?.categorySlug).toBe("man-with-a-van");
+  });
+
+  it("recognises a natural sofa move without making the customer choose an industry", () => {
+    const recognition = recogniseCatalogueProduct(
+      "Can someone move this sofa from Cheltenham to Birmingham Saturday?",
+      categories,
+    );
+    expect(recognition?.categorySlug).toBe("furniture-small-removals");
+    const reply = productRecoveryReply(recognition!, "Can someone move this sofa from Cheltenham to Birmingham Saturday?");
+    expect(reply).toContain("photo or short description");
+    expect(reply).toContain("full collection and delivery postcodes");
+    expect(reply).not.toContain("choose an industry");
   });
 
   it("asks for the two locations and load details during provider recovery", () => {
