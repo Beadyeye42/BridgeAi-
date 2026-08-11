@@ -272,6 +272,14 @@ describe("security foundation static controls", () => {
     expect(reliability).toContain("conversation_ai_question_key_valid");
     expect(reliability).toContain('"customerConfirmationMessageId"');
     expect(reliability).toContain("SEND_INTAKE_FALLBACK");
+    const buyerTypeQuestion = read("supabase/migrations/20260811201159_allow_buyer_type_question_key.sql");
+    expect(buyerTypeQuestion).toContain("conversation_ai_question_key_valid");
+    expect(buyerTypeQuestion).toContain("'BUYER_TYPE'");
+    const questionKeySync = read("supabase/migrations/20260811201445_sync_whatsapp_question_keys.sql");
+    const intakeQuestionKeys = [...read("lib/whatsapp/intake-state.ts").matchAll(/^  "([A-Z_]+)",$/gm)]
+      .map((match) => match[1]);
+    expect(intakeQuestionKeys.length).toBeGreaterThan(0);
+    for (const key of intakeQuestionKeys) expect(questionKeySync).toContain(`'${key}'`);
     const systemEventWriter = read("supabase/migrations/20260805103603_whatsapp_system_event_writer.sql");
     expect(systemEventWriter).toContain("session_user <> 'bridge_ai_app'");
     expect(systemEventWriter).toContain("event_source <> worker_name");

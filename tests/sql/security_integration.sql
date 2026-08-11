@@ -333,6 +333,16 @@ BEGIN
     SELECT 1 FROM bridge_ai."Conversation"
     WHERE id='security_conversation' AND "aiLastQuestionKey"='QUOTE_OFFER'
   ) THEN RAISE EXCEPTION 'industry quote-offer state was not retained'; END IF;
+  UPDATE bridge_ai."Conversation" SET "aiLastQuestionKey"='BUYER_TYPE' WHERE id='security_conversation';
+  IF NOT EXISTS (
+    SELECT 1 FROM bridge_ai."Conversation"
+    WHERE id='security_conversation' AND "aiLastQuestionKey"='BUYER_TYPE'
+  ) THEN RAISE EXCEPTION 'buyer-type question state was not retained'; END IF;
+  UPDATE bridge_ai."Conversation" SET "aiLastQuestionKey"='TRANSPORT_ACCESS' WHERE id='security_conversation';
+  IF NOT EXISTS (
+    SELECT 1 FROM bridge_ai."Conversation"
+    WHERE id='security_conversation' AND "aiLastQuestionKey"='TRANSPORT_ACCESS'
+  ) THEN RAISE EXCEPTION 'transport-access question state was not retained'; END IF;
   UPDATE bridge_ai."Conversation" SET "aiLastQuestionKey"=NULL WHERE id='security_conversation';
   BEGIN
     UPDATE bridge_ai."Conversation" SET "aiUnproductiveTurns"=-1 WHERE id='security_conversation';
