@@ -26,10 +26,10 @@ export function SupplierDashboard({ data, demo = false, onboarding, supplierStat
           ? <OnboardingReadinessCard readiness={onboarding} status={supplierStatus} purpose="matching" />
           : null}
 
-        {data.latestWin ? <section className="win-alert" role="status">
+        {data.latestSelection ? <section className="win-alert" role="status">
           <div className="win-alert-icon"><Trophy size={25} /></div>
-          <div><p className="eyebrow">Customer selected your quotation</p><h2>You won {data.latestWin.title}</h2><p>Your {data.latestWin.value} quotation was accepted. The customer’s contact details are now ready inside the job.</p></div>
-          <div className="win-alert-actions"><Link href={`${requestBase}/${data.latestWin.reference}`} className="button win-alert-primary">Open won job <ArrowUpRight size={16} /></Link><Link href={demo ? "/demo#new-requests" : "/dashboard/requests?view=won"} className="win-alert-link">View all won jobs</Link></div>
+          <div><p className="eyebrow">Customer selected your quotation</p><h2>You’ve been selected for {data.latestSelection.title}</h2><p>Your {data.latestSelection.value} quotation was selected to move forward. Open the request to agree the final arrangements with the customer.</p></div>
+          <div className="win-alert-actions"><Link href={`${requestBase}/${data.latestSelection.reference}`} className="button win-alert-primary">View customer & continue <ArrowUpRight size={16} /></Link><Link href={demo ? "/demo#new-requests" : "/dashboard/requests?view=selected"} className="win-alert-link">View selected quotes</Link></div>
         </section> : null}
 
         {data.stats.newRequests > 0 ? <section className="attention-card">
@@ -47,7 +47,7 @@ export function SupplierDashboard({ data, demo = false, onboarding, supplierStat
         <section className="stats-grid" aria-label="Supplier overview">
           <Stat label="Matched leads" value={String(data.stats.newRequests).padStart(2, "0")} helper={demo ? "2 added today" : "Assigned to your company"} icon={<FileText size={19} />} tone="amber" />
           <Stat label="Quotes in progress" value={String(data.stats.openQuotes).padStart(2, "0")} helper={demo ? "£86.4k total value" : "Submitted and awaiting a decision"} icon={<CircleGauge size={19} />} tone="blue" />
-          <Stat label="Won this month" value={String(data.stats.wonThisMonth).padStart(2, "0")} helper={demo ? "£42.8k secured" : data.performance.monthValue === "£0" ? "No wins recorded yet" : `${data.performance.monthValue} secured`} icon={<Target size={19} />} tone="green" href={demo ? "/demo#new-requests" : "/dashboard/requests?view=won"} featured={data.stats.wonThisMonth > 0} />
+          <Stat label="Selected this month" value={String(data.stats.selectedThisMonth).padStart(2, "0")} helper={demo ? "2 now confirmed" : `${data.stats.confirmedThisMonth} confirmed job${data.stats.confirmedThisMonth === 1 ? "" : "s"}`} icon={<Target size={19} />} tone="green" href={demo ? "/demo#new-requests" : "/dashboard/requests?view=selected"} featured={data.stats.selectedThisMonth > 0} />
           <Stat label="Response rate" value={`${data.stats.responseRate}%`} helper={demo ? "Up 6% from July" : "Assigned requests answered in 30 days"} icon={<TrendingUp size={19} />} tone="violet" />
         </section>
 
@@ -90,7 +90,7 @@ export function SupplierDashboard({ data, demo = false, onboarding, supplierStat
             <section className="panel scorecard">
               <div className="panel-heading compact"><div><p className="eyebrow">Last 30 days</p><h2>Performance</h2></div><span className="score-badge">{scoreLabel(data.stats.responseRate)}</span></div>
               <div className="score-ring" style={{ "--score": `${data.stats.responseRate * 3.6}deg` } as React.CSSProperties}><div><b>{data.stats.responseRate}</b><span>/100</span><small>Supplier score</small></div></div>
-              <div className="performance-list"><div><span>Average response</span><b>{data.performance.responseTime}</b></div><div><span>Quote win rate</span><b>{data.performance.winRate}</b></div><div><span>Won value</span><b>{data.performance.monthValue}</b></div></div>
+              <div className="performance-list"><div><span>Average response</span><b>{data.performance.responseTime}</b></div><div><span>Quote selection rate</span><b>{data.performance.selectionRate}</b></div><div><span>Selected → confirmed</span><b>{data.performance.confirmationRate}</b></div><div><span>Confirmed value</span><b>{data.performance.monthValue}</b></div></div>
               <p className="score-note"><CheckCircle2 size={16} />{demo ? "You’re responding 48 minutes faster than similar suppliers." : "Based on recorded assignments and submitted quotations."}</p>
             </section>
 

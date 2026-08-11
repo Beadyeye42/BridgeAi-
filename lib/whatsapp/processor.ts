@@ -1012,7 +1012,10 @@ async function hasNewerInboundJob(job: WhatsAppJob) {
 }
 
 function quoteRequestStatus(status: string, submittedQuotes: number) {
-  if (status === "WON") return "accepted";
+  if (["WON", "SELECTED"].includes(status)) return "supplier selected—final arrangements pending";
+  if (status === "CONFIRMED") return "job confirmed";
+  if (status === "COMPLETED") return "completed";
+  if (status === "CANCELLED_AFTER_SELECTION") return "did not proceed after selection";
   if (status === "LOST") return "not selected";
   if (status === "EXPIRED") return "expired";
   if (status === "CANCELLED") return "cancelled";
@@ -1489,7 +1492,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
         metadata: { messageId: inbound.id, quoteRequestId: request.id, displayedPosition },
       });
     });
-    await sendReply(job, refreshed.conversation, `Great choice — quote ${displayedPosition} is confirmed. There is no introduction fee or winning fee. I’m sharing the selected supplier’s business contact details securely now.`);
+    await sendReply(job, refreshed.conversation, `Great choice — you’ve selected quote ${displayedPosition} to move forward. This is not yet a confirmed booking or order. I’m sharing the supplier’s business contact details so you can agree the final arrangements.`);
     return undefined;
   }
 
@@ -2021,7 +2024,7 @@ async function processContactUnlock(job: WhatsAppJob, loaded: LoadedJob) {
   const supplier = loaded.quotation.supplierCompany;
   const supplierName = supplier.tradingName ?? supplier.legalName;
   const body = [
-    `Your selection is confirmed for ${loaded.quoteRequest.reference}. You and the selected supplier can now contact each other.`,
+    `You selected a supplier to move forward for ${loaded.quoteRequest.reference}. The booking or order is not confirmed until you and the supplier agree the final arrangements.`,
     `Supplier: ${supplierName}`,
     `Email: ${supplier.contactEmail}`,
     `Phone: ${supplier.contactPhone}`,

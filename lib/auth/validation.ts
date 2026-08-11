@@ -70,6 +70,12 @@ export const assignmentDecisionSchema = z.object({
   reason: z.string().trim().max(500).optional(),
 });
 
+export const jobLifecycleSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("confirm") }),
+  z.object({ action: z.literal("complete") }),
+  z.object({ action: z.literal("cancel"), reason: z.string().trim().min(3, "Tell us why the job did not proceed").max(500) }),
+]);
+
 const quotationValidUntil = z.union([
   z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid quotation date"),
   z.date(),

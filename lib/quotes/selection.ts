@@ -1,6 +1,7 @@
 import "server-only";
 import { Prisma } from "@prisma/client";
 import { prisma, runAsDatabaseWorker, runWithDatabaseIdentity } from "@/lib/db";
+import { supplierSelectionNextStep } from "@/lib/quotes/lifecycle";
 
 async function writeSelectionAudit(
   tx: Prisma.TransactionClient,
@@ -30,7 +31,7 @@ export async function selectQuotationForCustomer(input: {
     await tx.$queryRaw`SELECT id FROM bridge_ai."SupplierQuotation" WHERE id = ${input.quotationId} FOR UPDATE`;
     const quotation = await tx.supplierQuotation.findUnique({
       where: { id: input.quotationId },
-      include: { quoteRequest: true },
+      include: { quoteRequest: { include: { category: { include: { parent: { select: { slug: true } } } } } } },
     });
     if (!quotation) throw new Error("QUOTATION_NOT_FOUND");
     if (quotation.status !== "SUBMITTED") throw new Error("QUOTATION_NOT_SELECTABLE");
@@ -68,8 +69,9 @@ export async function selectQuotationForCustomer(input: {
     });
     await tx.quoteRequest.update({
       where: { id: quotation.quoteRequestId },
-      data: { status: "WON", closedAt: selectedAt },
+      data: { status: "SELECTED", selectedAt, closedAt: null },
     });
+    const nextStep = supplierSelectionNextStep(quotation.quoteRequest.category.slug, quotation.quoteRequest.category.parent?.slug);
 
     const members = await tx.supplierTeamMembership.findMany({
       where: { supplierCompanyId: quotation.supplierCompanyId, status: "ACTIVE" },
@@ -87,7 +89,7 @@ export async function selectQuotationForCustomer(input: {
           supplierCompanyId: quotation.supplierCompanyId,
           type: "CONTACT_DETAILS_UNLOCKED" as const,
           title: "Your quote was selected",
-          body: "The customer selected your quotation. Open the request to view their contact details—there is no winning fee.",
+          body: `Good news—the customer selected your quote to move forward. Next step: ${nextStep}`,
           actionUrl: `/dashboard/requests/${quotation.quoteRequest.reference}`,
         })),
       });
@@ -99,8 +101,8 @@ export async function selectQuotationForCustomer(input: {
             supplierCompanyId: quotation.supplierCompanyId,
             type: "QUOTATION_ACCEPTED" as const,
             channel: "EMAIL" as const,
-            title: `You won request ${quotation.quoteRequest.reference}`,
-            body: "The customer selected your quotation. Sign in to Bridge AI to view the request and securely access the customer details.",
+            title: `Your quote was selected for ${quotation.quoteRequest.reference}`,
+            body: `The customer selected your quotation to move forward. Sign in to view the customer details. Next step: ${nextStep}`,
             actionUrl: `/dashboard/requests/${quotation.quoteRequest.reference}`,
           })),
           skipDuplicates: true,

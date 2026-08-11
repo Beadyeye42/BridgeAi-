@@ -60,11 +60,11 @@ describe("supplier winner email", () => {
   it("renders a polished email without leaking unescaped content", () => {
     const email = buildSupplierWinnerEmail({
       recipientFirstName: '<Brian & "team">',
-      title: "You won request BA-2026-TEST",
+      title: "Your quote was selected for BA-2026-TEST",
       body: "Open Bridge AI to continue.",
       portalUrl: "https://bridge-ai.example/dashboard/requests/BA-2026-TEST",
     });
-    expect(email.subject).toBe("You won request BA-2026-TEST");
+    expect(email.subject).toBe("Your quote was selected for BA-2026-TEST");
     expect(email.html).toContain("&lt;Brian &amp; &quot;team&quot;&gt;");
     expect(email.html).not.toContain("customer@example.com");
     expect(email.text).toContain("Customer contact details are available only after you sign in");

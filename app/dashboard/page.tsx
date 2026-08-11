@@ -20,7 +20,7 @@ export default async function DashboardPage() {
   const companyId = getPrimarySupplierCompanyId(session);
   if (!companyId) redirect("/account-restricted");
   const dashboard = await getSupplierDashboard(companyId, session.userId);
-  const latestWonQuotation = dashboard.latestWonQuotation;
+  const latestSelectedQuotation = dashboard.latestSelectedQuotation;
   const formatQuoteValue = (price: { toString(): string }, currency: string) => new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 0 }).format(Number(price));
   const data: DashboardData = {
     companyName: dashboard.company.tradingName ?? dashboard.company.legalName,
@@ -39,18 +39,21 @@ export default async function DashboardPage() {
     stats: {
       newRequests: dashboard.openAssignmentCount,
       openQuotes: dashboard.metrics.openQuotes,
-      wonThisMonth: dashboard.metrics.wonThisMonth,
+      selectedThisMonth: dashboard.metrics.selectedThisMonth,
+      confirmedThisMonth: dashboard.metrics.confirmedThisMonth,
       responseRate: dashboard.metrics.responseRate,
     },
     performance: {
       responseTime: formatDuration(dashboard.metrics.averageResponseMs),
-      winRate: dashboard.metrics.winRate === null ? "—" : `${dashboard.metrics.winRate}%`,
+      selectionRate: dashboard.metrics.selectionRate === null ? "—" : `${dashboard.metrics.selectionRate}%`,
+      confirmationRate: dashboard.metrics.confirmationRate === null ? "—" : `${dashboard.metrics.confirmationRate}%`,
       monthValue: new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", maximumFractionDigits: 0 }).format(dashboard.metrics.monthValuePence / 100),
     },
-    latestWin: latestWonQuotation ? {
-      reference: latestWonQuotation.quoteRequest.reference,
-      title: latestWonQuotation.quoteRequest.title,
-      value: formatQuoteValue(latestWonQuotation.price, latestWonQuotation.currency),
+    latestSelection: latestSelectedQuotation ? {
+      reference: latestSelectedQuotation.quoteRequest.reference,
+      title: latestSelectedQuotation.quoteRequest.title,
+      value: formatQuoteValue(latestSelectedQuotation.price, latestSelectedQuotation.currency),
+      status: latestSelectedQuotation.quoteRequest.status,
     } : undefined,
     upgradeInsight: dashboard.upgradeInsight,
     opportunityAccess: dashboard.opportunityAccess,
@@ -86,7 +89,7 @@ export default async function DashboardPage() {
       reference: quotation.quoteRequest.reference,
       title: quotation.quoteRequest.title,
       value: formatQuoteValue(quotation.price, quotation.currency),
-      status: quotation.status === "ACCEPTED" ? "Won" : quotation.status === "REJECTED" ? "Lost" : "Submitted",
+      status: quotation.status === "ACCEPTED" ? (quotation.quoteRequest.status === "COMPLETED" ? "Completed" : quotation.quoteRequest.status === "CONFIRMED" ? "Confirmed" : "Selected") : quotation.status === "REJECTED" ? "Lost" : "Submitted",
       date: quotation.submittedAt?.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) ?? "—",
     })),
   };

@@ -51,13 +51,13 @@ export async function getSupplierDashboard(supplierCompanyId: string, userId: st
         submittedAt: { gte: last30Days },
         status: { in: ["SUBMITTED", "SELECTED_PENDING_PAYMENT", "ACCEPTED", "REJECTED"] },
       },
-      include: { quoteRequest: { select: { reference: true, title: true } } },
+      include: { quoteRequest: { select: { reference: true, title: true, status: true } } },
       orderBy: { submittedAt: "desc" },
       take: 100,
     });
-    const latestWonQuotation = await tx.supplierQuotation.findFirst({
+    const latestSelectedQuotation = await tx.supplierQuotation.findFirst({
       where: { supplierCompanyId, status: "ACCEPTED" },
-      include: { quoteRequest: { select: { reference: true, title: true } } },
+      include: { quoteRequest: { select: { reference: true, title: true, status: true } } },
       orderBy: { decidedAt: "desc" },
     });
     const recentAssignments = await tx.supplierAssignment.findMany({
@@ -103,8 +103,9 @@ export async function getSupplierDashboard(supplierCompanyId: string, userId: st
       ? Math.round(answeredAssignments.reduce((total, item) => total + (item.respondedAt!.getTime() - item.assignedAt.getTime()), 0) / answeredAssignments.length)
       : null;
     const decided = recentQuotations.filter((item) => ["ACCEPTED", "REJECTED"].includes(item.status));
-    const wonThisMonth = recentQuotations.filter((item) => item.status === "ACCEPTED" && item.decidedAt && item.decidedAt >= monthStart);
-    const monthValuePence = wonThisMonth.reduce((total, item) => total + Math.round(Number(item.price) * 100), 0);
+    const selectedThisMonth = recentQuotations.filter((item) => item.status === "ACCEPTED" && item.decidedAt && item.decidedAt >= monthStart);
+    const confirmedThisMonth = selectedThisMonth.filter((item) => ["CONFIRMED", "COMPLETED"].includes(item.quoteRequest.status));
+    const monthValuePence = confirmedThisMonth.reduce((total, item) => total + Math.round(Number(item.price) * 100), 0);
     const membershipLimits = company.subscription?.membershipPlan
       ? effectiveMembershipLimits(company.subscription.membershipPlan, company)
       : null;
@@ -120,13 +121,15 @@ export async function getSupplierDashboard(supplierCompanyId: string, userId: st
       generatedAt: now,
       metrics: {
         openQuotes: recentQuotations.filter((item) => ["SUBMITTED", "SELECTED_PENDING_PAYMENT"].includes(item.status)).length,
-        wonThisMonth: wonThisMonth.length,
+        selectedThisMonth: selectedThisMonth.length,
+        confirmedThisMonth: confirmedThisMonth.length,
         responseRate,
         averageResponseMs,
-        winRate: decided.length ? Math.round((decided.filter((item) => item.status === "ACCEPTED").length / decided.length) * 100) : null,
+        selectionRate: decided.length ? Math.round((decided.filter((item) => item.status === "ACCEPTED").length / decided.length) * 100) : null,
+        confirmationRate: selectedThisMonth.length ? Math.round((confirmedThisMonth.length / selectedThisMonth.length) * 100) : null,
         monthValuePence,
       },
-      latestWonQuotation,
+      latestSelectedQuotation,
       recentQuotations: recentQuotations.slice(0, 5),
       upgradeInsight: {
         geographicMisses: geographicMisses.length,

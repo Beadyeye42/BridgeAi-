@@ -16,13 +16,13 @@ export default function CustomerTermsPage() {
     </LegalSection>
     <LegalSection id="quotes" title="3. Supplier quotations">
       <p>Quotations come from independent suppliers. Bridge AI may filter and rank suppliers, but it does not guarantee the lowest price, availability, quality, compliance or fitness for purpose. Check the price, tax, lead time, specification, exclusions, warranty, delivery and supplier terms before selecting.</p>
-      <p>If you select a quote, your contract for products or services is with that supplier, not Bridge AI. The selected supplier is responsible for its quote and performance.</p>
+      <p>Selecting a quote tells the supplier that you prefer its proposal and want to move forward. Selection alone does not necessarily create a confirmed order, booking, hire or works contract. You and the supplier must agree any final survey, specification, availability, price, deposit, booking or delivery arrangements. Any resulting contract is with that supplier, not Bridge AI.</p>
     </LegalSection>
     <LegalSection id="contact" title="4. Contact details and privacy">
       <p>Your contact details are withheld from quoting suppliers unless needed to progress the service. After you select a quotation, Bridge AI may share your contact details with that supplier and share the supplier’s details with you. Our <a href="/legal/privacy">privacy notice</a> explains the processing in detail.</p>
     </LegalSection>
     <LegalSection id="cancel" title="5. Changes and cancellation">
-      <p>You can correct a draft or tell Bridge AI to cancel it before publication. A published request normally remains open for seven days unless you cancel it, select a quote or a different deadline is shown. After entering a contract with a supplier, changes, cancellation and refunds are governed by that supplier’s terms and applicable law.</p>
+      <p>You can correct a draft or tell Bridge AI to cancel it before publication. A published request normally remains open for seven days unless you cancel it, select a quote or a different deadline is shown. A selected proposal can still be recorded as not proceeding if final arrangements are not agreed. After entering a contract with a supplier, changes, cancellation and refunds are governed by that supplier’s terms and applicable law.</p>
     </LegalSection>
     <LegalSection id="conduct" title="6. Safe and acceptable use">
       <p>You must not use Bridge AI for unlawful, abusive, fraudulent or harmful requests, impersonate another person, upload malicious files, or attempt to bypass security. We may pause or refuse a request to protect people, suppliers or the service.</p>
@@ -33,4 +33,3 @@ export default function CustomerTermsPage() {
     </LegalSection>
   </LegalDocument>;
 }
-

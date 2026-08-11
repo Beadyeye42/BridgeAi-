@@ -137,6 +137,10 @@ enum QuoteRequestStatus {
   OPEN
   MATCHING
   QUOTED
+  SELECTED
+  CONFIRMED
+  COMPLETED
+  CANCELLED_AFTER_SELECTION
   WON
   LOST
   EXPIRED
@@ -844,6 +848,10 @@ model QuoteRequest {
   matchingEvaluatedAt           DateTime?
   responseDueAt                 DateTime
   publishedAt                   DateTime?
+  selectedAt                    DateTime?
+  confirmedAt                   DateTime?
+  completedAt                   DateTime?
+  cancelledAfterSelectionAt     DateTime?
   closedAt                      DateTime?
   createdAt                     DateTime                @default(now())
   updatedAt                     DateTime                @updatedAt
@@ -861,6 +869,7 @@ model QuoteRequest {
   coverageGap                   CoverageGapSignal?
 
   @@index([status, responseDueAt])
+  @@index([status, selectedAt])
   @@index([categoryId, deliveryPostcode])
   @@index([customerContactId])
   @@index([conversationId])

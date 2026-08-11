@@ -618,6 +618,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .won-job-banner > span { width: 46px; height: 46px; flex: 0 0 46px; display: grid; place-items: center; border-radius: 12px; background: #225f49; color: #e6f3bb; }
 .won-job-banner h2 { margin: 0; color: #194936; font-family: Georgia,serif; font-size: 23px; font-weight: 500; }
 .won-job-banner p:last-child { margin: 5px 0 0; color: #597067; font-size: 10px; line-height: 1.5; }
+.job-lifecycle-actions { margin-top: 16px; padding-top: 15px; border-top: 1px solid var(--line); }.job-lifecycle-actions > p { margin: 0 0 12px; color: var(--muted); font-size: 10px; line-height: 1.55; }.job-lifecycle-actions .decline-button { margin-top: 9px; }.lifecycle-confirmed { border-color: #7ea9c8; background: linear-gradient(105deg,#eaf4f9,#fbfdff); }.lifecycle-completed { border-color: #86b797; background: linear-gradient(105deg,#e6f3ea,#fbfefc); }.lifecycle-cancelled_after_selection { border-color: #d1b3ae; background: linear-gradient(105deg,#f8ecea,#fff); }.status-pill.selected,.status-pill.confirmed,.status-pill.completed { background: #e6f2eb; color: #2d7257; }.status-pill.cancelled_after_selection { background: #f8e9e7; color: #9d433c; }
 .request-facts { padding: 17px; }
 .request-facts h3 { margin: 0 0 11px; font-family: Georgia, serif; font-size: 16px; font-weight: 500; }
 .fact-row { display: flex; gap: 10px; padding: 11px 0; border-top: 1px solid #ecefec; }

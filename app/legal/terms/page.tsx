@@ -32,7 +32,7 @@ export default function TermsPage() {
 
     <LegalSection id="quotes" title="5. Requests and quotations">
       <p>Unless the request displays a different deadline, suppliers normally have two days to quote and the customer’s request remains valid for seven days. A quotation must clearly state the price, applicable taxes, lead time, validity period, inclusions, exclusions and material assumptions.</p>
-      <p>You are responsible for checking dimensions, specification, standards, compliance, availability, delivery and whether a survey, design or engineering work is required. A quotation is your offer to the customer. A supply or service contract is between the Supplier and customer; Bridge AI is not a party to it.</p>
+      <p>You are responsible for checking dimensions, specification, standards, compliance, availability, delivery and whether a survey, design or engineering work is required. Customer selection means the customer wants to move forward with your quotation; it is not automatically a confirmed job. Record the job as confirmed only after the final order, booking, hire or work has been agreed. Any resulting supply or service contract is between the Supplier and customer; Bridge AI is not a party to it.</p>
     </LegalSection>
 
     <LegalSection id="customer-data" title="6. Customer information and files">
