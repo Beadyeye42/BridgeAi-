@@ -32,6 +32,11 @@ import {
 } from "@/lib/whatsapp/customer-name";
 import { downloadMetaMedia, sendMetaTemplate, sendMetaText } from "@/lib/whatsapp/meta-client";
 import { attachmentAutomationDecision } from "@/lib/whatsapp/attachment-policy";
+import {
+  productMessageIntent,
+  productRecoveryReply,
+  recogniseCatalogueProduct,
+} from "@/lib/whatsapp/product-knowledge";
 import { writeWhatsAppSystemEvent } from "@/lib/whatsapp/system-events";
 import {
   attachmentInterpretation,
@@ -1521,18 +1526,87 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
       }
       return parts;
     });
+  const productRecognition = recogniseCatalogueProduct(text, categories);
   const expectedQuestion = refreshed.conversation.aiLastQuestionKey;
   if (expectedQuestion === "QUOTE_OFFER" && isIndustryQuoteOfferAccepted(text)) {
     replaceLatestNumberedReply(messages, text, "[Customer accepted the offer to find a competitive supplier quote.]");
   }
   let initialExtraction: Awaited<ReturnType<typeof extractQuoteIntake>> | null = null;
   if (!draft?.categorySlug) {
-    initialExtraction = await extractQuoteIntake({
-      messages,
-      currentDraft: draft ?? emptyQuoteDraft(),
-      categories,
-      safetyIdentifier: refreshed.conversation.customerContact.phoneHash,
-    });
+    const initialDraft = draft ?? emptyQuoteDraft();
+    if (productRecognition) initialDraft.categorySlug = productRecognition.categorySlug;
+    try {
+      initialExtraction = await extractQuoteIntake({
+        messages,
+        currentDraft: initialDraft,
+        categories,
+        safetyIdentifier: refreshed.conversation.customerContact.phoneHash,
+      });
+    } catch (error) {
+      if (!productRecognition) throw error;
+      const recoveryIntent = productMessageIntent(text);
+      const recoveryDraft = quoteDraftSchema.parse({
+        ...initialDraft,
+        categorySlug: productRecognition.categorySlug,
+        title: recoveryIntent === "QUOTE_REQUEST" ? `${productRecognition.categoryName} request` : null,
+        summary: recoveryIntent === "QUOTE_REQUEST" ? `Customer needs ${productRecognition.categoryName.toLocaleLowerCase("en-GB")}.` : null,
+      });
+      const recoveryFingerprint = quoteDraftFingerprint(recoveryDraft);
+      await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
+        await tx.conversation.update({
+          where: { id: refreshed.conversation!.id },
+          data: {
+            aiStage: "COLLECTING",
+            aiDraftEncrypted: encryptPrivateValue(JSON.stringify(recoveryDraft)),
+            aiDraftFingerprint: recoveryFingerprint,
+            aiLastQuestionKey: recoveryIntent === "QUESTION" ? "QUOTE_OFFER" : "REQUIREMENTS",
+            aiUnproductiveTurns: 0,
+            aiLastProgressAt: new Date(),
+          },
+        });
+        await writeWhatsAppSystemEvent(tx, "whatsapp_ai", {
+          severity: "WARNING",
+          code: "WHATSAPP_PRODUCT_RECOVERY_USED",
+          message: "Deterministic product recognition kept a customer conversation moving after an AI intake error",
+          context: {
+            conversationId: refreshed.conversation!.id,
+            jobId: job.id,
+            categorySlug: productRecognition.categorySlug,
+            providerError: errorCode(error),
+          },
+        });
+        await writeWhatsAppAudit(tx, {
+          action: "WHATSAPP.PRODUCT_RECOVERY_USED",
+          entityType: "Conversation",
+          entityId: refreshed.conversation!.id,
+          summary: "Recognised product enquiry answered without manual intervention after an AI intake error",
+          metadata: {
+            jobId: job.id,
+            categorySlug: productRecognition.categorySlug,
+            intent: recoveryIntent,
+            providerError: errorCode(error),
+          },
+        });
+      });
+      const recoveryReply = productRecoveryReply(productRecognition, text);
+      await sendReply(
+        job,
+        refreshed.conversation,
+        personaliseOpening(
+          recoveryIntent === "QUESTION" ? industryQuoteOfferReply(recoveryReply) : recoveryReply,
+          preferredFirstName,
+          true,
+        ),
+      );
+      return undefined;
+    }
+    if (productRecognition) {
+      initialExtraction.result.draft.categorySlug = productRecognition.categorySlug;
+      initialExtraction.result.intent = productMessageIntent(text);
+      if (initialExtraction.result.intent === "QUESTION" && !initialExtraction.result.reply.trim()) {
+        initialExtraction.result.reply = productRecoveryReply(productRecognition, text);
+      }
+    }
     draft = initialExtraction.result.draft;
     if (!draft?.categorySlug) {
       if (initialExtraction.result.intent === "OTHER") {
@@ -1640,7 +1714,16 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     categories: intakeCategories,
     safetyIdentifier: refreshed.conversation.customerContact.phoneHash,
   });
-  if (beganWithoutDraft && initialExtraction && result.intent === "QUESTION") {
+  if (result.intent === "QUESTION") {
+    if (!beganWithoutDraft || !initialExtraction) {
+      const continuation = "Your current quote draft is still saved. Continue with the job details whenever you’re ready.";
+      await sendReply(
+        job,
+        refreshed.conversation,
+        `${result.reply}\n\n${continuation}`,
+      );
+      return telemetry;
+    }
     const offerFingerprint = quoteDraftFingerprint(result.draft);
     await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
       await tx.conversation.update({
@@ -1734,28 +1817,32 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
       await tx.conversation.update({
         where: { id: refreshed.conversation!.id },
         data: {
-          aiStage: "HUMAN_REVIEW",
+          aiStage: "COLLECTING",
           aiDraftEncrypted: encryptPrivateValue(JSON.stringify(result.draft)),
           aiDraftFingerprint: fingerprint,
           aiLastQuestionKey: questionKey,
-          aiUnproductiveTurns: progress.unproductiveTurns,
+          aiUnproductiveTurns: 0,
         },
       });
       await writeWhatsAppSystemEvent(tx, "whatsapp_ai", {
         severity: "WARNING",
         code: "CUSTOMER_INTAKE_STALLED",
-        message: "A WhatsApp quote intake stopped making safe progress",
+        message: "A stalled WhatsApp quote intake was automatically reset to a clearer question",
         context: { conversationId: refreshed.conversation!.id, jobId: job.id, questionKey },
       });
       await writeWhatsAppAudit(tx, {
-        action: "WHATSAPP.INTAKE_ESCALATED",
+        action: "WHATSAPP.INTAKE_AUTOMATICALLY_RECOVERED",
         entityType: "Conversation",
         entityId: refreshed.conversation!.id,
-        summary: "Stalled WhatsApp quote intake escalated for administrator review",
+        summary: "Stalled WhatsApp quote intake automatically repeated a clearer request",
         metadata: { jobId: job.id, questionKey, unproductiveTurns: progress.unproductiveTurns },
       });
     });
-    await sendReply(job, refreshed.conversation, "I’m sorry, I can’t safely interpret that detail without risking an incorrect quote request. I’ve paused this enquiry for a Bridge AI administrator to review.");
+    await sendReply(
+      job,
+      refreshed.conversation,
+      `I want to make sure I get this right without holding you up. ${questionKey === "PRODUCT" ? productSelectionPrompt() : repeatClarification(questionKey)}`,
+    );
     return telemetry;
   }
   await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
@@ -1946,26 +2033,29 @@ async function processIntakeFallback(job: WhatsAppJob, loaded: LoadedJob) {
   await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
     await tx.conversation.update({
       where: { id: loaded.conversation!.id },
-      data: { aiStage: "HUMAN_REVIEW" },
+      data: {
+        aiStage: "COLLECTING",
+        aiUnproductiveTurns: 0,
+      },
     });
     await writeWhatsAppSystemEvent(tx, "whatsapp_ai", {
       severity: "ERROR",
       code: "CUSTOMER_INTAKE_FALLBACK",
-      message: "A customer was notified that automated WhatsApp intake needs human review",
+      message: "A customer was given an automatic recovery prompt after terminal WhatsApp intake failure",
       context: { conversationId: loaded.conversation!.id, jobId: job.id },
     });
     await writeWhatsAppAudit(tx, {
       action: "WHATSAPP.INTAKE_FALLBACK_QUEUED",
       entityType: "Conversation",
       entityId: loaded.conversation!.id,
-      summary: "Terminal WhatsApp intake failure moved to human review",
+      summary: "Terminal WhatsApp intake failure returned the conversation to automatic collection",
       metadata: { jobId: job.id },
     });
   });
   await sendReply(
     job,
     loaded.conversation,
-    "I’ve received your latest message securely, but I can’t process it reliably right now. I’ve paused the enquiry for a Bridge AI administrator to review so none of your information is lost.",
+    "I’ve received your message securely, but I had a temporary problem reading it. Your draft is still safe. Please send the question or product again in a short message, or attach a photo, drawing or PDF, and I’ll continue automatically.",
   );
   return undefined;
 }
