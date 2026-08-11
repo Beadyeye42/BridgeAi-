@@ -1,10 +1,15 @@
 import Link from "next/link";
 import {
   ArrowRight,
+  Boxes,
+  BriefcaseBusiness,
   Check,
   CheckCircle2,
+  Clock3,
+  Factory,
   FileCheck2,
-  FileText,
+  Hammer,
+  House,
   LockKeyhole,
   MapPin,
   MessageCircleMore,
@@ -13,61 +18,66 @@ import {
   ShieldCheck,
   Sparkles,
   Target,
-  UsersRound,
+  Truck,
+  Wrench,
   Zap,
 } from "lucide-react";
 import { BrandMark } from "@/components/brand-mark";
 
 const metaWhatsAppSource = "https://about.fb.com/news/2026/06/its-time-to-reserve-your-whatsapp-username/";
+const publicWhatsAppHref = "https://wa.me/447593103459?text=Hi%20Bridge%20AI%2C%20I%20need%20help%20finding%20a%20quote.";
 
 export default function Home() {
   return (
     <main className="home-shell">
       <div className="home-offer-bar">
-        <span><Sparkles size={14} /> Matched supplier membership</span>
-        <b>Plans from £29.99 per month</b>
-        <span>Choose Local, Regional or Nationwide reach</span>
-        <Link href="/register">Apply to join <ArrowRight size={14} /></Link>
+        <span><Sparkles size={14} /> The AI sourcing network</span>
+        <b>Free for people and businesses to use on WhatsApp</b>
+        <span>Supplier plans from £29.99 per month</span>
+        <Link href="/register">Join the network <ArrowRight size={14} /></Link>
       </div>
 
       <header className="home-nav">
         <Link href="/" aria-label="Bridge AI home"><BrandMark /></Link>
         <nav aria-label="Public navigation">
+          <Link href="#what-you-can-bridge">What you can Bridge</Link>
           <Link href="#how-it-works">How it works</Link>
-          <Link href="#membership">Membership</Link>
           <Link href="/login">Supplier sign in</Link>
-          <Link className="button button-dark" href="/register">Join Bridge AI <ArrowRight size={15} /></Link>
+          <Link className="button button-dark" href="/register">Join as a supplier <ArrowRight size={15} /></Link>
         </nav>
       </header>
 
       <section className="home-hero">
         <div className="home-hero-copy">
-          <p className="home-kicker"><MessageCircleMore size={15} /> Built around the way customers already buy</p>
-          <h1>What do you need?<br /><em>Bridge it.</em></h1>
-          <p className="home-intro">Bridge AI is the AI sourcing network. It is free for anyone who needs something sourced, hired, moved, made or done. Send a message, photo, drawing or document through WhatsApp; Bridge AI identifies what, where and when, then finds approved businesses with the right capability, coverage and live capacity.</p>
+          <p className="home-kicker"><MessageCircleMore size={15} /> One WhatsApp message. A whole supplier network.</p>
+          <h1>Need it?<br /><em>Bridge it.</em></h1>
+          <p className="home-intro">Tell Bridge AI what you need, where you need it and when. Send a message, photo, drawing or document on WhatsApp and our AI turns it into a clear request for approved businesses that can actually help.</p>
           <div className="home-actions">
-            <Link className="button button-dark home-primary" href="/register">Apply as a supplier <ArrowRight size={16} /></Link>
-            <Link className="button button-outline home-secondary" href="/demo">Explore the supplier portal</Link>
+            <a className="button home-primary" href={publicWhatsAppHref} target="_blank" rel="noreferrer">Bridge a request on WhatsApp <MessageCircleMore size={17} /></a>
+            <Link className="button home-secondary" href="/register">Join as a supplier <ArrowRight size={16} /></Link>
           </div>
-          <p className="home-action-note"><Check size={14} /> No public job board. Opportunities are sent only when your verified capability, capacity and geography match.</p>
+          <p className="home-action-note"><Check size={14} /> Buyers use Bridge AI free. No account, app download or long enquiry form.</p>
           <div className="home-trust">
-            <span><ShieldCheck size={16} /> Customer details protected</span>
-            <span><Target size={16} /> Product and coverage matching</span>
-            <span><UsersRound size={16} /> Best three suppliers per job</span>
+            <span><ShieldCheck size={16} /> Details protected</span>
+            <span><Sparkles size={16} /> AI-structured requests</span>
+            <span><Target size={16} /> Capability and capacity matched</span>
           </div>
         </div>
 
         <div className="home-visual" aria-label="A WhatsApp enquiry becoming a supplier opportunity">
+          <div className="home-intent-orbit" aria-hidden="true">
+            <span>SUPPLY</span><span>HIRE</span><span>MAKE</span><span>MOVE</span><span>SERVICE</span>
+          </div>
           <div className="home-phone-card">
             <div className="home-card-heading">
               <span><MessageCircleMore size={19} /></span>
-              <div><b>WhatsApp enquiry</b><small>Consumer, trade or business · now</small></div>
+              <div><b>Bridge AI on WhatsApp</b><small>Consumer, trade or business · now</small></div>
               <i>LIVE</i>
             </div>
-            <div className="home-message customer">Morning, I need five anthracite uPVC windows and a composite back door. Can you get me prices?</div>
-            <div className="home-file-bubble"><Paperclip size={14} /><span><b>Site drawings.pdf</b><small>4 pages · received securely</small></span></div>
-            <div className="home-message bridge"><Sparkles size={14} /> Absolutely. What is the delivery postcode?</div>
-            <div className="home-message customer short">GL52 6TD</div>
+            <div className="home-message customer">Can someone move this sofa from Cheltenham to Birmingham on Saturday?</div>
+            <div className="home-file-bubble"><Paperclip size={14} /><span><b>sofa-photo.jpg</b><small>Received securely</small></span></div>
+            <div className="home-message bridge"><Sparkles size={14} /> Yes. Send the collection and delivery postcodes, and tell me whether you need help carrying it at either end.</div>
+            <div className="home-message customer short">GL51 to B24. Help at both ends.</div>
           </div>
 
           <div className="home-match-card">
@@ -76,10 +86,10 @@ export default function Home() {
               <div><b>New Bridge Request</b><small>Quote pack ready</small></div>
               <i className="ready">READY</i>
             </div>
-            <div className="home-match-title"><span>BA-2026-1842</span><b>Windows & composite door</b></div>
+            <div className="home-match-title"><span>BA-2026-1842 · MOVE</span><b>Sofa transport · Saturday</b></div>
             <dl>
-              <div><dt>Delivery area</dt><dd><MapPin size={13} /> GL52</dd></div>
-              <div><dt>Requirements</dt><dd>6 items</dd></div>
+              <div><dt>Route</dt><dd><MapPin size={13} /> GL51 → B24</dd></div>
+              <div><dt>Requirements</dt><dd>Two-person carry</dd></div>
               <div><dt>Attachments</dt><dd>1 verified file</dd></div>
               <div><dt>Supplier invitations</dt><dd>Best 3 maximum</dd></div>
             </dl>
@@ -98,10 +108,44 @@ export default function Home() {
         <div><strong>£0</strong><span><b>winning fees</b><small>Your monthly membership is the full platform fee.</small></span></div>
       </section>
 
+      <section className="home-section home-bridge-map" id="what-you-can-bridge">
+        <div className="home-section-heading">
+          <p className="eyebrow">One front door to a much bigger network</p>
+          <h2>Whatever the request, start with WhatsApp.</h2>
+          <p>Bridge AI recognises what the buyer is trying to achieve and opens the right specialist workflow behind the scenes. Industries stay intelligent without making customers navigate them.</p>
+        </div>
+        <div className="home-intent-grid">
+          <article><span><Boxes size={21} /></span><small>SUPPLY</small><h3>Source products and materials</h3><p>“I need 30 sheets of roofing delivered by Friday.”</p></article>
+          <article><span><Wrench size={21} /></span><small>HIRE</small><h3>Find equipment with capacity</h3><p>“I need a 20m cherry picker in Bristol tomorrow.”</p></article>
+          <article><span><Factory size={21} /></span><small>MAKE</small><h3>Have something manufactured</h3><p>“Can someone make 100 brackets from this drawing?”</p></article>
+          <article><span><Truck size={21} /></span><small>MOVE</small><h3>Move goods, furniture or loads</h3><p>“Can someone collect this sofa on Saturday?”</p></article>
+          <article><span><Hammer size={21} /></span><small>SERVICE</small><h3>Find a business to do the work</h3><p>“I need scaffold around this property next week.”</p></article>
+        </div>
+      </section>
+
+      <section className="home-audiences" aria-label="Who Bridge AI is for">
+        <div className="home-audience-card buyer">
+          <span><House size={22} /></span>
+          <p className="eyebrow">For buyers</p>
+          <h2>People, trades and businesses.</h2>
+          <p>Use the same WhatsApp number for a home project, an urgent trade order or a complex business requirement. Explain it naturally and add the evidence suppliers need.</p>
+          <ul><li><Check size={15} /> Free to request quotes</li><li><Check size={15} /> No buyer account required</li><li><Check size={15} /> Compare price and lead time privately</li></ul>
+          <a href={publicWhatsAppHref} target="_blank" rel="noreferrer">Start on WhatsApp <ArrowRight size={14} /></a>
+        </div>
+        <div className="home-audience-card supplier">
+          <span><BriefcaseBusiness size={22} /></span>
+          <p className="eyebrow">For suppliers and service providers</p>
+          <h2>Better-fit work, without the public lead scramble.</h2>
+          <p>Tell Bridge AI what you provide, where you operate and what capacity you have. Only matched businesses are invited, and every opportunity arrives as a structured quote pack.</p>
+          <ul><li><Check size={15} /> Capability and geography matching</li><li><Check size={15} /> Photos, drawings and documents attached</li><li><Check size={15} /> Maximum three suppliers per request</li></ul>
+          <Link href="/register">Join the supplier network <ArrowRight size={14} /></Link>
+        </div>
+      </section>
+
       <section className="home-section home-why">
         <div className="home-section-heading">
           <p className="eyebrow">Why conversation wins</p>
-          <h2>One WhatsApp number for people, trades and businesses.</h2>
+          <h2>The power is not another marketplace. It is the conversation.</h2>
           <p>Customers should not need an account, a new app or a long form just to ask for a price. They send the information naturally; Bridge AI makes it useful to suppliers.</p>
         </div>
         <div className="home-benefit-grid">
@@ -126,22 +170,22 @@ export default function Home() {
         </div>
         <div className="home-portal-preview" aria-label="Supplier opportunity preview">
           <div className="home-preview-top"><BrandMark compact /><span>SUPPLIER PORTAL</span><i>NEW</i></div>
-          <div className="home-preview-title"><span>Quote opportunity</span><b>6 uPVC windows & composite door</b><small>Matched to your products and coverage</small></div>
-          <div className="home-preview-facts"><span><MapPin size={14} /><b>GL52 area</b><small>38 miles away</small></span><span><FileText size={14} /><b>6 items</b><small>Specifications included</small></span><span><Paperclip size={14} /><b>1 file</b><small>Security checked</small></span></div>
-          <div className="home-preview-deadline"><span><i /> Selected for your capability</span><b>Respond by 4:30pm tomorrow</b></div>
+          <div className="home-preview-title"><span>Matched opportunity</span><b>Urgent equipment hire</b><small>Selected for your capability, reach and current availability</small></div>
+          <div className="home-preview-facts"><span><MapPin size={14} /><b>Bristol</b><small>Inside your service area</small></span><span><Clock3 size={14} /><b>Thursday</b><small>Required date confirmed</small></span><span><Paperclip size={14} /><b>2 files</b><small>Site photos included</small></span></div>
+          <div className="home-preview-deadline"><span><i /> Capacity match confirmed</span><b>Respond within two days</b></div>
           <div className="home-preview-button">View full opportunity <ArrowRight size={14} /></div>
         </div>
       </section>
 
       <section className="home-section home-process" id="how-it-works">
         <div className="home-section-heading compact">
-          <p className="eyebrow">A better route to the right order</p>
+          <p className="eyebrow">From “I need” to “quotes are ready”</p>
           <h2>Four steps. One connected journey.</h2>
         </div>
         <div className="home-flow">
           <div><span>01</span><b>The buyer messages Bridge AI</b><p>They describe the job and send any supporting photos, drawings or PDFs through WhatsApp.</p></div>
-          <div><span>02</span><b>AI prepares the quote request</b><p>Product, delivery area, specifications and files become a structured opportunity.</p></div>
-          <div><span>03</span><b>The best matched suppliers are invited</b><p>Up to three eligible suppliers receive the opportunity. Declines can trigger the next ranked match.</p></div>
+          <div><span>02</span><b>AI understands and qualifies it</b><p>Intent, location, deadline, quantity, specification and files become a structured opportunity.</p></div>
+          <div><span>03</span><b>The right businesses are invited</b><p>Up to three eligible suppliers receive it, based on industry, audience, capability, reach and live capacity.</p></div>
           <div><span>04</span><b>The customer selects</b><p>The chosen supplier and customer receive the details needed to move the order forward.</p></div>
         </div>
       </section>
@@ -162,7 +206,7 @@ export default function Home() {
       </section>
 
       <section className="home-footer-cta">
-        <div><p className="eyebrow">Your next opportunity could start with a message</p><h2>Be one of the suppliers ready to answer.</h2><p>Register your company, choose the products you supply and tell us where you deliver. Bridge AI will handle the journey from customer conversation to quote-ready opportunity.</p></div>
+        <div><p className="eyebrow">Demand already starts in conversation</p><h2>Be the business Bridge AI knows can deliver.</h2><p>Register your company, confirm what you provide, where you operate and when you have capacity. Bridge AI handles the journey from a natural WhatsApp request to a quote-ready opportunity.</p></div>
         <div><Link className="button button-dark" href="/register">Join Bridge AI <ArrowRight size={15} /></Link><Link className="text-link" href="/demo">See the portal first</Link></div>
       </section>
 

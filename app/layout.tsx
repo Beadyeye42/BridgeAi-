@@ -10,13 +10,13 @@ export async function generateMetadata(): Promise<Metadata> {
   const origin = `${protocol}://${host}`;
   return {
     metadataBase: new URL(origin),
-    title: { default: "Bridge AI — Supplier Portal", template: "%s · Bridge AI" },
-    description: "Turn customer WhatsApp messages, photos, drawings and PDFs into matched trade quote opportunities with Bridge AI.",
+    title: { default: "Bridge AI — The AI sourcing network", template: "%s · Bridge AI" },
+    description: "Tell Bridge AI what you need on WhatsApp. Messages, photos, drawings and documents become matched requests for approved businesses.",
     applicationName: "Bridge AI",
     authors: [{ name: "Ironbridge Group Ltd" }],
     icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
-    openGraph: { title: "Bridge AI — WhatsApp enquiries for trade suppliers", description: "Customer conversations become matched, quote-ready trade opportunities.", siteName: "Bridge AI", type: "website", images: [{ url: `${origin}/og.png`, width: 1731, height: 909, alt: "Bridge AI supplier portal" }] },
-    twitter: { card: "summary_large_image", title: "Bridge AI — WhatsApp enquiries for trade suppliers", description: "Customer conversations become matched, quote-ready trade opportunities.", images: [`${origin}/og.png`] },
+    openGraph: { title: "Need it? Bridge it. | Bridge AI", description: "The AI sourcing network built around WhatsApp. Tell us what you need, where and when.", siteName: "Bridge AI", type: "website", images: [{ url: `${origin}/og.png`, width: 1731, height: 909, alt: "Bridge AI — the AI sourcing network" }] },
+    twitter: { card: "summary_large_image", title: "Need it? Bridge it. | Bridge AI", description: "The AI sourcing network built around WhatsApp. Tell us what you need, where and when.", images: [`${origin}/og.png`] },
   };
 }
 
