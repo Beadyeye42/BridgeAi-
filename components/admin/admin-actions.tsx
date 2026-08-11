@@ -240,3 +240,30 @@ export function CategoryStatusButton({ id, active, isGroup, lockedReason }: { id
     {message && <small className="error-text">{message}</small>}
   </div>;
 }
+
+export function IndustryAudienceControl({ id, servesConsumer, servesTrade, servesBusiness }: { id: string; servesConsumer: boolean; servesTrade: boolean; servesBusiness: boolean }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setMessage("");
+    const data = new FormData(event.currentTarget);
+    try {
+      await call(`/api/admin/categories/${id}`, "PATCH", {
+        servesConsumer: data.has("consumer"), servesTrade: data.has("trade"), servesBusiness: data.has("business"),
+      });
+      setMessage("Buyer audiences saved."); router.refresh();
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Audience update failed"); }
+    finally { setBusy(false); }
+  }
+  return <form className="industry-audience-control" onSubmit={submit}>
+    <b>Who can request this industry?</b>
+    <div className="inline-actions">
+      <label><input type="checkbox" name="consumer" defaultChecked={servesConsumer}/> Consumers</label>
+      <label><input type="checkbox" name="trade" defaultChecked={servesTrade}/> Trade</label>
+      <label><input type="checkbox" name="business" defaultChecked={servesBusiness}/> Business</label>
+    </div>
+    <button className="button button-outline" disabled={busy}>{busy ? <LoaderCircle className="spin" size={14}/> : <Check size={14}/>}Save audiences</button>
+    {message && <small className="form-result">{message}</small>}
+  </form>;
+}

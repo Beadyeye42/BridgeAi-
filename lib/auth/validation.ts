@@ -117,6 +117,9 @@ export const supplierCapabilitySchema = z.object({
   supportsDelivery: z.boolean(),
   supportsInstallation: z.boolean(),
   supportsService: z.boolean(),
+  servesConsumer: z.boolean(),
+  servesTrade: z.boolean(),
+  servesBusiness: z.boolean(),
   collectionAvailable: z.boolean(),
   deliveryDays: z.array(z.number().int().min(1).max(7)).max(7).transform((days) => [...new Set(days)].sort()),
   capacityStatus: z.enum(["AVAILABLE", "LIMITED", "URGENT_ONLY", "FULL", "PAUSED", "HOLIDAY", "NOT_ACCEPTING"]),
@@ -126,6 +129,9 @@ export const supplierCapabilitySchema = z.object({
   shortageUntil: z.string().datetime().nullable(),
   active: z.boolean(),
 }).superRefine((value, context) => {
+  if (!value.servesConsumer && !value.servesTrade && !value.servesBusiness) {
+    context.addIssue({ code: "custom", path: ["servesConsumer"], message: "Choose at least one buyer type" });
+  }
   if (value.urgentLeadTimeDays !== null && value.urgentLeadTimeDays > value.standardLeadTimeDays) {
     context.addIssue({ code: "custom", path: ["urgentLeadTimeDays"], message: "Urgent lead time must not exceed the standard lead time" });
   }

@@ -9,12 +9,14 @@ import {
   normaliseCapabilityValue,
 } from "../capabilities/options";
 import { effectiveMembershipLimits } from "../billing/membership-plans";
+import { buyerTypeAllowed, buyerTypeLabel, type BuyerTypeValue } from "../whatsapp/buyer-classification";
 
-type MatchingClient = Pick<Prisma.TransactionClient, "supplierCompany"> & Partial<Pick<Prisma.TransactionClient, "matchingConfiguration">>;
+type MatchingClient = Pick<Prisma.TransactionClient, "supplierCompany"> & Partial<Pick<Prisma.TransactionClient, "matchingConfiguration" | "productCategory">>;
 
 type RequestForMatching = {
   id: string;
   categoryId: string;
+  buyerType?: BuyerTypeValue;
   deliveryPostcode: string;
   deliveryLatitude: Prisma.Decimal | number | null;
   deliveryLongitude: Prisma.Decimal | number | null;
@@ -128,6 +130,9 @@ export async function resolveDeliveryLocation(request: Pick<RequestForMatching, 
 
 type Capability = {
   id: string;
+  servesConsumer?: boolean;
+  servesTrade?: boolean;
+  servesBusiness?: boolean;
   manufacturerNames: string[];
   systemNames: string[];
   colourNames: string[];
@@ -163,6 +168,9 @@ export function evaluateCapability(
   const reasons: string[] = [coverage.description];
   const rejected: string[] = [];
   let score = 25;
+  const buyerType = request.buyerType ?? "TRADE";
+  if (!buyerTypeAllowed(buyerType, capability)) rejected.push(`Supplier does not serve ${buyerTypeLabel(buyerType).toLocaleLowerCase("en-GB")} requests for this product`);
+  else reasons.push(`Accepts ${buyerTypeLabel(buyerType).toLocaleLowerCase("en-GB")} requests for this product`);
   if (["FULL", "PAUSED", "HOLIDAY", "NOT_ACCEPTING"].includes(capability.capacityStatus)) rejected.push(`Current capacity is ${capability.capacityStatus.toLowerCase().replaceAll("_", " ")}`);
   const fulfilmentMode = request.fulfilmentMode ?? (request.collectionRequired ? "COLLECTION" : "DELIVERY");
   if (fulfilmentMode === "COLLECTION" && !capability.collectionAvailable) rejected.push("Collection is required but unavailable");
@@ -251,6 +259,15 @@ export async function evaluateSupplierMatches(
     ? await db.matchingConfiguration.findUnique({ where: { id: "default" } })
     : null;
   const weights = matchingWeights(configuration?.matchingWeights);
+  const requestCategory = db.productCategory ? await db.productCategory.findUnique({
+    where: { id: request.categoryId },
+    select: {
+      name: true, servesConsumer: true, servesTrade: true, servesBusiness: true,
+      parent: { select: { name: true, servesConsumer: true, servesTrade: true, servesBusiness: true } },
+    },
+  }) : { name: "Legacy industry", servesConsumer: false, servesTrade: true, servesBusiness: true, parent: null };
+  const industry = requestCategory?.parent ?? requestCategory;
+  const buyerType = request.buyerType ?? "TRADE";
   const purposeForRequest = ["SERVICE", "INSTALLATION"].includes(request.fulfilmentMode ?? "DELIVERY") ? "SERVICE" as const : "DELIVERY" as const;
   const candidates = await db.supplierCompany.findMany({
     where: {
@@ -336,6 +353,8 @@ export async function evaluateSupplierMatches(
     const capability = supplier.capabilities[0];
     const base = { id: supplier.id, name: supplier.tradingName ?? supplier.legalName, postcode: supplier.postcode, match: coverage ?? fallbackCoverage, membershipTier: planLimits?.tier ?? null, coveragePurpose: purpose, distanceMiles: companyDistance ?? coverage?.distanceMiles ?? null };
     const mandatoryRejections: string[] = [];
+    if (!industry) mandatoryRejections.push("Request industry is unavailable");
+    else if (!buyerTypeAllowed(buyerType, industry)) mandatoryRejections.push(`${industry.name} is not open to ${buyerTypeLabel(buyerType).toLocaleLowerCase("en-GB")} requests`);
     if (purpose === "SERVICE" && configuration?.serviceMatchingEnabled === false) mandatoryRejections.push("Automatic service matching is disabled by an administrator");
     if (purpose === "DELIVERY" && configuration?.deliveryMatchingEnabled === false) mandatoryRejections.push("Automatic delivery matching is disabled by an administrator");
     if (!plan || !planLimits) mandatoryRejections.push("No active configured membership tier");
@@ -382,6 +401,10 @@ export async function evaluateSupplierMatches(
       reasons,
       capabilitySnapshot: {
         capabilityId: capability.id,
+        buyerType,
+        servesConsumer: capability.servesConsumer ?? false,
+        servesTrade: capability.servesTrade ?? true,
+        servesBusiness: capability.servesBusiness ?? true,
         manufacturers: capability.manufacturerNames,
         systems: capability.systemNames,
         colours: capability.colourNames,
@@ -396,6 +419,8 @@ export async function evaluateSupplierMatches(
       },
       rankingSnapshot: {
         membershipTier: planLimits?.tier ?? null,
+        buyerType,
+        industryAudienceAllowed: Boolean(industry && buyerTypeAllowed(buyerType, industry)),
         activeOpportunities: supplier._count.assignments,
         maximumActiveOpportunities: planLimits?.maximumActiveOpportunities ?? null,
         responseRate90Days: responseRate,

@@ -4,7 +4,12 @@ import { prisma } from "@/lib/db";
 import { requireAdminApi } from "@/lib/auth/api";
 import { writeAuditLog } from "@/lib/audit";
 import { industryLaunchBlocker } from "@/lib/categories/industry-registry";
-const schema=z.object({active:z.boolean()});
+const schema = z.object({
+  active: z.boolean().optional(),
+  servesConsumer: z.boolean().optional(),
+  servesTrade: z.boolean().optional(),
+  servesBusiness: z.boolean().optional(),
+}).refine((value) => Object.values(value).some((item) => item !== undefined), "No changes supplied");
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminApi();
   if ("error" in auth) return auth.error;
@@ -18,26 +23,37 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!category || (category.parentId === null && !category.adminVisible)) {
     return NextResponse.json({ error: "Industry not found" }, { status: 404 });
   }
-  if (category.slug === "fire-doors" && parsed.data.active) {
+  if (category.slug === "fire-doors" && parsed.data.active === true) {
     return NextResponse.json({ error: "Fire doors remain locked until certification and product-data controls are implemented" }, { status: 409 });
   }
   const isGroup = category.parentId === null;
-  if (isGroup && parsed.data.active) {
+  if (isGroup && parsed.data.active === true) {
     const blocker = industryLaunchBlocker(category.slug, category.children.filter((product) => product.active).length);
     if (blocker) return NextResponse.json({ error: blocker }, { status: 409 });
   }
+  const audience = {
+    servesConsumer: parsed.data.servesConsumer ?? category.servesConsumer,
+    servesTrade: parsed.data.servesTrade ?? category.servesTrade,
+    servesBusiness: parsed.data.servesBusiness ?? category.servesBusiness,
+  };
+  const audienceChanged = parsed.data.servesConsumer !== undefined || parsed.data.servesTrade !== undefined || parsed.data.servesBusiness !== undefined;
+  if (audienceChanged && !isGroup) return NextResponse.json({ error: "Buyer audiences are managed at industry level" }, { status: 400 });
+  if (!audience.servesConsumer && !audience.servesTrade && !audience.servesBusiness) return NextResponse.json({ error: "Select at least one buyer audience" }, { status: 400 });
   await prisma.$transaction(async (tx) => {
-    await tx.productCategory.update({ where: { id }, data: { active: parsed.data.active } });
+    await tx.productCategory.update({ where: { id }, data: { ...parsed.data } });
     await writeAuditLog({
       actorUserId: auth.session.userId,
-      action: isGroup
+      action: audienceChanged ? "ADMIN.INDUSTRY_AUDIENCE_UPDATED" : isGroup
         ? parsed.data.active ? "ADMIN.CATEGORY_GROUP_LAUNCHED" : "ADMIN.CATEGORY_GROUP_TAKEN_OFFLINE"
         : "ADMIN.CATEGORY_STATUS_UPDATED",
       entityType: "ProductCategory",
       entityId: id,
-      summary: isGroup
+      summary: audienceChanged
+        ? `Buyer audiences updated for ${category.name}`
+        : isGroup
         ? `Product group ${category.name} ${parsed.data.active ? "launched publicly" : "taken offline"}`
         : `Product category ${category.name} ${parsed.data.active ? "enabled" : "disabled"}`,
+      metadata: audienceChanged ? { before: { servesConsumer: category.servesConsumer, servesTrade: category.servesTrade, servesBusiness: category.servesBusiness }, after: audience } : undefined,
       request,
     }, tx);
   });

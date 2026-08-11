@@ -221,6 +221,23 @@ enum SupplierMatchOutcome {
   @@schema("bridge_ai")
 }
 
+enum BuyerType {
+  CONSUMER
+  TRADE
+  BUSINESS
+
+  @@schema("bridge_ai")
+}
+
+enum IntentQuality {
+  BROWSING
+  QUALIFIED
+  URGENT
+  READY_TO_BUY
+
+  @@schema("bridge_ai")
+}
+
 enum SubscriptionStatus {
   TRIALING
   ACTIVE
@@ -698,22 +715,25 @@ model SupplierAccreditation {
 }
 
 model ProductCategory {
-  id            String                    @id @default(cuid())
-  name          String
-  slug          String                    @unique
-  description   String?
-  active        Boolean                   @default(true)
-  adminVisible  Boolean                   @default(true)
-  parentId      String?
-  displayOrder  Int                       @default(0)
-  createdAt     DateTime                  @default(now())
-  updatedAt     DateTime                  @updatedAt
-  parent        ProductCategory?          @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
-  children      ProductCategory[]         @relation("CategoryTree")
-  suppliers     SupplierProductCategory[]
-  quoteRequests QuoteRequest[]
-  opportunities SupplierOpportunity[]
-  capabilities  SupplierCapability[]
+  id             String                    @id @default(cuid())
+  name           String
+  slug           String                    @unique
+  description    String?
+  active         Boolean                   @default(true)
+  adminVisible  Boolean                    @default(true)
+  servesConsumer Boolean                   @default(false)
+  servesTrade    Boolean                   @default(true)
+  servesBusiness Boolean                   @default(true)
+  parentId       String?
+  displayOrder   Int                       @default(0)
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+  parent         ProductCategory?          @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children       ProductCategory[]         @relation("CategoryTree")
+  suppliers      SupplierProductCategory[]
+  quoteRequests  QuoteRequest[]
+  opportunities  SupplierOpportunity[]
+  capabilities   SupplierCapability[]
 
   @@unique([parentId, name])
   @@index([active, displayOrder])
@@ -750,6 +770,9 @@ model SupplierCapability {
   supportsDelivery        Boolean                @default(true)
   supportsInstallation    Boolean                @default(false)
   supportsService         Boolean                @default(false)
+  servesConsumer          Boolean                @default(false)
+  servesTrade             Boolean                @default(true)
+  servesBusiness          Boolean                @default(true)
   collectionAvailable     Boolean                @default(false)
   deliveryDays            Int[]                  @default([])
   capacityStatus          SupplierCapacityStatus @default(AVAILABLE)
@@ -778,6 +801,8 @@ model QuoteRequest {
   conversationId                String?
   customerConfirmationMessageId String?                 @unique
   customerContactId             String
+  buyerType                     BuyerType
+  intentQuality                 IntentQuality
   categoryId                    String
   title                         String
   summary                       String

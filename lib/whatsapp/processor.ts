@@ -32,6 +32,7 @@ import {
 } from "@/lib/whatsapp/customer-name";
 import { downloadMetaMedia, sendMetaTemplate, sendMetaText } from "@/lib/whatsapp/meta-client";
 import { attachmentAutomationDecision } from "@/lib/whatsapp/attachment-policy";
+import { buyerTypeAllowed, buyerTypeLabel, classifyBuyerType } from "@/lib/whatsapp/buyer-classification";
 import {
   productMessageIntent,
   productRecoveryReply,
@@ -85,7 +86,10 @@ type IntakeCategory = {
   slug: string;
   name: string;
   description: string | null;
-  parent: { slug: string } | null;
+  servesConsumer: boolean;
+  servesTrade: boolean;
+  servesBusiness: boolean;
+  parent: { slug: string; servesConsumer: boolean; servesTrade: boolean; servesBusiness: boolean } | null;
 };
 
 type LoadedJob = NonNullable<Awaited<ReturnType<typeof loadJob>>>;
@@ -110,6 +114,8 @@ function errorCode(error: unknown) {
 function emptyQuoteDraft(categorySlug: string | null = null): QuoteDraft {
   return quoteDraftSchema.parse({
     customerName: null,
+    buyerType: null,
+    intentQuality: "QUALIFIED",
     deliveryPostcode: null,
     categorySlug,
     title: null,
@@ -647,6 +653,7 @@ export function formatConfirmation(draft: QuoteDraft, categoryName: string, atta
     `Project: ${draft.title}`,
     `Category: ${categoryName}`,
     `Delivery: ${draft.deliveryPostcode}`,
+    draft.buyerType ? `Buyer: ${buyerTypeLabel(draft.buyerType)}` : null,
     draft.requiredManufacturer ? `Manufacturer: ${draft.requiredManufacturer}` : null,
     draft.requiredSystem ? `System: ${draft.requiredSystem}` : null,
     draft.requiredColour ? `Colour: ${draft.requiredColour}` : null,
@@ -793,6 +800,7 @@ async function resolvePreferredFirstName(
 export function draftIsComplete(draft: QuoteDraft) {
   return Boolean(
     draft.deliveryPostcode
+    && draft.buyerType
     && draft.categorySlug
     && draft.title
     && draft.summary
@@ -808,9 +816,14 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
   if (!confirmationMessage) throw new Error("CONFIRMATION_MESSAGE_NOT_FOUND");
   const category = await runAsDatabaseWorker("whatsapp_ai", (tx) => tx.productCategory.findUnique({
     where: { slug: draft.categorySlug ?? "" },
-    select: { id: true, name: true, active: true, parent: { select: { active: true } } },
+    select: {
+      id: true, name: true, active: true,
+      servesConsumer: true, servesTrade: true, servesBusiness: true,
+      parent: { select: { active: true, servesConsumer: true, servesTrade: true, servesBusiness: true } },
+    },
   }));
   if (!category?.active || !category.parent?.active || !draftIsComplete(draft)) throw new Error("QUOTE_DRAFT_INCOMPLETE");
+  if (!buyerTypeAllowed(draft.buyerType!, category.parent)) throw new Error("BUYER_TYPE_NOT_SUPPORTED_BY_INDUSTRY");
   const delivery = await lookupPostcode(draft.deliveryPostcode!);
   const now = new Date();
   const { quoteResponseHours, distributionLimit } = whatsappConciergeConfig();
@@ -838,6 +851,8 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
         customerConfirmationMessageId: confirmationMessage.id,
         customerContactId: loaded.conversation!.customerContactId,
         categoryId: category.id,
+        buyerType: draft.buyerType!,
+        intentQuality: draft.intentQuality === "URGENT" ? "URGENT" : "READY_TO_BUY",
         title: draft.title!,
         summary: draft.summary!,
         deliveryPostcode: delivery.postcode,
@@ -976,6 +991,8 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
         jobId: job.id,
         reference,
         categoryId: category.id,
+        buyerType: draft.buyerType,
+        intentQuality: draft.intentQuality === "URGENT" ? "URGENT" : "READY_TO_BUY",
         itemCount: draft.items.length,
         attachmentCount: linkedAttachments.count,
         distributionLimit,
@@ -1493,7 +1510,11 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   const categories: IntakeCategory[] = await runAsDatabaseWorker("whatsapp_ai", (tx) => tx.productCategory.findMany({
     where: launchedIntakeCategoryWhere(),
     orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
-    select: { slug: true, name: true, description: true, parent: { select: { slug: true } } },
+    select: {
+      slug: true, name: true, description: true,
+      servesConsumer: true, servesTrade: true, servesBusiness: true,
+      parent: { select: { slug: true, servesConsumer: true, servesTrade: true, servesBusiness: true } },
+    },
     take: 100,
   }));
   if (!categories.length) throw new Error("NO_PRODUCT_CATEGORIES");
@@ -1783,6 +1804,8 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     return telemetry;
   }
   const compositeDoorPhoto = compositeDoorPhotoDecision(result.draft, messages);
+  result.draft.buyerType = result.draft.buyerType ?? classifyBuyerType(text)
+    ?? classifyBuyerType(messages.filter((message) => message.direction === "INBOUND").map((message) => message.text).join("\n"));
   const roofGlazingSpecification = roofGlazingSpecificationDecision(result.draft, messages);
   const pheSpecification = pheSpecificationDecision(result.draft, messages);
   const transportIntake = transportIntakeDecision(result.draft, messages);
@@ -1792,6 +1815,12 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     result.tradeClarification = { materialNeeded: false, colourNeeded: false, colourTerm: null };
   }
   const category = result.draft.categorySlug ? categories.find((item) => item.slug === result.draft.categorySlug) : undefined;
+  const industry = category?.parent ?? category;
+  if (industry && result.draft.buyerType && !buyerTypeAllowed(result.draft.buyerType, industry)) {
+    result.readyForConfirmation = false;
+    result.reply = `Bridge AI does not currently match ${buyerTypeLabel(result.draft.buyerType).toLocaleLowerCase("en-GB")} requests for this industry. I have not shared this request with suppliers.`;
+    result.nextQuestionKey = "NONE";
+  }
   const isIndustryRoot = Boolean(category && !category.parent);
   if (compositeDoorPhoto.handled && result.nextQuestionKey === "COMPOSITE_STYLE") {
     result.nextQuestionKey = "NONE";

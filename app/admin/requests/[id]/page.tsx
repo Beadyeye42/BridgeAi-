@@ -7,6 +7,7 @@ import { AssignmentForm, RecordCustomerSelection } from "@/components/admin/admi
 import { findSupplierMatches, resolveDeliveryLocation } from "@/lib/matching/suppliers";
 import { AttachmentList } from "@/components/attachments/attachment-list";
 import { categoryResponsibilityNotice } from "@/lib/categories/catalogue";
+import { buyerTypeLabel, intentQualityLabel } from "@/lib/whatsapp/buyer-classification";
 
 export default async function AdminRequestPage({ params }: { params: Promise<{ id: string }> }) {
   await requireAdminPage();
@@ -42,6 +43,8 @@ export default async function AdminRequestPage({ params }: { params: Promise<{ i
         <p className="request-summary">{request.summary}</p>
         {responsibilityNotice && <div className="honesty-note">{responsibilityNotice}</div>}
         <div className="detail-list">
+          <div><dt>Buyer</dt><dd>{buyerTypeLabel(request.buyerType)}</dd></div>
+          <div><dt>Intent</dt><dd>{intentQualityLabel(request.intentQuality)}</dd></div>
           <div><dt>Budget</dt><dd>{request.customerBudget === null ? "Not supplied" : new Intl.NumberFormat("en-GB", { style: "currency", currency: request.currency }).format(Number(request.customerBudget))}</dd></div>
           <div><dt>Published</dt><dd>{request.publishedAt?.toLocaleString("en-GB") ?? "Not published"}</dd></div>
           <div><dt>Supplier deadline</dt><dd>{request.responseDueAt.toLocaleString("en-GB", { timeZone: "Europe/London" })}</dd></div>

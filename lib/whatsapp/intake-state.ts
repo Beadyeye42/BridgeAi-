@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 export const intakeQuestionKeys = [
+  "BUYER_TYPE",
   "PRODUCT",
   "DELIVERY_POSTCODE",
   "REQUIRED_BY",
@@ -343,6 +344,7 @@ export function conversationProgress(input: {
 
 export function requiredQuestionKey(
   draft: {
+    buyerType?: "CONSUMER" | "TRADE" | "BUSINESS" | null;
     deliveryPostcode: string | null;
     categorySlug: string | null;
     title: string | null;
@@ -364,6 +366,7 @@ export function requiredQuestionKey(
   if (!draft.deliveryPostcode) return "DELIVERY_POSTCODE";
   if (!draft.requiredBy) return "REQUIRED_BY";
   if (!draft.fulfilmentMode) return "FULFILMENT";
+  if (draft.buyerType === null) return "BUYER_TYPE";
   if (tradeClarification.materialNeeded || tradeClarification.colourNeeded) return "SPECIFICATION";
   if (!draft.title || !draft.summary) return "REQUIREMENTS";
   return proposed;
@@ -434,6 +437,7 @@ export function productSelectionPrompt() {
 
 export function repeatClarification(questionKey: IntakeQuestionKey) {
   const prompts: Record<Exclude<IntakeQuestionKey, "NONE">, string> = {
+    BUYER_TYPE: "Is this for you personally, for your trade work or client, or for another business? Reply PERSONAL, TRADE or BUSINESS.",
     PRODUCT: productSelectionPrompt(),
     DELIVERY_POSTCODE: "What is the full UK delivery postcode? For example, GL52 6TD.",
     REQUIRED_BY: "When do you need it? Give me a date or a clear deadline, such as Friday or within seven days.",

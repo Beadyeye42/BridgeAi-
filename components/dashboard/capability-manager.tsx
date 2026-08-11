@@ -39,6 +39,9 @@ type Capability = {
   supportsDelivery: boolean;
   supportsInstallation: boolean;
   supportsService: boolean;
+  servesConsumer: boolean;
+  servesTrade: boolean;
+  servesBusiness: boolean;
   collectionAvailable: boolean;
   deliveryDays: number[];
   capacityStatus: CapacityStatus;
@@ -134,6 +137,9 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
         supportsDelivery: form.has(`${prefix}:delivery`),
         supportsInstallation: form.has(`${prefix}:installation`),
         supportsService: form.has(`${prefix}:service`),
+        servesConsumer: form.has(`${prefix}:consumer`),
+        servesTrade: form.has(`${prefix}:trade`),
+        servesBusiness: form.has(`${prefix}:business`),
         collectionAvailable: form.has(`${prefix}:collection`),
         deliveryDays: dayOptions.filter(([day]) => form.has(`${prefix}:day:${day}`)).map(([day]) => day),
         capacityStatus: String(form.get(`${prefix}:capacity`)),
@@ -218,6 +224,14 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
           </summary>
           <div className="capability-advanced-content">
             <label className="toggle-row"><span><b>Use this product for matching</b><small>Turn this off and save to pause this product</small></span><input type="checkbox" name={`${prefix}:active`} checked={active} onChange={(event) => setActiveByCategory((current) => ({ ...current, [prefix]: event.target.checked }))}/></label>
+            <div className="capability-option-section">
+              <div className="capability-option-heading"><b>Who do you want to quote for?</b><small>Bridge AI will only send this product to the buyer types you select.</small></div>
+              <div className="capability-option-grid capability-audience-grid">
+                <OptionCard name={`${prefix}:consumer`} value="yes" checked={capability.servesConsumer} description="Homeowners and people buying personally" label="Consumers / homeowners" />
+                <OptionCard name={`${prefix}:trade`} value="yes" checked={capability.servesTrade} description="Installers, builders and other trades" label="Trade buyers" />
+                <OptionCard name={`${prefix}:business`} value="yes" checked={capability.servesBusiness} description="Companies, organisations and commercial buyers" label="Businesses" />
+              </div>
+            </div>
             {isTransport ? <>
               <div className="honesty-note">This setup is specific to transport and removals. Select only vehicles, crew and handling services you can genuinely provide; Bridge AI uses these details to avoid unsuitable jobs.</div>
               <div className="capability-option-section">
@@ -306,10 +320,10 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
   </form>;
 }
 
-function OptionCard({ name, value, checked, description }: { name: string; value: string; checked: boolean; description?: string }) {
+function OptionCard({ name, value, checked, description, label }: { name: string; value: string; checked: boolean; description?: string; label?: string }) {
   return <label className="choice-card capability-option-card">
     <input type="checkbox" name={name} value={value} defaultChecked={checked}/>
-    <span><b>{value}</b>{description ? <small>{description}</small> : null}</span>
+    <span><b>{label ?? value}</b>{description ? <small>{description}</small> : null}</span>
   </label>;
 }
 

@@ -20,6 +20,7 @@ import {
 } from "../lib/whatsapp/intake-state";
 
 const completeDraft = {
+  buyerType: "TRADE" as const,
   deliveryPostcode: "GL52 6TD",
   categorySlug: "upvc-windows",
   title: "Five windows",
@@ -40,6 +41,8 @@ describe("WhatsApp intake conversation state", () => {
     expect(requiredQuestionKey({ ...completeDraft, requiredBy: null }, "NONE")).toBe("REQUIRED_BY");
     expect(requiredQuestionKey({ ...completeDraft, fulfilmentMode: null }, "NONE")).toBe("FULFILMENT");
     expect(requiredQuestionKey(completeDraft, "NONE")).toBe("NONE");
+    expect(requiredQuestionKey({ ...completeDraft, buyerType: null }, "NONE")).toBe("BUYER_TYPE");
+    expect(repeatClarification("BUYER_TYPE")).toContain("personally");
     expect(requiredQuestionKey({ ...completeDraft, categorySlug: null, items: [] }, "NONE")).toBe("PRODUCT");
     expect(requiredQuestionKey({ ...completeDraft, categorySlug: "windows" }, "NONE")).toBe("PRODUCT");
     expect(requiredQuestionKey({ ...completeDraft, categorySlug: "plumbing-heating-mechanical" }, "NONE")).toBe("PRODUCT");
