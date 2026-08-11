@@ -46,6 +46,7 @@ describe("simple industry administration", () => {
     expect(industryLaunchBlocker("windows", 0)).toContain("at least one product");
     expect(industryLaunchBlocker("future-industry", 3)).toContain("supplier screen");
     expect(industryExperience("plumbing-heating-mechanical").launchReady).toBe(true);
+    expect(industryExperience("transport-delivery-removals").launchReady).toBe(true);
     expect(industryExperience("bespoke-metal-fabrication").launchReady).toBe(false);
     const route = read("app/api/admin/categories/[id]/route.ts");
     expect(route).toContain("industryLaunchBlocker");

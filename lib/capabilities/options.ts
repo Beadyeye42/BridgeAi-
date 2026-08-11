@@ -46,8 +46,41 @@ export const PHE_CATEGORY_SLUGS = new Set([
   ...Object.keys(PHE_SYSTEM_OPTIONS_BY_CATEGORY),
 ]);
 
+export const TRANSPORT_CATEGORY_SLUGS = new Set([
+  "man-with-a-van",
+  "trade-collection-delivery",
+  "same-day-courier",
+  "furniture-small-removals",
+  "bulky-item-transport",
+  "building-material-deliveries",
+  "multi-drop-delivery",
+]);
+
+export const TRANSPORT_VEHICLE_OPTIONS = [
+  "Small van",
+  "Short-wheelbase van",
+  "Long-wheelbase van",
+  "Luton van",
+  "Tail-lift van",
+  "3.5-tonne flatbed",
+] as const;
+
+export const TRANSPORT_SERVICE_FEATURE_OPTIONS = [
+  "Driver only",
+  "Driver plus helper",
+  "Two-person crew",
+  "Loading and unloading",
+  "Stairs handling",
+  "Timed delivery",
+  "Proof of delivery",
+] as const;
+
 export function isPheCapabilityCategory(slug: string) {
   return PHE_CATEGORY_SLUGS.has(slug);
+}
+
+export function isTransportCapabilityCategory(slug: string) {
+  return TRANSPORT_CATEGORY_SLUGS.has(slug);
 }
 
 const VALUE_ALIASES: Record<string, string> = {

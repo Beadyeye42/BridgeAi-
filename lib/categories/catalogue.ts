@@ -2,6 +2,7 @@ export const launchCategoryRootId = "category_windows";
 export const metalFabricationRootSlug = "bespoke-metal-fabrication";
 export const specialistDoorsRootSlug = "garage-industrial-specialist-doors";
 export const plumbingHeatingRootSlug = "plumbing-heating-mechanical";
+export const transportDeliveryRootSlug = "transport-delivery-removals";
 
 export function launchedSupplierCategoryWhere() {
   return {
@@ -37,7 +38,7 @@ export function normalizeLaunchCategorySlug(slug: string | null) {
 }
 
 type UnavailableCatalogue = {
-  code: "FIRE_DOORS_NOT_LAUNCHED" | "METAL_FABRICATION_NOT_LAUNCHED" | "SPECIALIST_DOORS_NOT_LAUNCHED" | "PHE_NOT_LAUNCHED" | "PRODUCT_NOT_LAUNCHED";
+  code: "FIRE_DOORS_NOT_LAUNCHED" | "METAL_FABRICATION_NOT_LAUNCHED" | "SPECIALIST_DOORS_NOT_LAUNCHED" | "PHE_NOT_LAUNCHED" | "TRANSPORT_NOT_LAUNCHED" | "PRODUCT_NOT_LAUNCHED";
   reply: string;
 };
 
@@ -45,6 +46,7 @@ const fireDoorPattern = /\bfire[- ]?(?:rated[- ]?)?doors?(?:ets?)?\b/i;
 const metalFabricationPattern = /\b(?:bespoke metal fabrication|metal fabrication|steel beams?|lintels?|fabricated (?:steel |metal )?frames?|balustrades?|metal gates?|railings?|metal balconies|metal staircases?|structural steel|aluminium pressings?|powder[- ]coated (?:steel |metal |aluminium )?components?)\b/i;
 const specialistDoorPattern = /\b(?:garage doors?|roller shutters?|sectional doors?|communal entrance doors?|automatic doors?|steel security doors?|shopfronts?)\b/i;
 const plumbingHeatingPattern = /\b(?:plumbing|heating|mechanical|boilers?|heat pumps?|air[- ]source heat pumps?|ground[- ]source heat pumps?|hot[- ]water cylinders?|unvented cylinders?|thermal stores?|buffer vessels?|underfloor heating|radiators?|heat emitters?|pipework|pipe fittings?|valves?|heating controls?|circulator pumps?|booster sets?|pressurisation units?|expansion vessels?|mechanical plant)\b/i;
+const transportDeliveryPattern = /\b(?:man (?:with|and) a van|van and driver|trade collections?|same[- ]day couriers?|small removals?|house moves?|furniture removals?|bulky[- ]item transport|building[- ]material deliveries|multi[- ]drop deliveries)\b/i;
 const metalProducts: Array<{ slug: string; label: string; pattern: RegExp }> = [
   { slug: "steel-beams", label: "Steel beams", pattern: /\bsteel beams?\b/i },
   { slug: "lintels", label: "Lintels", pattern: /\blintels?\b/i },
@@ -77,6 +79,15 @@ const plumbingHeatingProducts: Array<{ slug: string; label: string; pattern: Reg
   { slug: "valves-heating-controls", label: "Valves and heating controls", pattern: /\b(?:valves?|trvs?|thermostats?|heating controls?|actuators?)\b/i },
   { slug: "pumps-pressurisation", label: "Pumps and pressurisation", pattern: /\b(?:circulator pumps?|booster sets?|pressurisation units?|expansion vessels?|condensate pumps?)\b/i },
   { slug: "mechanical-plant-packages", label: "Mechanical plant and packaged systems", pattern: /\b(?:mechanical plant|packaged heating systems?|plantroom packages?)\b/i },
+];
+const transportDeliveryProducts: Array<{ slug: string; label: string; pattern: RegExp }> = [
+  { slug: "man-with-a-van", label: "Man with a van", pattern: /\b(?:man (?:with|and) a van|van and driver)\b/i },
+  { slug: "trade-collection-delivery", label: "Trade collections and deliveries", pattern: /\b(?:trade|merchant|site) collections?(?: and deliver(?:y|ies))?\b/i },
+  { slug: "same-day-courier", label: "Same-day courier", pattern: /\b(?:same[- ]day|urgent) couriers?\b/i },
+  { slug: "furniture-small-removals", label: "Furniture and small removals", pattern: /\b(?:furniture|small|house|office) removals?|\bhouse moves?\b/i },
+  { slug: "bulky-item-transport", label: "Bulky-item transport", pattern: /\b(?:bulky|large|heavy|awkward)[- ]items? (?:transport|delivery|collection)\b/i },
+  { slug: "building-material-deliveries", label: "Building-material deliveries", pattern: /\b(?:building|trade) materials? deliver(?:y|ies)\b/i },
+  { slug: "multi-drop-delivery", label: "Multi-drop delivery", pattern: /\bmulti[- ]drop deliver(?:y|ies)\b/i },
 ];
 
 export function unavailableCatalogueForConversation(
@@ -129,6 +140,19 @@ export function unavailableCatalogueForConversation(
       reply: `${unavailablePlumbingHeatingProduct.label} quoting is temporarily offline. I don’t want to route this enquiry to unsuitable suppliers while that product is paused.`,
     };
   }
+  if (transportDeliveryPattern.test(messageText) && !available.has(transportDeliveryRootSlug)) {
+    return {
+      code: "TRANSPORT_NOT_LAUNCHED",
+      reply: "Transport, delivery and removals quoting is temporarily offline. I don’t want to promise a vehicle or collection until the approved operator network is available.",
+    };
+  }
+  const unavailableTransportProduct = transportDeliveryProducts.find((product) => product.pattern.test(messageText) && !available.has(product.slug));
+  if (unavailableTransportProduct) {
+    return {
+      code: "PRODUCT_NOT_LAUNCHED",
+      reply: `${unavailableTransportProduct.label} quoting is temporarily offline. I don’t want to route this request to an unsuitable operator while that service is paused.`,
+    };
+  }
   return null;
 }
 
@@ -141,6 +165,9 @@ export function categoryResponsibilityNotice(slug: string, parentSlug?: string |
   }
   if (slug === plumbingHeatingRootSlug || parentSlug === plumbingHeatingRootSlug) {
     return "Bridge AI structures and routes the enquiry only. The supplier or installer remains responsible for final equipment selection, sizing, compatibility, design, commissioning and compliance with applicable building, gas, electrical, water and heat-pump requirements.";
+  }
+  if (slug === transportDeliveryRootSlug || parentSlug === transportDeliveryRootSlug) {
+    return "Bridge AI structures and routes the request only. The appointed operator remains responsible for vehicle suitability, load security, access, lifting and handling, insurance, licences and lawful carriage. Regulated waste disposal is not included unless Bridge AI launches a separately controlled service.";
   }
   return null;
 }

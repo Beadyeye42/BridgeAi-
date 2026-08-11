@@ -15,6 +15,11 @@ const industryExperiences: Record<string, IndustryExperience> = {
     whatsappExperience: "Product-specific mechanical questions with schedule, schematic and heat-loss support",
     launchReady: true,
   },
+  "transport-delivery-removals": {
+    supplierExperience: "Vehicle, crew, handling, route-capacity and availability controls",
+    whatsappExperience: "Collection, destination, date, load, access and handling questions",
+    launchReady: true,
+  },
   "bespoke-metal-fabrication": {
     supplierExperience: "Fabricator capability and engineering-responsibility controls required",
     whatsappExperience: "Drawing, grade, finish, fixing and deadline intake still being prepared",

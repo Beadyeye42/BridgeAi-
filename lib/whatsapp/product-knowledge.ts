@@ -10,6 +10,7 @@ export type ProductRecognition = {
   categoryName: string;
   description: string | null;
   answer: string;
+  parentSlug: string | null;
 };
 
 type ProductRule = {
@@ -19,6 +20,25 @@ type ProductRule = {
 };
 
 const productRules: ProductRule[] = [
+  {
+    slug: "man-with-a-van",
+    pattern: /\b(?:man (?:with|and) a van|van and driver|van with (?:a )?driver|small van move)\b/i,
+    answer: "A man-with-a-van quote normally needs the collection and delivery postcodes, preferred date and time, a list or photo of what is moving, and any stairs, parking, loading help or access restrictions.",
+  },
+  {
+    slug: "trade-collection-delivery",
+    pattern: /\b(?:trade|merchant|site) collection(?:s)?(?: and deliver(?:y|ies))?|collect (?:my |some )?(?:materials?|order) from (?:a )?(?:merchant|supplier)\b/i,
+    answer: "For a trade collection, Bridge AI needs the collection and delivery postcodes, merchant or site collection details, item sizes or weight, ready time, delivery deadline and any loading restrictions.",
+  },
+  {
+    slug: "same-day-courier",
+    pattern: /\b(?:same[-\s]*day|urgent|express) courier(?:s)?\b/i,
+    answer: "For a same-day courier quote, send the collection and delivery postcodes, when the item is ready, the delivery deadline, and the parcel count, dimensions and approximate weight.",
+  },
+  { slug: "furniture-small-removals", pattern: /\b(?:furniture|small|house|office) removal(?:s)?\b|\bhouse move\b/i },
+  { slug: "bulky-item-transport", pattern: /\b(?:bulky|large|heavy|awkward)[-\s]*item(?:s)? (?:transport|delivery|collection)\b/i },
+  { slug: "building-material-deliveries", pattern: /\b(?:building|trade) material(?:s)? deliver(?:y|ies)\b/i },
+  { slug: "multi-drop-delivery", pattern: /\bmulti[-\s]*drop deliver(?:y|ies)\b/i },
   {
     slug: "patio-sliding-doors",
     pattern: /\b(?:french\s*d+o+r+s?|frenchdoors?|patio\s*(?:sliding\s*)?d+o+r+s?|sliding\s*patio\s*d+o+r+s?|patio\s*sliders?|lift[-\s]*and[-\s]*slide|inline\s*sliders?)\b/i,
@@ -100,6 +120,7 @@ export function recogniseCatalogueProduct(
     description,
     answer: rule?.answer
       ?? `Bridge AI covers ${category.name.toLocaleLowerCase("en-GB")} through suitable approved suppliers.${description ? ` ${description}` : ""}`,
+    parentSlug: category.parent?.slug ?? null,
   };
 }
 
@@ -120,5 +141,8 @@ export function productMessageIntent(text: string): "QUOTE_REQUEST" | "QUESTION"
 
 export function productRecoveryReply(recognition: ProductRecognition, text: string) {
   if (productMessageIntent(text) === "QUESTION") return recognition.answer;
+  if (recognition.parentSlug === "transport-delivery-removals") {
+    return `Yes — I can help you find a suitable approved operator for ${recognition.categoryName.toLocaleLowerCase("en-GB")}. What are the collection and delivery postcodes, and what needs moving? A photo is welcome too.`;
+  }
   return `Yes — I can help you source ${recognition.categoryName.toLocaleLowerCase("en-GB")} from suitable approved suppliers. Roughly how many do you need? You can also send a photo, drawing or PDF.`;
 }
