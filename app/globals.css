@@ -255,6 +255,8 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .affiliate-form-footer p { max-width: 390px; margin: 0; color: #7f8985; font-size: 8px; line-height: 1.5; }
 .affiliate-form-footer .button { min-height: 42px; padding: 0 18px; white-space: nowrap; }
 .admin-affiliate-table-panel { max-width: 1500px; margin: 0 auto; overflow: hidden; }
+.affiliate-control-panel { width: min(100%,1500px); margin: 0 auto 17px; }
+.affiliate-control-panel .button { justify-self: start; }
 
 @media (max-width: 1120px) {
   .stats-grid { grid-template-columns: repeat(2, 1fr); }

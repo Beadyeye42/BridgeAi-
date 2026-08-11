@@ -51,6 +51,20 @@ export const affiliateStatusSchema = z.object({
   if (value.status === "SUSPENDED" && !value.reason) context.addIssue({ code: "custom", path: ["reason"], message: "Enter a suspension reason" });
 });
 
+export const affiliateProgrammeAdminSchema = z.object({
+  maximumActive: z.coerce.number().int().min(1).max(100),
+  commissionRateBps: z.coerce.number().int().min(0).max(10_000),
+  qualificationPayments: z.coerce.number().int().min(0).max(24),
+  commissionPayments: z.coerce.number().int().min(1).max(60),
+  validationDays: z.coerce.number().int().min(0).max(180),
+});
+
+export const affiliateProfileAdminSchema = z.object({
+  displayName: z.string().trim().min(2).max(120),
+  code: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{4,24}$/, "Use 4–24 letters or numbers"),
+  commissionRateBps: z.coerce.number().int().min(0).max(10_000).nullable(),
+});
+
 export const assignmentDecisionSchema = z.object({
   decision: z.enum(["accept", "decline"]),
   reason: z.string().trim().max(500).optional(),

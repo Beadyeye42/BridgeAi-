@@ -99,6 +99,25 @@ describe("affiliate invoice accounting", () => {
     expect(guard).toContain('session.user.role !== "ADMINISTRATOR"');
   });
 
+  it("gives administrators audited control of programme and affiliate commercial settings", () => {
+    const programmeRoute = read("app/api/admin/affiliates/programme/route.ts");
+    const affiliateRoute = read("app/api/admin/affiliates/[id]/route.ts");
+    const controls = read("components/admin/affiliate-manager.tsx");
+    const migration = read("supabase/migrations/20260811231744_affiliate_programme_controls.sql");
+    expect(programmeRoute).toContain("await requireAdminApi()");
+    expect(programmeRoute).toContain("ADMIN.AFFILIATE_PROGRAMME_UPDATED");
+    expect(programmeRoute).toContain("parsed.data.maximumActive < activeCount");
+    expect(affiliateRoute).toContain("ADMIN.AFFILIATE_PROFILE_UPDATED");
+    expect(affiliateRoute).toContain("affiliateAuditLog.create");
+    expect(controls).toContain("AffiliateProgrammeControl");
+    expect(controls).toContain("AffiliateProfileControl");
+    expect(controls).toContain("Existing ledger entries never change retrospectively");
+    expect(migration).toContain('paid_period <= programme."qualificationPayments"');
+    expect(migration).toContain('programme."qualificationPayments" + programme."commissionPayments"');
+    expect(migration).toContain('make_interval(days => programme."validationDays")');
+    expect(migration).not.toContain("all 12 commission-paying billing periods");
+  });
+
   it("forces RLS and prevents cross-affiliate reads", () => {
     const migration = read("supabase/migrations/20260809131748_affiliate_invoice_ledger.sql");
     for (const table of ["affiliates", "affiliate_referrals", "affiliate_commissions", "affiliate_payouts", "affiliate_notifications", "affiliate_audit_logs"]) {
