@@ -113,6 +113,7 @@ export const supplierCapabilitySchema = z.object({
   standardLeadTimeDays: z.number().int().min(1).max(730),
   urgentLeadTimeDays: z.number().int().min(1).max(730).nullable(),
   currentLeadTimeDays: z.number().int().min(1).max(730).nullable(),
+  declaredMonthlyCapacity: z.number().int().min(1).max(100_000).nullable(),
   supportsSupplyOnly: z.boolean(),
   supportsDelivery: z.boolean(),
   supportsInstallation: z.boolean(),
@@ -190,6 +191,19 @@ export const matchingConfigurationAdminSchema = z.object({
   capacityStaleDays: z.coerce.number().int().min(1).max(90),
   leadTimeStaleDays: z.coerce.number().int().min(1).max(90),
   responseDeadlineHours: z.coerce.number().int().min(1).max(168),
+  acknowledgementDeadlineHours: z.coerce.number().int().min(1).max(168),
+  quotationDeadlineHours: z.coerce.number().int().min(1).max(336),
+  sparseMarketMaximumEligible: z.coerce.number().int().min(1).max(4),
+  healthyMarketMaximumEligible: z.coerce.number().int().min(5).max(100),
+  sparseFairnessWeight: z.coerce.number().int().min(0).max(2),
+  healthyFairnessWeight: z.coerce.number().int().min(3).max(7),
+  denseFairnessWeight: z.coerce.number().int().min(5).max(12),
+  fairnessSimilarityBandPoints: z.coerce.number().int().min(1).max(20),
+  sparseSoftCapEnabled: z.boolean(),
+  healthySoftCapExtraOpportunities: z.coerce.number().int().min(0).max(10),
+  respectDeclaredMonthlyCapacity: z.boolean(),
+  declaredCapacityWarningPercent: z.coerce.number().int().min(50).max(100),
+  coverageGapAlertsEnabled: z.boolean(),
   automaticNextSupplierInvitation: z.boolean(),
   serviceMatchingEnabled: z.boolean(),
   deliveryMatchingEnabled: z.boolean(),
@@ -203,6 +217,10 @@ export const matchingConfigurationAdminSchema = z.object({
     completion: z.coerce.number().min(0).max(100),
     reliability: z.coerce.number().min(0).max(100),
   }).refine((weights) => Object.values(weights).some((weight) => weight > 0), "At least one matching weight must be greater than zero"),
+}).superRefine((value, context) => {
+  if (value.healthyMarketMaximumEligible <= value.sparseMarketMaximumEligible) {
+    context.addIssue({ code: "custom", path: ["healthyMarketMaximumEligible"], message: "Healthy-market maximum must be above the sparse-market maximum" });
+  }
 });
 
 export const adminSupplierGeographySchema = z.object({
@@ -266,6 +284,11 @@ export const adminSupplierEditSchema = z.object({
 export const adminAssignmentSchema = z.object({
   quoteRequestId: z.string().min(1).max(64),
   supplierCompanyIds: z.array(z.string().min(1).max(64)).min(1).max(5),
+  capacityOverrideSupplierIds: z.array(z.string().min(1).max(64)).max(5).default([]),
+}).superRefine((value, context) => {
+  if (value.capacityOverrideSupplierIds.some((id) => !value.supplierCompanyIds.includes(id))) {
+    context.addIssue({ code: "custom", path: ["capacityOverrideSupplierIds"], message: "Capacity overrides must belong to selected suppliers" });
+  }
 });
 export const productCategorySchema = z.object({ name: z.string().trim().min(2).max(100), slug: z.string().trim().min(2).max(100).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).optional(), description: optionalText(500), active: z.boolean().default(true), parentId: z.string().nullable().optional() });
 

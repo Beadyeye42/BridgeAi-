@@ -10,6 +10,8 @@ const schema = z.object({
   servesTrade: z.boolean().optional(),
   servesBusiness: z.boolean().optional(),
   hyperlocalEnabled: z.boolean().optional(),
+  acknowledgementDeadlineHours: z.number().int().min(1).max(168).nullable().optional(),
+  quotationDeadlineHours: z.number().int().min(1).max(336).nullable().optional(),
 }).refine((value) => Object.values(value).some((item) => item !== undefined), "No changes supplied");
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminApi();
@@ -39,26 +41,32 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   };
   const audienceChanged = parsed.data.servesConsumer !== undefined || parsed.data.servesTrade !== undefined || parsed.data.servesBusiness !== undefined;
   const hyperlocalChanged = parsed.data.hyperlocalEnabled !== undefined;
+  const deadlineChanged = parsed.data.acknowledgementDeadlineHours !== undefined || parsed.data.quotationDeadlineHours !== undefined;
   if (audienceChanged && !isGroup) return NextResponse.json({ error: "Buyer audiences are managed at industry level" }, { status: 400 });
   if (hyperlocalChanged && !isGroup) return NextResponse.json({ error: "Hyperlocal availability is managed at industry level" }, { status: 400 });
+  if (deadlineChanged && !isGroup) return NextResponse.json({ error: "Response deadlines are managed at industry level" }, { status: 400 });
   if (!audience.servesConsumer && !audience.servesTrade && !audience.servesBusiness) return NextResponse.json({ error: "Select at least one buyer audience" }, { status: 400 });
   await prisma.$transaction(async (tx) => {
     await tx.productCategory.update({ where: { id }, data: { ...parsed.data } });
     await writeAuditLog({
       actorUserId: auth.session.userId,
-      action: hyperlocalChanged ? "ADMIN.INDUSTRY_HYPERLOCAL_UPDATED" : audienceChanged ? "ADMIN.INDUSTRY_AUDIENCE_UPDATED" : isGroup
+      action: deadlineChanged ? "ADMIN.INDUSTRY_RESPONSE_DEADLINES_UPDATED" : hyperlocalChanged ? "ADMIN.INDUSTRY_HYPERLOCAL_UPDATED" : audienceChanged ? "ADMIN.INDUSTRY_AUDIENCE_UPDATED" : isGroup
         ? parsed.data.active ? "ADMIN.CATEGORY_GROUP_LAUNCHED" : "ADMIN.CATEGORY_GROUP_TAKEN_OFFLINE"
         : "ADMIN.CATEGORY_STATUS_UPDATED",
       entityType: "ProductCategory",
       entityId: id,
-      summary: hyperlocalChanged
+      summary: deadlineChanged
+        ? `Supplier response deadlines updated for ${category.name}`
+        : hyperlocalChanged
         ? `Hyperlocal membership ${parsed.data.hyperlocalEnabled ? "enabled" : "disabled"} for ${category.name}`
         : audienceChanged
         ? `Buyer audiences updated for ${category.name}`
         : isGroup
         ? `Product group ${category.name} ${parsed.data.active ? "launched publicly" : "taken offline"}`
         : `Product category ${category.name} ${parsed.data.active ? "enabled" : "disabled"}`,
-      metadata: hyperlocalChanged
+      metadata: deadlineChanged
+        ? { before: { acknowledgementDeadlineHours: category.acknowledgementDeadlineHours, quotationDeadlineHours: category.quotationDeadlineHours }, after: { acknowledgementDeadlineHours: parsed.data.acknowledgementDeadlineHours, quotationDeadlineHours: parsed.data.quotationDeadlineHours } }
+        : hyperlocalChanged
         ? { before: { hyperlocalEnabled: category.hyperlocalEnabled }, after: { hyperlocalEnabled: parsed.data.hyperlocalEnabled } }
         : audienceChanged ? { before: { servesConsumer: category.servesConsumer, servesTrade: category.servesTrade, servesBusiness: category.servesBusiness }, after: audience } : undefined,
       request,

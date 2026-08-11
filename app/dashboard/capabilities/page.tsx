@@ -51,6 +51,7 @@ export default async function CapabilitiesPage() {
         standardLeadTimeDays: saved?.standardLeadTimeDays ?? 14,
         urgentLeadTimeDays: saved?.urgentLeadTimeDays ?? null,
         currentLeadTimeDays: saved?.currentLeadTimeDays ?? null,
+        declaredMonthlyCapacity: saved?.declaredMonthlyCapacity ?? null,
         supportsSupplyOnly: saved?.supportsSupplyOnly ?? true,
         supportsDelivery: saved?.supportsDelivery ?? true,
         supportsInstallation: saved?.supportsInstallation ?? false,

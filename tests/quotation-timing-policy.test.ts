@@ -16,12 +16,15 @@ describe("quotation timing policy", () => {
     expect(quotationValidUntil(submittedAt, new Date("2026-08-31T23:59:59.999Z")).toISOString()).toBe("2026-08-31T23:59:59.999Z");
   });
 
-  it("uses a 48-hour default and enforces seven days in Postgres", () => {
+  it("uses the legacy 48-hour fallback, configurable response windows and seven-day validity", () => {
     const config = readFileSync("lib/config.ts", "utf8");
     const processor = readFileSync("lib/whatsapp/processor.ts", "utf8");
     const migration = readFileSync("supabase/migrations/20260810213238_enforce_two_day_response_and_seven_day_quote_validity.sql", "utf8");
     expect(config).toContain('boundedInteger("QUOTE_RESPONSE_HOURS", 48, 1, 336)');
-    expect(processor).toContain("matchingConfiguration?.responseDeadlineHours ?? quoteResponseHours");
+    expect(processor).toContain("matchingConfiguration?.quotationDeadlineHours");
+    expect(processor).toContain("?? matchingConfiguration?.responseDeadlineHours");
+    expect(processor).toContain("category.parent?.acknowledgementDeadlineHours");
+    expect(processor).toContain("?? matchingConfiguration?.acknowledgementDeadlineHours");
     expect(migration).toContain('SET "responseDeadlineHours" = 48');
     expect(migration).toContain("effective_submitted_at + interval '7 days'");
     expect(migration).toContain("BEFORE INSERT OR UPDATE OF status, \"submittedAt\", \"validUntil\"");

@@ -23,6 +23,7 @@ export type DashboardData = {
   performance: { responseTime: string; winRate: string; monthValue: string };
   latestWin?: { reference: string; title: string; value: string };
   upgradeInsight?: { geographicMisses: number; nextPlanBandMisses: number; nextPlanBandLabel: string | null; tier: "HYPERLOCAL" | "LOCAL" | "REGIONAL" | "NATIONWIDE" | null };
+  opportunityAccess?: { currentActive: number; normalActiveLimit: number; invitations30Days: number; declaredMonthlyCapacity: number | null; operationalStatus: string };
   requests: DashboardRequest[];
   recent: Array<{ reference: string; title: string; value: string; status: "Won" | "Submitted" | "Lost"; date: string }>;
 };
@@ -37,6 +38,7 @@ export const demoDashboard: DashboardData = {
   performance: { responseTime: "1h 42m", winRate: "28%", monthValue: "£42.8k" },
   latestWin: { reference: "BA-2026-0781", title: "Warehouse edge protection", value: "£8,420" },
   upgradeInsight: { geographicMisses: 14, nextPlanBandMisses: 6, nextPlanBandLabel: "between 40 and 100 miles", tier: "LOCAL" },
+  opportunityAccess: { currentActive: 4, normalActiveLimit: 10, invitations30Days: 11, declaredMonthlyCapacity: 25, operationalStatus: "Available" },
   requests: [
     { assignmentId: "assignment_demo_0842", reference: "BA-2026-0842", title: "Fabricated access platform & stairs", category: "Fabricated steelwork", area: "Solihull · B90", distance: "14 miles", received: "2 hours ago", due: "5h 18m", urgency: "urgent", itemCount: 3, attachmentCount: 4, status: "New" },
     { assignmentId: "assignment_demo_0837", reference: "BA-2026-0837", title: "UC beams for mezzanine extension", category: "Structural steel", area: "Coventry · CV7", distance: "21 miles", received: "Yesterday, 15:42", due: "22h 04m", urgency: "normal", itemCount: 1, attachmentCount: 2, status: "Viewed" },

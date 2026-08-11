@@ -1,4 +1,5 @@
 import { prisma, runWithDatabaseIdentity } from "@/lib/db";
+import { effectiveMembershipLimits } from "@/lib/billing/membership-plans";
 
 // Every supplier query accepts a company id sourced from a validated membership.
 // Never accept this id directly from an untrusted request body.
@@ -18,6 +19,7 @@ export async function getSupplierDashboard(supplierCompanyId: string, userId: st
         coverageAreas: true,
         memberships: true,
         accreditations: { include: { attachment: true } },
+        capabilities: { where: { active: true }, select: { capacityStatus: true, declaredMonthlyCapacity: true } },
       },
     });
     const assignments = await tx.supplierAssignment.findMany({
@@ -103,6 +105,12 @@ export async function getSupplierDashboard(supplierCompanyId: string, userId: st
     const decided = recentQuotations.filter((item) => ["ACCEPTED", "REJECTED"].includes(item.status));
     const wonThisMonth = recentQuotations.filter((item) => item.status === "ACCEPTED" && item.decidedAt && item.decidedAt >= monthStart);
     const monthValuePence = wonThisMonth.reduce((total, item) => total + Math.round(Number(item.price) * 100), 0);
+    const membershipLimits = company.subscription?.membershipPlan
+      ? effectiveMembershipLimits(company.subscription.membershipPlan, company)
+      : null;
+    const declaredMonthlyCapacity = company.capabilities.reduce((total, capability) => total + (capability.declaredMonthlyCapacity ?? 0), 0) || null;
+    const operationallyPaused = company.capabilities.length > 0
+      && company.capabilities.every((capability) => ["FULL", "PAUSED", "HOLIDAY", "NOT_ACCEPTING"].includes(capability.capacityStatus));
 
     return {
       company,
@@ -125,6 +133,13 @@ export async function getSupplierDashboard(supplierCompanyId: string, userId: st
         nextPlanBandMisses,
         nextPlanBandLabel: upgradeBand?.label ?? null,
         tier,
+      },
+      opportunityAccess: {
+        currentActive: openAssignmentCount,
+        normalActiveLimit: membershipLimits?.maximumActiveOpportunities ?? 0,
+        invitations30Days: recentAssignments.length,
+        declaredMonthlyCapacity,
+        operationalStatus: operationallyPaused ? "Paused" : company.capabilities.some((capability) => capability.capacityStatus === "LIMITED") ? "Limited" : "Available",
       },
     };
   }));

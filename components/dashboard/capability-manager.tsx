@@ -35,6 +35,7 @@ type Capability = {
   standardLeadTimeDays: number;
   urgentLeadTimeDays: number | null;
   currentLeadTimeDays: number | null;
+  declaredMonthlyCapacity: number | null;
   supportsSupplyOnly: boolean;
   supportsDelivery: boolean;
   supportsInstallation: boolean;
@@ -133,6 +134,7 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
         standardLeadTimeDays: Number(form.get(`${prefix}:standardLead`)),
         urgentLeadTimeDays: nullableNumber(form.get(`${prefix}:urgentLead`)),
         currentLeadTimeDays: nullableNumber(form.get(`${prefix}:currentLead`)),
+        declaredMonthlyCapacity: nullableNumber(form.get(`${prefix}:declaredMonthlyCapacity`)),
         supportsSupplyOnly: form.has(`${prefix}:supplyOnly`),
         supportsDelivery: form.has(`${prefix}:delivery`),
         supportsInstallation: form.has(`${prefix}:installation`),
@@ -294,6 +296,7 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
               <Field name={`${prefix}:standardLead`} label={isTransport ? "Standard booking notice (days)" : "Standard lead time (days)"} value={capability.standardLeadTimeDays} type="number" min="1" required />
               <Field name={`${prefix}:currentLead`} label={isTransport ? "Current booking notice (days)" : "Current lead time (days)"} value={capability.currentLeadTimeDays ?? capability.standardLeadTimeDays} type="number" min="1" />
               <Field name={`${prefix}:urgentLead`} label={isTransport ? "Urgent booking notice (days)" : "Urgent lead time (days)"} value={capability.urgentLeadTimeDays ?? ""} type="number" min="1" />
+              <Field name={`${prefix}:declaredMonthlyCapacity`} label="Comfortable monthly opportunity capacity" value={capability.declaredMonthlyCapacity ?? ""} type="number" min="1" />
               <label className="form-control"><span>Current capacity</span><select name={`${prefix}:capacity`} value={capacityByCategory[prefix]} onChange={(event) => setCapacityByCategory((current) => ({ ...current, [prefix]: event.target.value as CapacityStatus }))}><option value="AVAILABLE">Available</option><option value="LIMITED">Limited</option><option value="URGENT_ONLY">Urgent work only</option><option value="FULL">Temporarily full</option><option value="PAUSED">Paused</option><option value="HOLIDAY">Holiday</option><option value="NOT_ACCEPTING">Not accepting new work</option></select></label>
               {isTransport ? <>
                 <label className="toggle-row"><span><b>Transport service available</b><small>Your vehicle and driver can collect and deliver customer loads</small></span><input type="checkbox" name={`${prefix}:service`} defaultChecked={capability.supportsService}/></label>

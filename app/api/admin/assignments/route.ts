@@ -4,9 +4,12 @@ import { prisma } from "@/lib/db";
 import { requireAdminApi } from "@/lib/auth/api";
 import { adminAssignmentSchema, validationError } from "@/lib/auth/validation";
 import { writeAuditLog } from "@/lib/audit";
-import { findSupplierMatches, resolveDeliveryLocation } from "@/lib/matching/suppliers";
+import { evaluateSupplierMatches, resolveDeliveryLocation } from "@/lib/matching/suppliers";
+import { lockSupplierAssignmentScope, recordMatchingEvaluation } from "@/lib/matching/distribution";
 import { queueSupplierAssignmentNotifications } from "@/lib/notifications/assignment-notifications";
 import { processSupplierEmailsSafely } from "@/lib/notifications/email-worker";
+import { addSupplierResponseHours } from "@/lib/quotes/response-clock";
+import { resolveIndustryResponseDeadlines } from "@/lib/matching/deadlines";
 
 export async function POST(request: Request) {
   const auth = await requireAdminApi();
@@ -36,58 +39,52 @@ export async function POST(request: Request) {
       }
 
       const current = await tx.supplierAssignment.count({ where: { quoteRequestId: quote.id, status: { notIn: ["WITHDRAWN"] } } });
+      const matchingConfiguration = await tx.matchingConfiguration.findUnique({ where: { id: "default" } });
+      const deadlines = await resolveIndustryResponseDeadlines(tx, quote.categoryId, {
+        acknowledgementHours: matchingConfiguration?.acknowledgementDeadlineHours ?? matchingConfiguration?.responseDeadlineHours ?? 8,
+        quotationHours: matchingConfiguration?.quotationDeadlineHours ?? matchingConfiguration?.responseDeadlineHours ?? 24,
+      });
+      const acknowledgementDueAt = addSupplierResponseHours(new Date(), deadlines.acknowledgementHours);
+      const invitationExpiresAt = acknowledgementDueAt > quote.responseDueAt ? quote.responseDueAt : acknowledgementDueAt;
       const unique = [...new Set(parsed.data.supplierCompanyIds)];
       if (current + unique.length > quote.distributionLimit || current + unique.length > 5) throw new Error("DISTRIBUTION_LIMIT");
 
-      const matches = await findSupplierMatches(tx, quote, resolution.location, { supplierIds: unique, limit: 5 });
+      const evaluations = await evaluateSupplierMatches(tx, quote, resolution.location, {
+        capacityOverrideSupplierIds: parsed.data.capacityOverrideSupplierIds,
+      });
+      const matches = evaluations.filter((evaluation) => unique.includes(evaluation.id) && evaluation.outcome === "MATCHED");
       if (matches.length !== unique.length) throw new Error("INELIGIBLE_SUPPLIER");
+
+      await recordMatchingEvaluation(tx, {
+        quoteRequestId: quote.id,
+        categoryId: quote.categoryId,
+        deliveryPostcode: quote.deliveryPostcode,
+        evaluations,
+        selectedSupplierIds: unique,
+        invitedSupplierCount: current + unique.length,
+        preserveExistingSelections: true,
+      });
+      await lockSupplierAssignmentScope(tx, unique);
 
       const result = await tx.supplierAssignment.createMany({
         data: unique.map((supplierCompanyId) => ({
           quoteRequestId: quote.id,
           supplierCompanyId,
           status: "PENDING",
-          expiresAt: quote.responseDueAt,
+          expiresAt: invitationExpiresAt,
           assignedById: auth.session.userId,
+          marketDensityMode: matches.find((match) => match.id === supplierCompanyId)?.marketDensityMode,
+          softCapOverride: matches.find((match) => match.id === supplierCompanyId)?.softCapOverride ?? false,
+          capacityOverride: parsed.data.capacityOverrideSupplierIds.includes(supplierCompanyId),
         })),
         skipDuplicates: true,
       });
-      for (const match of matches) {
-        await tx.supplierMatchDecision.upsert({
-          where: { quoteRequestId_supplierCompanyId: { quoteRequestId: quote.id, supplierCompanyId: match.id } },
-          create: {
-            quoteRequestId: quote.id,
-            supplierCompanyId: match.id,
-            outcome: "MATCHED",
-            score: match.score,
-            selected: true,
-            reasons: match.reasons,
-            capabilitySnapshot: match.capabilitySnapshot,
-            membershipTier: match.membershipTier,
-            coveragePurpose: match.coveragePurpose,
-            distanceMiles: match.distanceMiles,
-            rankingSnapshot: match.rankingSnapshot,
-          },
-          update: {
-            outcome: "MATCHED",
-            score: match.score,
-            selected: true,
-            reasons: match.reasons,
-            capabilitySnapshot: match.capabilitySnapshot,
-            membershipTier: match.membershipTier,
-            coveragePurpose: match.coveragePurpose,
-            distanceMiles: match.distanceMiles,
-            rankingSnapshot: match.rankingSnapshot,
-            decidedAt: new Date(),
-          },
-        });
-      }
       await tx.quoteRequest.update({ where: { id: quote.id }, data: { status: "MATCHING" } });
       await queueSupplierAssignmentNotifications(tx, {
         supplierCompanyIds: unique,
         reference: quote.reference,
         title: quote.title,
-        responseDueAt: quote.responseDueAt,
+        responseDueAt: invitationExpiresAt,
       });
       await writeAuditLog({
         actorUserId: auth.session.userId,
@@ -100,6 +97,7 @@ export async function POST(request: Request) {
           capabilityMatches: matches.map((match) => ({ supplierCompanyId: match.id, score: match.score, reasons: match.reasons })),
           distributionLimit: quote.distributionLimit,
           responseDueAt: quote.responseDueAt.toISOString(),
+          acknowledgementDueAt: invitationExpiresAt.toISOString(),
         },
         request,
       }, tx);

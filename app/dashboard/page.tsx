@@ -53,6 +53,7 @@ export default async function DashboardPage() {
       value: formatQuoteValue(latestWonQuotation.price, latestWonQuotation.currency),
     } : undefined,
     upgradeInsight: dashboard.upgradeInsight,
+    opportunityAccess: dashboard.opportunityAccess,
     requests: dashboard.assignments.map((assignment) => {
       const quoteRequest = assignment.quoteRequest;
       return {

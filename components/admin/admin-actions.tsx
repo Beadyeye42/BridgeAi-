@@ -7,12 +7,12 @@ export function SupplierStatusControl({id,status,approvalReady=true,approvalBloc
 
 export function RetryWhatsAppJobButton({id,retrySafe}:{id:string;retrySafe:boolean}){const router=useRouter();const[busy,setBusy]=useState(false);const[message,setMessage]=useState("");return <div className="status-control"><button className="button button-outline" disabled={busy||!retrySafe} title={retrySafe?"Retry this idempotent background action":"Automatic retry is blocked because delivery could already have occurred"} onClick={async()=>{setBusy(true);setMessage("");try{const result=await call(`/api/admin/system/jobs/${id}/retry`,"POST",{});setMessage(result.status==="COMPLETED"?"Retried successfully.":`Retry finished with status ${String(result.status).toLowerCase()}.`);router.refresh()}catch(error){setMessage(error instanceof Error?error.message:"Retry failed")}finally{setBusy(false)}}}>{busy?<LoaderCircle className="spin" size={14}/>:<RotateCcw size={14}/>}Retry</button>{message&&<small className="form-result">{message}</small>}</div>}
 export function SanitizeAttachmentButton({id}:{id:string}){const router=useRouter();const[busy,setBusy]=useState(false);const[message,setMessage]=useState("");return <div className="attachment-scan-action"><button className="button button-outline" disabled={busy} onClick={async()=>{setBusy(true);setMessage("");try{await call(`/api/admin/attachments/${id}/sanitize`,"POST",{});router.refresh()}catch(error){setMessage(error instanceof Error?error.message:"Image processing failed")}finally{setBusy(false)}}}>{busy?<LoaderCircle className="spin" size={13}/>:<ImageIcon size={13}/>}Make image available</button>{message&&<small className="error-text">{message}</small>}</div>}
-export function AssignmentForm({ requestId, distributionLimit, currentCount, responseDueAt, suppliers }: { requestId: string; distributionLimit: number; currentCount: number; responseDueAt: string; suppliers: { id: string; name: string; postcode: string | null; matchDescription: string }[] }) {
+export function AssignmentForm({ requestId, distributionLimit, currentCount, responseDueAt, suppliers }: { requestId: string; distributionLimit: number; currentCount: number; responseDueAt: string; suppliers: { id: string; name: string; postcode: string | null; matchDescription: string; capacityOverrideRequired?: boolean }[] }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const assignmentLimit = Math.min(distributionLimit, 3);
+  const assignmentLimit = Math.min(distributionLimit, 5);
   const remainingSlots = Math.max(0, assignmentLimit - currentCount);
 
   function toggleSupplier(id: string, checked: boolean) {
@@ -29,7 +29,11 @@ export function AssignmentForm({ requestId, distributionLimit, currentCount, res
     setBusy(true);
     setMessage("");
     try {
-      const result = await call("/api/admin/assignments", "POST", { quoteRequestId: requestId, supplierCompanyIds: selectedIds });
+      const result = await call("/api/admin/assignments", "POST", {
+        quoteRequestId: requestId,
+        supplierCompanyIds: selectedIds,
+        capacityOverrideSupplierIds: suppliers.filter((supplier) => supplier.capacityOverrideRequired && selectedIds.includes(supplier.id)).map((supplier) => supplier.id),
+      });
       setSelectedIds([]);
       setMessage(`${result.created} supplier assignment(s) created.`);
       router.refresh();
@@ -41,12 +45,12 @@ export function AssignmentForm({ requestId, distributionLimit, currentCount, res
   }
 
   return <form className="assign-form" onSubmit={submit}>
-    <div className="assignment-limit"><b>{currentCount} / {assignmentLimit}</b><span>supplier slots used · maximum three</span></div>
+    <div className="assignment-limit"><b>{currentCount} / {assignmentLimit}</b><span>active supplier slots used · maximum five</span></div>
     {suppliers.length ? <div className="choice-grid compact">{suppliers.map((supplier) => {
       const checked = selectedIds.includes(supplier.id);
       return <label className="choice-card" key={supplier.id}>
         <input type="checkbox" name="supplierIds" value={supplier.id} checked={checked} disabled={!checked && selectedIds.length >= remainingSlots} onChange={(event) => toggleSupplier(supplier.id, event.currentTarget.checked)} />
-        <span><b>{supplier.name}</b><small>{supplier.matchDescription}{supplier.postcode ? ` · office ${supplier.postcode}` : ""}</small></span>
+        <span><b>{supplier.name}</b><small>{supplier.matchDescription}{supplier.postcode ? ` · office ${supplier.postcode}` : ""}{supplier.capacityOverrideRequired ? " · selecting this supplier records an administrator capacity override" : ""}</small></span>
       </label>;
     })}</div> : <div className="empty-state">No supplier currently passes the capability, capacity, subscription and coverage checks.</div>}
     <div className="form-control"><span>Shared supplier response deadline</span><b>{responseDueAt}</b><small>Response time pauses Friday at 3:00 pm and resumes Monday at 8:00 am (UK time).</small></div>
@@ -282,4 +286,31 @@ export function IndustryHyperlocalControl({ id, enabled }: { id: string; enabled
     }}>{busy ? <LoaderCircle className="spin" size={14}/> : <Check size={14}/>} {enabled ? "Disable Hyperlocal" : "Enable Hyperlocal"}</button>
     {message && <small className="form-result">{message}</small>}
   </div>;
+}
+
+export function IndustryDeadlineControl({ id, acknowledgementHours, quotationHours }: { id: string; acknowledgementHours: number | null; quotationHours: number | null }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const optionalNumber = (value: FormDataEntryValue | null) => String(value ?? "").trim() ? Number(value) : null;
+  return <form className="industry-audience-control" onSubmit={async (event) => {
+    event.preventDefault(); setBusy(true); setMessage("");
+    const data = new FormData(event.currentTarget);
+    try {
+      await call(`/api/admin/categories/${id}`, "PATCH", {
+        acknowledgementDeadlineHours: optionalNumber(data.get("acknowledgementDeadlineHours")),
+        quotationDeadlineHours: optionalNumber(data.get("quotationDeadlineHours")),
+      });
+      setMessage("Industry response windows saved."); router.refresh();
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Deadline update failed"); }
+    finally { setBusy(false); }
+  }}>
+    <div><b>Supplier response windows</b><small>Leave blank to use the global 6-hour acknowledgement and 24-hour quotation settings.</small></div>
+    <div className="form-grid">
+      <label className="form-control"><span>Acknowledge within (business hours)</span><input name="acknowledgementDeadlineHours" type="number" min="1" max="168" defaultValue={acknowledgementHours ?? ""}/></label>
+      <label className="form-control"><span>Quote within (business hours)</span><input name="quotationDeadlineHours" type="number" min="1" max="336" defaultValue={quotationHours ?? ""}/></label>
+    </div>
+    <button className="button button-outline" disabled={busy}>{busy ? <LoaderCircle className="spin" size={14}/> : <Check size={14}/>}Save response windows</button>
+    {message && <small className="form-result">{message}</small>}
+  </form>;
 }

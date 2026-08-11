@@ -310,11 +310,13 @@ describe("security foundation static controls", () => {
     const migration = read("supabase/migrations/20260803182630_enforce_supplier_response_rules.sql");
     expect(validation).toContain("supplierCompanyIds: z.array");
     expect(validation).toContain(".max(5)");
-    expect(assignmentRoute).toMatch(/expiresAt:\s*quote\.responseDueAt/);
+    expect(assignmentRoute).toMatch(/expiresAt:\s*invitationExpiresAt/);
+    expect(assignmentRoute).toContain("acknowledgementDeadlineHours");
     expect(assignmentRoute).not.toContain("parsed.data.expiresAt");
-    expect(whatsappProcessor).toMatch(/expiresAt:\s*request\.responseDueAt/);
+    expect(whatsappProcessor).toMatch(/expiresAt:\s*invitationExpiresAt/);
+    expect(whatsappProcessor).toContain("configuredAcknowledgementHours");
     expect(whatsappProcessor).not.toContain("invitationDeadline");
-    expect(replacementMatcher).toMatch(/expiresAt:\s*quote\.responseDueAt/);
+    expect(replacementMatcher).toMatch(/expiresAt:\s*acknowledgementDueAt > quote\.responseDueAt \? quote\.responseDueAt : acknowledgementDueAt/);
     expect(replacementMatcher).not.toContain("replacementDeadline");
     expect(migration).toContain('"distributionLimit" BETWEEN 1 AND 5');
     expect(migration).toContain("Friday 15:00 until Monday 08:00");
@@ -324,7 +326,8 @@ describe("security foundation static controls", () => {
     const assignmentRoute = read("app/api/admin/assignments/route.ts");
     const matching = read("lib/matching/suppliers.ts");
     const coverageRoute = read("app/api/supplier/coverage/route.ts");
-    expect(assignmentRoute).toContain("findSupplierMatches(tx");
+    expect(assignmentRoute).toContain("evaluateSupplierMatches(tx");
+    expect(assignmentRoute).toContain("recordMatchingEvaluation(tx");
     expect(matching).toContain('status: "APPROVED"');
     expect(matching).toContain('status: "ACTIVE"');
     expect(matching).toContain("const categoryEligible");
@@ -332,7 +335,8 @@ describe("security foundation static controls", () => {
     expect(matching).toContain("membershipPlan: true");
     expect(matching).toContain("active opportunity limit");
     expect(matching).toContain("bestCoverageMatch");
-    expect(matching).toContain("matches.slice(0, options.limit)");
+    expect(matching).toContain("selectAdaptiveSupplierMatches(evaluations, options.limit ?? 5)");
+    expect(matching).toContain("Math.min(5, limit)");
     expect(coverageRoute).toContain('action: "COVERAGE.CREATED"');
   });
 
@@ -376,10 +380,11 @@ describe("security foundation static controls", () => {
     const migration = read("supabase/migrations/20260805130054_whatsapp_auto_distribution.sql");
     expect(processor).toContain("evaluateSupplierMatches(");
     expect(processor).toContain("Math.min(distributionLimit, matchingConfiguration?.maximumSuppliersPerRequest ?? 5, 5)");
-    expect(processor).toContain("supplierMatchDecision.upsert");
+    expect(processor).toContain("recordMatchingEvaluation(tx");
+    expect(read("lib/matching/distribution.ts")).toContain("supplierMatchDecision.upsert");
     expect(processor).toContain('action: "WHATSAPP.REQUEST_AUTO_ASSIGNED"');
     expect(processor).toContain("automaticAssignmentCount");
-    expect(processor).toContain("awaiting an eligible supplier match");
+    expect(processor).toContain("Bridge AI is continuing to search");
     expect(migration).toContain("enforce_whatsapp_attachment_quote_consistency");
     expect(migration).toContain('"whatsappMessageId" IS NOT NULL');
     expect(migration).toContain('"quoteRequestId"');

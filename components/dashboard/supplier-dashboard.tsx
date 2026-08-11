@@ -75,6 +75,18 @@ export function SupplierDashboard({ data, demo = false, onboarding, supplierStat
           </div>
 
           <aside className="dashboard-rail">
+            {data.opportunityAccess ? <section className="panel subscription-card">
+              <p className="eyebrow">Opportunity access</p>
+              <h3>{data.opportunityAccess.currentActive} active of {data.opportunityAccess.normalActiveLimit || "—"} normal plan places</h3>
+              <p>Bridge AI adapts distribution to market supply. In a sparse market, suitable suppliers may receive a temporary soft-cap invitation so a buyer is not left without a quote.</p>
+              <div className="performance-list">
+                <div><span>Invitations in 30 days</span><b>{data.opportunityAccess.invitations30Days}</b></div>
+                <div><span>Declared monthly comfort level</span><b>{data.opportunityAccess.declaredMonthlyCapacity ?? "Not set"}</b></div>
+                <div><span>Current capacity</span><b>{data.opportunityAccess.operationalStatus}</b></div>
+              </div>
+              <Link href={demo ? "/register" : "/dashboard/capabilities"} className="text-link">Update capacity <ArrowUpRight size={14}/></Link>
+            </section> : null}
+
             <section className="panel scorecard">
               <div className="panel-heading compact"><div><p className="eyebrow">Last 30 days</p><h2>Performance</h2></div><span className="score-badge">{scoreLabel(data.stats.responseRate)}</span></div>
               <div className="score-ring" style={{ "--score": `${data.stats.responseRate * 3.6}deg` } as React.CSSProperties}><div><b>{data.stats.responseRate}</b><span>/100</span><small>Supplier score</small></div></div>

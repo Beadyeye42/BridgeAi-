@@ -12,7 +12,8 @@ import { runAsDatabaseWorker } from "@/lib/db";
 import { analyzeQuoteAttachment, quoteAttachmentAnalysisSchema, type QuoteAttachmentAnalysis } from "@/lib/ai/attachment-intake";
 import { extractQuoteIntake, quoteDraftSchema, type QuoteDraft } from "@/lib/ai/quote-intake";
 import { lookupPostcode, PostcodeLookupError } from "@/lib/location/postcodes";
-import { evaluateSupplierMatches } from "@/lib/matching/suppliers";
+import { evaluateSupplierMatches, selectAdaptiveSupplierMatches } from "@/lib/matching/suppliers";
+import { lockSupplierAssignmentScope, recordMatchingEvaluation } from "@/lib/matching/distribution";
 import { expireAndReplaceSupplierInvitations } from "@/lib/matching/replacements";
 import { notifySuppliersWithStaleCapacity } from "@/lib/matching/stale-capacity";
 import { runProductionMonitoringSafely } from "@/lib/monitoring/operational-alerts";
@@ -818,8 +819,9 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
     where: { slug: draft.categorySlug ?? "" },
     select: {
       id: true, name: true, active: true,
+      acknowledgementDeadlineHours: true, quotationDeadlineHours: true,
       servesConsumer: true, servesTrade: true, servesBusiness: true,
-      parent: { select: { active: true, servesConsumer: true, servesTrade: true, servesBusiness: true } },
+      parent: { select: { active: true, servesConsumer: true, servesTrade: true, servesBusiness: true, acknowledgementDeadlineHours: true, quotationDeadlineHours: true } },
     },
   }));
   if (!category?.active || !category.parent?.active || !draftIsComplete(draft)) throw new Error("QUOTE_DRAFT_INCOMPLETE");
@@ -843,7 +845,15 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
       return { request: existing, assignmentCount };
     }
     const matchingConfiguration = await tx.matchingConfiguration.findUnique({ where: { id: "default" } });
-    const configuredResponseHours = matchingConfiguration?.responseDeadlineHours ?? quoteResponseHours;
+    const configuredQuoteHours = category.parent?.quotationDeadlineHours
+      ?? category.quotationDeadlineHours
+      ?? matchingConfiguration?.quotationDeadlineHours
+      ?? matchingConfiguration?.responseDeadlineHours
+      ?? quoteResponseHours;
+    const configuredAcknowledgementHours = category.parent?.acknowledgementDeadlineHours
+      ?? category.acknowledgementDeadlineHours
+      ?? matchingConfiguration?.acknowledgementDeadlineHours
+      ?? configuredQuoteHours;
     const request = await tx.quoteRequest.create({
       data: {
         reference,
@@ -868,7 +878,7 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
         fulfilmentMode: draft.fulfilmentMode ?? (draft.collectionRequired ? "COLLECTION" : "DELIVERY"),
         status: "OPEN",
         distributionLimit,
-        responseDueAt: addSupplierResponseHours(now, configuredResponseHours),
+        responseDueAt: addSupplierResponseHours(now, configuredQuoteHours),
         publishedAt: now,
         items: { create: draft.items.map((item, index) => ({ ...item, displayOrder: index })) },
       },
@@ -893,45 +903,25 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
         longitude: delivery.longitude,
       },
     );
-    const matches = evaluations
-      .filter((evaluation) => evaluation.outcome === "MATCHED")
-      .slice(0, Math.min(distributionLimit, matchingConfiguration?.maximumSuppliersPerRequest ?? 5, 5));
+    const matches = selectAdaptiveSupplierMatches(
+      evaluations,
+      Math.min(distributionLimit, matchingConfiguration?.maximumSuppliersPerRequest ?? 5, 5),
+    );
     const selectedSupplierIds = new Set(matches.map((match) => match.id));
-    for (const evaluation of evaluations) {
-      await tx.supplierMatchDecision.upsert({
-        where: {
-          quoteRequestId_supplierCompanyId: {
-            quoteRequestId: request.id,
-            supplierCompanyId: evaluation.id,
-          },
-        },
-        create: {
-          quoteRequestId: request.id,
-          supplierCompanyId: evaluation.id,
-          outcome: evaluation.outcome,
-          score: evaluation.score,
-          selected: selectedSupplierIds.has(evaluation.id),
-          reasons: evaluation.reasons,
-          capabilitySnapshot: evaluation.capabilitySnapshot,
-          membershipTier: evaluation.membershipTier,
-          coveragePurpose: evaluation.coveragePurpose,
-          distanceMiles: evaluation.distanceMiles,
-          rankingSnapshot: evaluation.rankingSnapshot,
-        },
-        update: {
-          outcome: evaluation.outcome,
-          score: evaluation.score,
-          selected: selectedSupplierIds.has(evaluation.id),
-          reasons: evaluation.reasons,
-          capabilitySnapshot: evaluation.capabilitySnapshot,
-          membershipTier: evaluation.membershipTier,
-          coveragePurpose: evaluation.coveragePurpose,
-          distanceMiles: evaluation.distanceMiles,
-          rankingSnapshot: evaluation.rankingSnapshot,
-          decidedAt: now,
-        },
-      });
-    }
+    await recordMatchingEvaluation(tx, {
+      quoteRequestId: request.id,
+      categoryId: request.categoryId,
+      deliveryPostcode: request.deliveryPostcode,
+      evaluations,
+      selectedSupplierIds,
+      invitedSupplierCount: matches.length,
+      alertOnZero: matchingConfiguration?.coverageGapAlertsEnabled ?? true,
+    });
+    await lockSupplierAssignmentScope(tx, selectedSupplierIds);
+    const acknowledgementDueAt = addSupplierResponseHours(now, configuredAcknowledgementHours);
+    const invitationExpiresAt = acknowledgementDueAt > request.responseDueAt
+      ? request.responseDueAt
+      : acknowledgementDueAt;
     const assignedSupplierIds: string[] = [];
     for (const [index, match] of matches.entries()) {
       const assignment = await tx.supplierAssignment.create({
@@ -939,9 +929,11 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
           quoteRequestId: request.id,
           supplierCompanyId: match.id,
           status: "PENDING",
-          expiresAt: request.responseDueAt,
+          expiresAt: invitationExpiresAt,
           assignedById: null,
           invitationRank: index + 1,
+          marketDensityMode: match.marketDensityMode,
+          softCapOverride: match.softCapOverride,
         },
       });
       assignedSupplierIds.push(assignment.supplierCompanyId);
@@ -958,7 +950,8 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
           matchingScore: match.score,
           matchingReasons: match.reasons,
           capabilitySnapshot: match.capabilitySnapshot,
-          responseDueAt: request.responseDueAt.toISOString(),
+          acknowledgementDueAt: assignment.expiresAt.toISOString(),
+          quotationDueAt: request.responseDueAt.toISOString(),
         },
       });
     }
@@ -967,7 +960,7 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
         supplierCompanyIds: assignedSupplierIds,
         reference: request.reference,
         title: request.title,
-        responseDueAt: request.responseDueAt,
+        responseDueAt: invitationExpiresAt,
       });
       await tx.quoteRequest.update({
         where: { id: request.id },
@@ -1428,7 +1421,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     }
     const distributionMessage = request.assignmentCount > 0
       ? `It has been sent to ${request.assignmentCount} approved supplier${request.assignmentCount === 1 ? "" : "s"}.`
-      : "It is safely recorded and awaiting an eligible supplier match. A Bridge AI administrator can review the distribution.";
+      : "We haven’t found a currently confirmed supplier match yet. Bridge AI is continuing to search and has recorded the coverage gap automatically.";
     await sendReply(job, refreshed.conversation, personaliseOpening(
       `Perfect — request ${request.request.reference} is live. ${distributionMessage} I’ll bring the available prices and lead times back here while keeping identities private. Reply QUOTES for an update, or NEW QUOTE whenever you have another job to price.`,
       preferredFirstName,
