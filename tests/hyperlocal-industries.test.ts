@@ -40,6 +40,28 @@ describe("Hyperlocal service network", () => {
     expect(duplicates).toEqual([]);
   });
 
+  it("has a natural single-question prompt for every service qualification field", () => {
+    for (const industry of HYPERLOCAL_INDUSTRIES) {
+      for (const service of industry.services) {
+        const draft = {
+          categorySlug: service.slug,
+          title: service.name,
+          summary: `Customer needs ${service.name.toLocaleLowerCase("en-GB")}.`,
+          items: [{ description: service.name }],
+        };
+        const decision = hyperlocalServiceIntakeDecision(draft, [{
+          direction: "INBOUND",
+          text: `I need ${service.name.toLocaleLowerCase("en-GB")}.`,
+        }]);
+        if (decision.shouldAsk) {
+          expect(decision.prompt, service.slug).toBeTruthy();
+          expect(decision.prompt?.match(/\?/g)?.length ?? 0, service.slug).toBeLessThanOrEqual(1);
+          expect(decision.prompt, service.slug).not.toContain("should the specialist allow for");
+        }
+      }
+    }
+  });
+
   it.each([
     ["I am locked out of my house", "emergency-locksmith"],
     ["My boiler has stopped and there is no hot water", "boiler-repair"],
@@ -57,18 +79,42 @@ describe("Hyperlocal service network", () => {
     expect(recogniseCatalogueProduct(message, categories)?.categorySlug).toBe(slug);
   });
 
-  it("asks one service-specific question and does not repeat it", () => {
+  it("asks one natural service-specific question at a time and progresses", () => {
     const draft = { categorySlug: "boiler-repair", title: "Boiler stopped", summary: "No heating", items: [{ description: "Boiler repair" }] };
     const first = hyperlocalServiceIntakeDecision(draft, [{ direction: "INBOUND", text: "My boiler stopped today" }]);
     expect(first.shouldAsk).toBe(true);
-    expect(first.prompt).toContain("right local specialist");
+    expect(first.nextField).toBe("boiler_make_model");
+    expect(first.prompt).toBe("I can help with that. What is the boiler make and model? A photo of the front and display is fine.");
     expect(first.prompt).not.toContain("industry");
     const later = hyperlocalServiceIntakeDecision(draft, [
       { direction: "INBOUND", text: "My boiler stopped today" },
       { direction: "OUTBOUND", text: first.prompt! },
       { direction: "INBOUND", text: "Worcester Greenstar, error EA" },
     ]);
-    expect(later.shouldAsk).toBe(false);
+    expect(later.shouldAsk).toBe(true);
+    expect(later.nextField).toBe("hot_water_status");
+    expect(later.prompt).toBe("Thanks — Do you have any hot water at the moment?");
+    expect(later.prompt).not.toBe(first.prompt);
+  });
+
+  it.each([
+    ["mobile-tyre-fitting", "I have a flat tyre on car AB12 CDE", "tyre_size", "tyre size"],
+    ["emergency-plumbing", "A pipe has burst in my house", "water_isolated", "water off"],
+    ["domestic-cleaning", "I need a cleaner for my three bedroom house", "bathrooms", "bathrooms"],
+    ["garden-clearance", "Please clear my large overgrown garden", "waste_removal", "garden waste"],
+    ["dishwasher-repair", "My Bosch dishwasher shows E15 and is leaking", "model", "brand and model"],
+    ["emergency-locksmith", "I am locked out of my front door", "authority_to_access", "authorised to access"],
+  ])("collects the next price-critical detail for %s", (slug, message, expectedField, expectedWords) => {
+    const decision = hyperlocalServiceIntakeDecision({
+      categorySlug: slug,
+      title: message,
+      summary: message,
+      items: [{ description: message }],
+    }, [{ direction: "INBOUND", text: message }]);
+    expect(decision.isHyperlocalService).toBe(true);
+    expect(decision.nextField).toBe(expectedField);
+    expect(decision.prompt?.toLocaleLowerCase("en-GB")).toContain(expectedWords);
+    expect(decision.prompt?.match(/\?/g)).toHaveLength(1);
   });
 
   it("classifies urgency and repeat work deterministically", () => {

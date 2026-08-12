@@ -139,6 +139,7 @@ export type TransportIntakeDecision = {
 export type HyperlocalServiceIntakeDecision = {
   isHyperlocalService: boolean;
   serviceSlug: string | null;
+  nextField: string | null;
   prompt: string | null;
   shouldAsk: boolean;
 };
@@ -146,25 +147,24 @@ export type HyperlocalServiceIntakeDecision = {
 const genericHyperlocalFields = new Set([
   "postcode",
   "current_location",
-  "collection_postcode",
-  "delivery_postcode",
   "required_date",
   "urgency",
   "preferred_time",
   "photos",
 ]);
 
-function humaniseField(value: string) {
-  return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
 function fieldIsKnown(field: string, evidence: string) {
+  if (["recovery_destination", "collection_postcode", "delivery_postcode"].includes(field)) {
+    const postcodes = new Set(Array.from(evidence.matchAll(ukPostcodePattern), (match) => (
+      match[0].replace(/\s+/g, "").toUpperCase()
+    )));
+    return postcodes.size >= 2;
+  }
   const patterns: Record<string, RegExp> = {
     vehicle_registration: /\b[A-Z]{2}\d{2}\s?[A-Z]{3}\b/i,
     make_model: /\b(?:make|model|ford|vauxhall|volkswagen|vw|audi|bmw|mercedes|toyota|nissan|kia|hyundai|renault|peugeot|citro[eë]n|skoda|seat)\b/i,
     driveable: /\b(?:driveable|drivable|not driveable|won['’]?t drive|cannot drive|can drive)\b/i,
     tyre_size: /\b\d{3}\/\d{2}\s?R\d{2}\b/i,
-    authority_to_access: /\b(?:my home|my house|my property|owner|tenant|landlord|authori[sz]ed|permission)\b/i,
     property_type: /\b(?:house|flat|apartment|office|shop|warehouse|commercial|bungalow|detached|semi[- ]detached|terrace)\b/i,
     manufacturer: /\b(?:manufacturer|brand|bosch|beko|hotpoint|indesit|samsung|lg|aeg|miele|neff|siemens|whirlpool)\b/i,
     model: /\b(?:model|model number|rating plate)\b/i,
@@ -172,10 +172,155 @@ function fieldIsKnown(field: string, evidence: string) {
     recurrence: /\b(?:one[- ]off|weekly|fortnightly|monthly|regular)\b/i,
     quantity: /\b\d+\s*(?:items?|units?|tyres?|wheels?)\b/i,
     photos: /\[Customer (?:attachment|uploaded)\b/i,
+    active_leak: /\b(?:leak(?:ing)?|burst|water (?:coming|pouring|dripping)|flood(?:ing|ed)?)\b/i,
+    water_isolated: /\b(?:water (?:is )?(?:off|isolated)|stopcock|stop tap|cannot isolate|can['’]?t isolate)\b/i,
+    active_overflow: /\b(?:overflow(?:ing)?|sewage|backing up|not overflowing)\b/i,
+    heating_status: /\b(?:no heating|heating (?:is )?(?:working|on|off)|radiators? (?:are )?(?:hot|cold))\b/i,
+    hot_water_status: /\b(?:no hot water|hot water (?:is )?(?:working|on|off)|water (?:is )?(?:hot|cold))\b/i,
+    boiler_make_model: /\b(?:worcester|vaillant|ideal|baxi|viessmann|intergas|glow[- ]worm|alpha)(?:\s+[A-Z0-9-]+)?\b/i,
+    appliance_type: /\b(?:washing machine|washer|tumble dryer|dryer|dishwasher|oven|cooker|fridge|freezer|hob|appliance)\b/i,
+    integrated: /\b(?:integrated|built[- ]in|freestanding|free[- ]standing)\b/i,
+    leaking: /\b(?:leak(?:ing)?|not leaking|dry underneath)\b/i,
+    has_power: /\b(?:has power|power (?:is )?(?:on|off)|no power|lights? (?:are )?(?:on|off)|completely dead)\b/i,
+    fuel_type: /\b(?:gas|electric|dual fuel|oil|lpg)\b/i,
+    lock_type: /\b(?:euro cylinder|mortice|night latch|rim lock|multipoint|multi[- ]point|deadlock|padlock|smart lock|car lock)\b/i,
+    door_type: /\b(?:front door|back door|patio door|french door|composite door|uPVC door|timber door|aluminium door|garage door|communal door|vehicle|car|van)\b/i,
+    door_or_window_type: /\b(?:front door|back door|patio door|french door|composite door|uPVC door|timber door|aluminium door|window|vehicle|car|van)\b/i,
+    authority_to_access: /\b(?:I (?:own|rent|occupy)|owner|tenant|landlord|authori[sz]ed|have permission|permission from)\b/i,
+    dimensions: /\b\d+(?:\.\d+)?\s*(?:mm|cm|m|ft|feet|inches?)?\s*(?:x|×|by)\s*\d+(?:\.\d+)?\s*(?:mm|cm|m|ft|feet|inches?)?\b/i,
+    floor_area: /\b\d+(?:\.\d+)?\s*(?:m2|m²|square metres?|sq\.?\s*(?:m|ft)|square feet)\b/i,
+    garden_size: /\b(?:small|medium|large)(?:\s+\w+){0,2}\s+garden\b|\b\d+(?:\.\d+)?\s*(?:m2|m²|square metres?|sq\.?\s*(?:m|ft)|acres?)\b/i,
+    bedrooms: /\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:bed|bedroom)s?\b/i,
+    bathrooms: /\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:bath|bathroom)s?\b/i,
+    preferred_time: /\b(?:morning|afternoon|evening|before \d|after \d|between \d|am|pm)\b/i,
+    warning_lights: /\b(?:warning light|dashboard (?:light|message)|engine light|check engine|ABS|airbag|battery light|oil light)\b/i,
+    damage_location: /\b(?:front|rear|back|side|left|right|near side|off side|bumper|door|wing|quarter|bonnet|boot|wheel|windscreen)\b/i,
+    damage_type: /\b(?:dent(?:ed)?|scratch(?:ed)?|scuff(?:ed)?|crack(?:ed)?|chip(?:ped)?|broken|smashed|damage(?:d)?)\b/i,
+    wheel_size: /\b(?:wheel|alloy)s?\s*(?:size)?\s*\d{2}|\b\d{2}\s*(?:inch|in|\")\s*(?:wheel|alloy)s?\b/i,
+    blockage_location: /\b(?:sink|toilet|bath|shower|gully|manhole|outside drain|soil pipe|waste pipe)\b/i,
+    boiler_type: /\b(?:combi|system boiler|heat[- ]only|regular boiler|gas boiler|oil boiler|electric boiler)\b/i,
+    system_type: /\b(?:central heating|underfloor heating|radiator|thermostat|wet system|electric system)\b/i,
+    cylinder_type: /\b(?:vented|unvented|direct|indirect|thermal store|hot water cylinder)\b/i,
+    site_type: /\b(?:domestic|residential|commercial|industrial|office|shop|warehouse|school|hotel|restaurant|short[- ]let|airbnb)\b/i,
+    area_or_length: /\b\d+(?:\.\d+)?\s*(?:m2|m²|square metres?|sq\.?\s*(?:m|ft)|metres?|feet|ft)\b/i,
+    quantity_or_area: /\b\d+\s*(?:rooms?|windows?|ovens?|carpets?|sofas?|chairs?|items?)\b|\b\d+(?:\.\d+)?\s*(?:m2|m²|sq\.?\s*(?:m|ft))\b/i,
+    waste_type: /\b(?:household|garden|green|builders?|construction|wood|timber|soil|rubble|furniture|office|mixed)\s+waste\b/i,
+    waste_volume: /\b(?:\d+\s*(?:bags?|items?|rooms?)|car load|van load|skip load|room contents?|house contents?)\b/i,
+    waste_removal: /\b(?:take|remove|clear|dispose|leave)\s+(?:the\s+)?(?:waste|rubbish|cuttings)|\bwaste removal\b/i,
+    tree_count: /\b\d+\s*(?:trees?|hedges?)\b/i,
+    approximate_height: /\b\d+(?:\.\d+)?\s*(?:m|metres?|ft|feet)\s*(?:high|tall)?\b/i,
+    installation_or_repair: /\b(?:install(?:ation)?|fit(?:ting)?|new|repair|replace(?:ment)?|fix)\b/i,
+    existing_system: /\b(?:existing|currently|already|old)\s+(?:fence|gate|patio|drive|deck|turf|lawn|system|surface)\b/i,
+    existing_connections: /\b(?:existing|current)\s+(?:connection|supply|pipe|wiring|socket|drain|vent)\b/i,
+    ground_condition: /\b(?:soil|clay|concrete|tarmac|gravel|grass|lawn|paving|sloped|level|uneven)\b/i,
+    materials_by: /\b(?:supply (?:the )?materials?|materials? supplied|labour only|I have (?:the )?materials?)\b/i,
+    completion_stage: /\b(?:installed|connected|fitted|commissioned|part[- ]finished|unfinished|complete)\b/i,
+    doors_or_zones: /\b\d+\s*(?:doors?|windows?|zones?)\b/i,
+    cameras_doors_zones: /\b\d+\s*(?:cameras?|doors?|zones?)\b/i,
+    network_available: /\b(?:wi[- ]?fi|wired network|ethernet|no network|internet)\b/i,
+    phone_availability: /\b(?:someone|I|tenant|occupier|reception)\s+(?:will be|is|am)\s+(?:there|available)|\bno one (?:will be|is) available\b/i,
   };
   const direct = patterns[field];
   if (direct?.test(evidence)) return true;
+  if (["description", "symptoms", "fault", "fault_or_scope", "scope", "service_requested"].includes(field)) {
+    return evidence.trim().split(/\s+/).length >= 4;
+  }
   return new RegExp(`\\b${field.replaceAll("_", "[ -]?")}\\b`, "i").test(evidence);
+}
+
+const hyperlocalFieldQuestions: Record<string, string> = {
+  vehicle_registration: "What is the vehicle registration?",
+  make_model: "What is the vehicle make and model?",
+  symptoms: "What is the vehicle doing, and are any warning lights showing?",
+  warning_lights: "Which warning light or dashboard message can you see?",
+  driveable: "Can the vehicle still be driven safely, or is it immobile?",
+  tyre_size: "What tyre size is printed on the sidewall—for example 205/55 R16?",
+  quantity: "How many items need attention?",
+  damage_location: "Where on the vehicle is the damage?",
+  damage_type: "Is it chipped, cracked or otherwise damaged?",
+  wheel_size: "What wheel size is it, and how many wheels need work?",
+  current_location: "What is the vehicle’s current postcode or precise location?",
+  recovery_destination: "Where should the vehicle be recovered to? Please send the destination postcode.",
+  service_requested: "What work would you like the specialist to carry out?",
+  active_leak: "Is water still leaking now?",
+  water_isolated: "Have you safely turned the water off, or is it still running?",
+  property_type: "Is this a house, flat or commercial property?",
+  blockage_location: "What is blocked—such as a sink, toilet or outside drain?",
+  active_overflow: "Is it currently overflowing or backing up?",
+  boiler_make_model: "What is the boiler make and model? A photo of the front and display is fine.",
+  error_code: "Is there an error code or message on the display?",
+  heating_status: "Do you have any heating at the moment?",
+  hot_water_status: "Do you have any hot water at the moment?",
+  boiler_type: "What type of boiler is it—combi, system or heat-only—and what fuel does it use?",
+  bedrooms: "How many bedrooms does the property have?",
+  bathrooms: "How many bathrooms does the property have?",
+  system_type: "What type of system is involved?",
+  fault_or_scope: "What is going wrong, or what work would you like done?",
+  cylinder_type: "What type and approximate size of hot-water cylinder is it?",
+  site_type: "What type of site or property is the work at?",
+  scope: "What work should the supplier include in the quote?",
+  access: "Is there anything suppliers need to know about access, stairs, parking or entry?",
+  system_make_model: "What is the system make and model? A photo of the label is fine.",
+  description: "Please describe the problem or work needed in one sentence.",
+  recurrence: "Is this a one-off job or do you need a regular service?",
+  floor_area: "What is the approximate floor area to be covered?",
+  quantity_or_area: "Roughly how many items or what area needs cleaning?",
+  area_or_length: "What approximate area or length needs work?",
+  waste_type: "What type of waste or items need clearing?",
+  waste_volume: "Roughly how much is there—for example bags, a van load or room contents?",
+  garden_size: "Roughly how large is the garden or outdoor area?",
+  area: "What approximate area needs work?",
+  waste_removal: "Should the quote include taking the garden waste away?",
+  tree_count: "How many trees need work?",
+  approximate_height: "Roughly how tall are they? A photo from a safe distance is useful.",
+  installation_or_repair: "Is this a new installation or a repair to something existing?",
+  dimensions: "What are the approximate width and height? A photo with measurements is ideal.",
+  existing_system: "What existing system or surface is already there?",
+  existing_connections: "Are the required power, water, drainage or ventilation connections already in place?",
+  ground_condition: "What is the current ground or base like?",
+  materials_by: "Should the supplier provide the materials, or will you supply them?",
+  appliance_type: "Which appliance needs attention?",
+  manufacturer: "What is the appliance brand and model number? A photo of the rating plate is perfect.",
+  model: "What is the appliance brand and model number? A photo of the rating plate is perfect.",
+  fault: "What is the appliance doing—or not doing?",
+  integrated: "Is the appliance integrated/built-in or freestanding?",
+  leaking: "Is it currently leaking?",
+  has_power: "Does the appliance have power or show any lights?",
+  fuel_type: "Is it gas, electric or dual fuel?",
+  completion_stage: "Is the appliance installed already, and has the fitting been completed?",
+  lock_type: "What type of lock is it, if you know? A clear photo is fine.",
+  door_type: "What are you locked out of—for example a front door, commercial door or vehicle?",
+  door_or_window_type: "Is this for a door, window, vehicle or something else?",
+  authority_to_access: "Are you the owner, occupier or otherwise authorised to access the property or vehicle?",
+  doors_or_zones: "How many doors, windows or alarm zones need work?",
+  cameras_doors_zones: "How many cameras, doors or alarm zones should the quote cover?",
+  network_available: "Is Wi-Fi or a wired network available where the system will be installed?",
+  phone_availability: "Will someone with the entry phone be available during the visit?",
+  collection_postcode: "What is the collection postcode?",
+  delivery_postcode: "What is the delivery postcode?",
+};
+
+function questionForHyperlocalField(field: string) {
+  return hyperlocalFieldQuestions[field] ?? `What ${field.replaceAll("_", " ")} should the specialist allow for?`;
+}
+
+function fieldAnsweredAfterQuestion(field: string, messages: IntakeConversationMessage[]) {
+  const question = questionForHyperlocalField(field).toLocaleLowerCase("en-GB");
+  const questionIndex = messages.findLastIndex((message) => (
+    message.direction === "OUTBOUND"
+    && message.text.toLocaleLowerCase("en-GB").includes(question)
+  ));
+  return questionIndex >= 0 && messages.slice(questionIndex + 1).some((message) => (
+    message.direction === "INBOUND" && message.text.trim().length > 0
+  ));
+}
+
+function questionAlreadyAsked(field: string, messages: IntakeConversationMessage[]) {
+  const question = questionForHyperlocalField(field).toLocaleLowerCase("en-GB");
+  return messages.some((message) => (
+    message.direction === "OUTBOUND"
+    && message.text.toLocaleLowerCase("en-GB").includes(question)
+  ));
 }
 
 export function hyperlocalServiceIntakeDecision(
@@ -183,7 +328,7 @@ export function hyperlocalServiceIntakeDecision(
   messages: IntakeConversationMessage[],
 ): HyperlocalServiceIntakeDecision {
   const entry = hyperlocalService(draft.categorySlug);
-  if (!entry) return { isHyperlocalService: false, serviceSlug: null, prompt: null, shouldAsk: false };
+  if (!entry) return { isHyperlocalService: false, serviceSlug: null, nextField: null, prompt: null, shouldAsk: false };
 
   const inbound = messages.filter((message) => message.direction === "INBOUND").map((message) => message.text).join("\n");
   const evidence = [
@@ -192,27 +337,28 @@ export function hyperlocalServiceIntakeDecision(
     draft.summary,
     ...draft.items.flatMap((item) => [item.description, item.specification]),
   ].filter((value): value is string => Boolean(value)).join("\n");
-  const alreadyAsked = messages.some((message) => message.direction === "OUTBOUND"
-    && message.text.includes("To help the right local specialist quote accurately"));
-  if (alreadyAsked) {
-    return { isHyperlocalService: true, serviceSlug: entry.service.slug, prompt: null, shouldAsk: false };
-  }
-
   const missing = entry.service.requiredInformation
     .filter((field) => !genericHyperlocalFields.has(field))
     .filter((field) => !fieldIsKnown(field, evidence))
-    .slice(0, 2);
+    .filter((field) => !questionAlreadyAsked(field, messages) || !fieldAnsweredAfterQuestion(field, messages));
   const hasAttachment = /\[Customer (?:attachment|uploaded)\b/i.test(inbound);
-  const detailRequest = missing.length
-    ? `Please tell me ${missing.map((field) => humaniseField(field).toLocaleLowerCase("en-GB")).join(" and ")}.`
+  const nextField = (missing.includes("authority_to_access") ? "authority_to_access" : missing[0]) ?? null;
+  const detailRequest = nextField ? questionForHyperlocalField(nextField) : null;
+  const photoAlreadyRequested = Boolean(entry.service.photoPrompt && messages.some((message) => (
+    message.direction === "OUTBOUND" && message.text.includes(entry.service.photoPrompt!)
+  )));
+  const photoRequest = !detailRequest && !hasAttachment && !photoAlreadyRequested && entry.service.photoPrompt
+    ? `${entry.service.photoPrompt} If you cannot send one, just say NO PHOTO and I’ll continue from your description.`
     : null;
-  const photoRequest = !hasAttachment && entry.service.photoPrompt ? entry.service.photoPrompt : null;
-  const prompt = ["To help the right local specialist quote accurately:", detailRequest, photoRequest]
-    .filter((value): value is string => Boolean(value))
-    .join(" ");
+  const hasEarlierServiceQuestion = messages.some((message) => message.direction === "OUTBOUND"
+    && Object.values(hyperlocalFieldQuestions).some((question) => message.text.includes(question)));
+  const prompt = detailRequest
+    ? `${hasEarlierServiceQuestion ? "Thanks —" : "I can help with that."} ${detailRequest}`
+    : photoRequest;
   return {
     isHyperlocalService: true,
     serviceSlug: entry.service.slug,
+    nextField,
     prompt: detailRequest || photoRequest ? prompt : null,
     shouldAsk: Boolean(detailRequest || photoRequest),
   };
