@@ -660,8 +660,42 @@ BEGIN
     id,"quoteRequestId","supplierCompanyId","assignmentId",status,price,currency,"leadTimeDays","submittedAt","createdAt","updatedAt"
   ) VALUES ('security_quote','security_request','security_company_a','security_assignment','SUBMITTED',125,'GBP',7,now(),now(),now());
   UPDATE bridge_ai."SupplierAssignment" SET status='QUOTED' WHERE id='security_assignment';
+  INSERT INTO bridge_ai."QuotationVersion" (
+    id,"quotationId","versionNumber",price,currency,"leadTimeDays","submittedById","submittedAt"
+  ) VALUES ('security_quote_version','security_quote',1,125,'GBP',7,user_a,now());
+  INSERT INTO bridge_ai."QuoteConversation" (
+    id,"quoteRequestId","quotationId","supplierCompanyId","anonymousLabel",status,"questionResponseDueAt","lastMessageAt","createdAt","updatedAt"
+  ) VALUES (
+    'security_quote_conversation','security_request','security_quote','security_company_a','A','OPEN',now()+interval '4 hours',now(),now(),now()
+  );
+  INSERT INTO bridge_ai."QuoteMessage" (
+    id,"quoteConversationId",sender,"contentEncrypted",status,"idempotencyKey","questionDueAt","deliveredAt","createdAt"
+  ) VALUES (
+    'security_buyer_question','security_quote_conversation','BUYER',decode(repeat('ab',40),'hex'),'DELIVERED',
+    'security-buyer-question',now()+interval '4 hours',now(),now()
+  );
   EXECUTE 'SET LOCAL ROLE authenticated';
   PERFORM set_config('request.jwt.claim.sub', user_a::text, true);
+  SELECT count(*) INTO visible_count FROM bridge_ai."QuotationVersion" WHERE id='security_quote_version';
+  IF visible_count <> 1 THEN RAISE EXCEPTION 'Supplier A could not read its immutable quote version'; END IF;
+  SELECT count(*) INTO visible_count FROM bridge_ai."QuoteConversation" WHERE id='security_quote_conversation';
+  IF visible_count <> 1 THEN RAISE EXCEPTION 'Supplier A could not read its private quote conversation'; END IF;
+  SELECT count(*) INTO visible_count FROM bridge_ai."QuoteMessage" WHERE id='security_buyer_question';
+  IF visible_count <> 1 THEN RAISE EXCEPTION 'Supplier A could not read its buyer question'; END IF;
+  INSERT INTO bridge_ai."QuoteMessage" (
+    id,"quoteConversationId",sender,"senderUserId","contentEncrypted",status,"idempotencyKey","replyToId","createdAt"
+  ) VALUES (
+    'security_supplier_answer','security_quote_conversation','SUPPLIER',user_a,decode(repeat('cd',40),'hex'),'PENDING',
+    'security-supplier-answer','security_buyer_question',now()
+  );
+  UPDATE bridge_ai."QuoteConversation" SET "lastMessageAt"=now() WHERE id='security_quote_conversation';
+  GET DIAGNOSTICS affected_count = ROW_COUNT;
+  IF affected_count <> 1 THEN RAISE EXCEPTION 'Supplier A could not update its conversation activity timestamp'; END IF;
+  BEGIN
+    UPDATE bridge_ai."QuoteConversation" SET status='SELECTED' WHERE id='security_quote_conversation';
+    RAISE EXCEPTION 'Supplier changed its protected conversation status';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
   BEGIN
     UPDATE bridge_ai."SupplierQuotation" SET status='ACCEPTED' WHERE id='security_quote';
     RAISE EXCEPTION 'Supplier marked its own quote as accepted';
@@ -675,6 +709,22 @@ BEGIN
   EXCEPTION WHEN insufficient_privilege OR check_violation THEN NULL;
   END;
   PERFORM set_config('request.jwt.claim.sub', user_b::text, true);
+  SELECT count(*) INTO visible_count FROM bridge_ai."QuotationVersion" WHERE id='security_quote_version';
+  IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier B read Supplier A quote version'; END IF;
+  SELECT count(*) INTO visible_count FROM bridge_ai."QuoteConversation" WHERE id='security_quote_conversation';
+  IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier B read Supplier A quote conversation'; END IF;
+  SELECT count(*) INTO visible_count FROM bridge_ai."QuoteMessage" WHERE id IN ('security_buyer_question','security_supplier_answer');
+  IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier B read Supplier A quote messages'; END IF;
+  BEGIN
+    INSERT INTO bridge_ai."QuoteMessage" (
+      id,"quoteConversationId",sender,"senderUserId","contentEncrypted",status,"idempotencyKey","replyToId","createdAt"
+    ) VALUES (
+      'forbidden_cross_company_answer','security_quote_conversation','SUPPLIER',user_b,decode(repeat('ef',40),'hex'),'PENDING',
+      'forbidden-cross-company-answer','security_buyer_question',now()
+    );
+    RAISE EXCEPTION 'Supplier B answered Supplier A buyer question';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
   EXECUTE 'RESET ROLE';
   PERFORM set_config('request.jwt.claim.sub', '', true);
 
@@ -798,6 +848,25 @@ BEGIN
       AND "entityType"='SecurityConfiguration'
   ) THEN
     RAISE EXCEPTION 'supplier email returning-policy security audit is missing';
+  END IF;
+  SELECT count(*) INTO visible_count
+  FROM pg_class relation
+  JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = 'bridge_ai'
+    AND relation.relname IN (
+      'QuotationVersion','QuoteConversation','QuoteMessage','QuoteMessageModerationEvent','QuoteSelectionEvent'
+    )
+    AND relation.relrowsecurity
+    AND relation.relforcerowsecurity;
+  IF visible_count <> 5 THEN
+    RAISE EXCEPTION 'multi-supplier quote conversation tables do not all enforce RLS';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM bridge_ai."AuditLog"
+    WHERE action='SYSTEM.MULTI_SUPPLIER_QUOTE_CONVERSATIONS_ENABLED'
+      AND "entityType"='SecurityConfiguration'
+  ) THEN
+    RAISE EXCEPTION 'multi-supplier quote conversation security audit is missing';
   END IF;
 
   SELECT count(*) INTO visible_count

@@ -11,7 +11,7 @@ type ClaimedNotification = {
   id: string;
   userId: string;
   supplierCompanyId: string | null;
-  type: "NEW_QUOTE_REQUEST" | "QUOTATION_ACCEPTED";
+  type: "NEW_QUOTE_REQUEST" | "QUOTATION_ACCEPTED" | "BUYER_QUESTION";
   title: string;
   body: string;
   actionUrl: string | null;
@@ -29,7 +29,7 @@ async function claimSupplierEmailBatch(limit: number, now = new Date()): Promise
     await tx.notification.updateMany({
       where: {
         channel: "EMAIL",
-        type: { in: ["NEW_QUOTE_REQUEST", "QUOTATION_ACCEPTED"] },
+        type: { in: ["NEW_QUOTE_REQUEST", "QUOTATION_ACCEPTED", "BUYER_QUESTION"] },
         sentAt: null,
         lockedAt: { lt: staleLockBefore },
         deliveryAttempts: { lt: MAX_DELIVERY_ATTEMPTS },
@@ -41,7 +41,7 @@ async function claimSupplierEmailBatch(limit: number, now = new Date()): Promise
       FROM bridge_ai."Notification" notification
       JOIN bridge_ai.portal_profiles profile ON profile.id = notification."userId"
       WHERE notification.channel = 'EMAIL'
-        AND notification.type IN ('NEW_QUOTE_REQUEST', 'QUOTATION_ACCEPTED')
+        AND notification.type IN ('NEW_QUOTE_REQUEST', 'QUOTATION_ACCEPTED', 'BUYER_QUESTION')
         AND notification."sentAt" IS NULL
         AND notification."availableAt" <= ${now}
         AND notification."deliveryAttempts" < ${MAX_DELIVERY_ATTEMPTS}
@@ -72,16 +72,18 @@ async function claimSupplierEmailBatch(limit: number, now = new Date()): Promise
       },
       orderBy: { createdAt: "asc" },
     });
-    return notifications.flatMap((notification) =>
-      notification.type === "NEW_QUOTE_REQUEST" || notification.type === "QUOTATION_ACCEPTED"
-        ? [{ ...notification, type: notification.type }]
-        : [],
-    );
+    return notifications.flatMap((notification): ClaimedNotification[] => {
+      if (notification.type !== "NEW_QUOTE_REQUEST"
+        && notification.type !== "QUOTATION_ACCEPTED"
+        && notification.type !== "BUYER_QUESTION") return [];
+      return [{ ...notification, type: notification.type }];
+    });
   });
 }
 
 async function markSupplierEmailSent(notification: ClaimedNotification, providerMessageId: string | null) {
   const isOpportunity = notification.type === "NEW_QUOTE_REQUEST";
+  const isQuestion = notification.type === "BUYER_QUESTION";
   await runAsDatabaseWorker("supplier_email", async (tx) => {
     await tx.notification.update({
       where: { id: notification.id },
@@ -89,10 +91,10 @@ async function markSupplierEmailSent(notification: ClaimedNotification, provider
     });
     await tx.auditLog.create({ data: {
       supplierCompanyId: notification.supplierCompanyId,
-      action: isOpportunity ? "NOTIFICATION.SUPPLIER_OPPORTUNITY_EMAIL_SENT" : "NOTIFICATION.SUPPLIER_WINNER_EMAIL_SENT",
+      action: isOpportunity ? "NOTIFICATION.SUPPLIER_OPPORTUNITY_EMAIL_SENT" : isQuestion ? "NOTIFICATION.BUYER_QUESTION_EMAIL_SENT" : "NOTIFICATION.SUPPLIER_WINNER_EMAIL_SENT",
       entityType: "Notification",
       entityId: notification.id,
-      summary: isOpportunity ? "Supplier opportunity email delivered through Resend" : "Supplier winner email delivered through Resend",
+      summary: isOpportunity ? "Supplier opportunity email delivered through Resend" : isQuestion ? "Private buyer-question email delivered through Resend" : "Supplier winner email delivered through Resend",
       metadata: { notificationType: notification.type, providerMessageId, deliveryAttempts: notification.deliveryAttempts },
     } });
   });
@@ -101,7 +103,7 @@ async function markSupplierEmailSent(notification: ClaimedNotification, provider
 async function markSupplierEmailFailed(notification: ClaimedNotification, error: unknown) {
   const message = error instanceof Error ? error.message.slice(0, 500) : "Unknown supplier email delivery failure";
   const terminal = notification.deliveryAttempts >= MAX_DELIVERY_ATTEMPTS;
-  const subject = notification.type === "NEW_QUOTE_REQUEST" ? "SUPPLIER_OPPORTUNITY_EMAIL" : "SUPPLIER_WINNER_EMAIL";
+  const subject = notification.type === "NEW_QUOTE_REQUEST" ? "SUPPLIER_OPPORTUNITY_EMAIL" : notification.type === "BUYER_QUESTION" ? "BUYER_QUESTION_EMAIL" : "SUPPLIER_WINNER_EMAIL";
   const retryDelayMs = Math.min(6 * 60 * 60_000, Math.max(60_000, 2 ** notification.deliveryAttempts * 60_000));
   await runAsDatabaseWorker("supplier_email", async (tx) => {
     await tx.notification.update({
@@ -150,8 +152,10 @@ export async function processSupplierEmails(input: { limit?: number } = {}) {
         body: notification.body,
         portalUrl: new URL(relativeActionUrl, portalOrigin()).toString(),
       }, notification.type === "QUOTATION_ACCEPTED"
-        ? `bridge-ai-supplier-winner-${notification.id}`
-        : `bridge-ai-supplier-opportunity-${notification.id}`);
+        ? `bridge-it-supplier-selected-${notification.id}`
+        : notification.type === "BUYER_QUESTION"
+          ? `bridge-it-buyer-question-${notification.id}`
+          : `bridge-it-supplier-opportunity-${notification.id}`);
       await markSupplierEmailSent(notification, result.providerEmailId);
       sent += 1;
     } catch (error) {

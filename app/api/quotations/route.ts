@@ -20,7 +20,11 @@ export async function POST(request: Request) {
   if (parsed.data.validUntil && parsed.data.validUntil <= new Date()) return NextResponse.json({ error: "Quotation validity must end in the future" }, { status: 400 });
 
   const assignment = await prisma.supplierAssignment.findFirst({
-    where: { id: parsed.data.assignmentId, supplierCompanyId: companyId, status: "ACCEPTED", expiresAt: { gt: new Date() } },
+    where: {
+      id: parsed.data.assignmentId,
+      supplierCompanyId: companyId,
+      OR: [{ status: "ACCEPTED", expiresAt: { gt: new Date() } }, { status: "QUOTED" }],
+    },
     include: { quoteRequest: { select: { status: true, responseDueAt: true, deliveryLatitude: true, deliveryLongitude: true, fulfilmentMode: true } } },
   });
   if (!assignment) return NextResponse.json({ error: "Accepted request not found or response window has closed" }, { status: 404 });
@@ -57,7 +61,9 @@ export async function POST(request: Request) {
         where: { id: assignment.id, supplierCompanyId: companyId },
         include: { quoteRequest: { select: { status: true, responseDueAt: true } } },
       });
-      if (!currentAssignment || currentAssignment.status !== "ACCEPTED" || currentAssignment.expiresAt <= submittedAt) {
+      if (!currentAssignment
+        || !["ACCEPTED", "QUOTED"].includes(currentAssignment.status)
+        || (currentAssignment.status === "ACCEPTED" && currentAssignment.expiresAt <= submittedAt)) {
         throw new Error("ASSIGNMENT_CLOSED");
       }
       if (!["OPEN", "MATCHING", "QUOTED"].includes(currentAssignment.quoteRequest.status) || currentAssignment.quoteRequest.responseDueAt <= submittedAt) {
@@ -65,11 +71,49 @@ export async function POST(request: Request) {
       }
       const saved = await tx.supplierQuotation.upsert({
         where: { assignmentId: assignment.id },
-        update: { price: parsed.data.price, leadTimeDays: parsed.data.leadTimeDays, validUntil, notes: parsed.data.notes, status: "SUBMITTED", submittedAt },
-        create: { quoteRequestId: assignment.quoteRequestId, supplierCompanyId: companyId, assignmentId: assignment.id, price: parsed.data.price, leadTimeDays: parsed.data.leadTimeDays, validUntil, notes: parsed.data.notes, status: "SUBMITTED", submittedAt, createdAt: submittedAt },
+        update: { price: parsed.data.price, leadTimeDays: parsed.data.leadTimeDays, validUntil, notes: parsed.data.notes, specification: parsed.data.specification, deliveryCost: parsed.data.deliveryCost, collectionAvailable: parsed.data.collectionAvailable, availability: parsed.data.availability, warranty: parsed.data.warranty, paymentTerms: parsed.data.paymentTerms, assumptions: parsed.data.assumptions, exclusions: parsed.data.exclusions, vatIncluded: parsed.data.vatIncluded, status: "SUBMITTED", submittedAt },
+        create: { quoteRequestId: assignment.quoteRequestId, supplierCompanyId: companyId, assignmentId: assignment.id, price: parsed.data.price, leadTimeDays: parsed.data.leadTimeDays, validUntil, notes: parsed.data.notes, specification: parsed.data.specification, deliveryCost: parsed.data.deliveryCost, collectionAvailable: parsed.data.collectionAvailable, availability: parsed.data.availability, warranty: parsed.data.warranty, paymentTerms: parsed.data.paymentTerms, assumptions: parsed.data.assumptions, exclusions: parsed.data.exclusions, vatIncluded: parsed.data.vatIncluded, status: "SUBMITTED", submittedAt, createdAt: submittedAt },
       });
+      await tx.$queryRaw`SELECT id FROM bridge_ai."SupplierQuotation" WHERE id = ${saved.id} FOR UPDATE`;
+      const latestVersion = await tx.quotationVersion.aggregate({
+        where: { quotationId: saved.id },
+        _max: { versionNumber: true },
+      });
+      const versionNumber = (latestVersion._max.versionNumber ?? 0) + 1;
+      await tx.quotationVersion.create({
+        data: {
+          quotationId: saved.id,
+          versionNumber,
+          price: parsed.data.price,
+          leadTimeDays: parsed.data.leadTimeDays,
+          validUntil,
+          notes: parsed.data.notes,
+          specification: parsed.data.specification,
+          deliveryCost: parsed.data.deliveryCost,
+          collectionAvailable: parsed.data.collectionAvailable,
+          availability: parsed.data.availability,
+          warranty: parsed.data.warranty,
+          paymentTerms: parsed.data.paymentTerms,
+          assumptions: parsed.data.assumptions,
+          exclusions: parsed.data.exclusions,
+          vatIncluded: parsed.data.vatIncluded,
+          submittedById: session.userId,
+          submittedAt,
+        },
+      });
+      await tx.supplierQuotation.update({ where: { id: saved.id }, data: { currentVersionNumber: versionNumber } });
+      const existingConversation = await tx.quoteConversation.findUnique({ where: { quotationId: saved.id } });
+      if (!existingConversation) {
+        const usedLabels = await tx.quoteConversation.findMany({
+          where: { quoteRequestId: assignment.quoteRequestId },
+          select: { anonymousLabel: true },
+        });
+        const anonymousLabel = ["A", "B", "C", "D", "E"].find((label) => !usedLabels.some((used) => used.anonymousLabel === label));
+        if (!anonymousLabel) throw new Error("QUOTE_CONVERSATION_LIMIT_REACHED");
+        await tx.quoteConversation.create({ data: { quoteRequestId: assignment.quoteRequestId, quotationId: saved.id, supplierCompanyId: companyId, anonymousLabel } });
+      }
       await tx.supplierAssignment.update({ where: { id: assignment.id }, data: { status: "QUOTED", respondedAt: submittedAt } });
-      await writeAuditLog({ actorUserId: session.userId, supplierCompanyId: companyId, action: "QUOTATION.SUBMITTED", entityType: "SupplierQuotation", entityId: saved.id, summary: "Supplier quotation submitted", metadata: { price: parsed.data.price, leadTimeDays: parsed.data.leadTimeDays, validUntil: validUntil.toISOString() }, request }, tx);
+      await writeAuditLog({ actorUserId: session.userId, supplierCompanyId: companyId, action: versionNumber === 1 ? "QUOTATION.SUBMITTED" : "QUOTATION.REVISED", entityType: "SupplierQuotation", entityId: saved.id, summary: versionNumber === 1 ? "Supplier quotation submitted" : "Supplier quotation revision submitted", metadata: { versionNumber, price: parsed.data.price, leadTimeDays: parsed.data.leadTimeDays, validUntil: validUntil.toISOString() }, request }, tx);
       return saved;
     });
   } catch (error) {

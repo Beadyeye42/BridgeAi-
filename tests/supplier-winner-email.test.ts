@@ -24,9 +24,10 @@ describe("supplier winner email", () => {
   it("uses a durable locked retry queue and a stable provider idempotency key", () => {
     expect(worker).toContain("FOR UPDATE OF notification SKIP LOCKED");
     expect(worker).toContain("MAX_DELIVERY_ATTEMPTS = 5");
-    expect(worker).toContain("bridge-ai-supplier-winner-${notification.id}");
-    expect(worker).toContain("bridge-ai-supplier-opportunity-${notification.id}");
-    expect(worker).toContain("'NEW_QUOTE_REQUEST', 'QUOTATION_ACCEPTED'");
+    expect(worker).toContain("bridge-it-supplier-selected-${notification.id}");
+    expect(worker).toContain("bridge-it-supplier-opportunity-${notification.id}");
+    expect(worker).toContain("bridge-it-buyer-question-${notification.id}");
+    expect(worker).toContain("'NEW_QUOTE_REQUEST', 'QUOTATION_ACCEPTED', 'BUYER_QUESTION'");
   });
 
   it("queues matched-opportunity email for every assignment path and respects preferences", () => {

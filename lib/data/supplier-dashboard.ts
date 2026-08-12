@@ -164,7 +164,17 @@ export async function getSupplierRequest(
       quoteRequest: {
         include: { category: { include: { parent: { select: { slug: true } } } }, items: true, attachments: true },
       },
-      quotation: { include: { attachments: true, contactAccess: true } },
+      quotation: {
+        include: {
+          attachments: true,
+          contactAccess: true,
+          conversation: {
+            include: {
+              messages: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] },
+            },
+          },
+        },
+      },
     },
   });
   return assignment && canReadSupplierAssignment(company, assignment) ? assignment : null;

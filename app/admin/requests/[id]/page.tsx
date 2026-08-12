@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { FileText, MessageSquareText, Paperclip } from "lucide-react";
+import { Clock3, FileText, MessageSquareText, Paperclip, ShieldAlert } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { requireAdminPage } from "@/lib/auth/guards";
 import { AdminHeading } from "@/components/admin/admin-shell";
@@ -8,6 +8,7 @@ import { evaluateSupplierMatches, resolveDeliveryLocation } from "@/lib/matching
 import { AttachmentList } from "@/components/attachments/attachment-list";
 import { categoryResponsibilityNotice } from "@/lib/categories/catalogue";
 import { buyerTypeLabel, intentQualityLabel } from "@/lib/whatsapp/buyer-classification";
+import { decryptPrivateValue } from "@/lib/security/encryption";
 
 export default async function AdminRequestPage({ params }: { params: Promise<{ id: string }> }) {
   await requireAdminPage();
@@ -25,6 +26,15 @@ export default async function AdminRequestPage({ params }: { params: Promise<{ i
         orderBy: [{ selected: "desc" }, { score: "desc" }],
       },
       items: { orderBy: [{ displayOrder: "asc" }, { createdAt: "asc" }] },
+      quoteConversations: {
+        include: {
+          supplierCompany: { select: { legalName: true, tradingName: true } },
+          quotation: { include: { versions: { orderBy: { versionNumber: "desc" } } } },
+          messages: { include: { replyTo: { select: { id: true } } }, orderBy: { createdAt: "asc" } },
+          moderationEvents: { orderBy: { createdAt: "desc" } },
+        },
+        orderBy: { anonymousLabel: "asc" },
+      },
     },
   });
   if (!request) notFound();
@@ -66,6 +76,19 @@ export default async function AdminRequestPage({ params }: { params: Promise<{ i
       <section className="panel form-section">
         <div className="section-heading"><div><p className="eyebrow">Supplier responses</p><h2>Distribution</h2></div></div>
         <div className="entity-list">{request.assignments.length ? request.assignments.map((assignment) => <article className="entity-row" key={assignment.id}><div><b>{assignment.supplierCompany.tradingName ?? assignment.supplierCompany.legalName}</b><small>Invitation #{assignment.invitationRank} · assigned {assignment.assignedAt.toLocaleString("en-GB")} · responds by {assignment.expiresAt.toLocaleString("en-GB")}{assignment.replacementForId ? " · replacement invitation" : ""}</small>{assignment.quotation?.status === "SUBMITTED" && <RecordCustomerSelection quotationId={assignment.quotation.id}/>}</div><span className={`status-pill ${(assignment.quotation?.status ?? assignment.status).toLowerCase()}`}>{assignment.quotation?.status ?? assignment.status}</span></article>) : <div className="empty-state">No suppliers assigned.</div>}</div>
+      </section>
+      <section className="panel form-section admin-quote-conversations">
+        <div className="section-heading"><div><p className="eyebrow">Private pre-selection messaging</p><h2>Quote conversations</h2></div></div>
+        <div className="honesty-note">Suppliers and buyers remain anonymous to one another here. Contact-detail blocks and quotation revisions are retained for administrator oversight.</div>
+        <div className="admin-conversation-list">{request.quoteConversations.length ? request.quoteConversations.map((conversation) => {
+          const supplierName = conversation.supplierCompany.tradingName ?? conversation.supplierCompany.legalName;
+          return <article className="admin-conversation" key={conversation.id}>
+            <header><div><span className="quote-label">{conversation.anonymousLabel}</span><div><b>Quote {conversation.anonymousLabel}</b><small>{supplierName} · version {conversation.quotation.currentVersionNumber}</small></div></div><span className={`status-pill ${conversation.status.toLowerCase()}`}>{conversation.status}</span></header>
+            <div className="quote-comparison-facts"><span>£{Number(conversation.quotation.price).toLocaleString("en-GB", { minimumFractionDigits: 2 })}</span><span>{conversation.quotation.leadTimeDays} day lead time</span><span>{conversation.quotation.deliveryCost === null ? "Delivery not specified" : `£${Number(conversation.quotation.deliveryCost).toFixed(2)} delivery`}</span><span>{conversation.quotation.collectionAvailable ? "Collection available" : "Delivery only"}</span></div>
+            <div className="admin-message-list">{conversation.messages.length ? conversation.messages.map((message) => <div className={`admin-message sender-${message.sender.toLowerCase()}`} key={message.id}><div><b>{message.sender === "BUYER" ? "Buyer" : message.sender === "SUPPLIER" ? `Quote ${conversation.anonymousLabel}` : "Bridge-iT"}</b><time>{message.createdAt.toLocaleString("en-GB")}</time></div><p>{decryptPrivateValue(message.contentEncrypted)}</p>{message.questionDueAt && <small><Clock3 size={12}/> Reply due {message.questionDueAt.toLocaleString("en-GB")}{message.answeredAt ? " · answered" : ""}</small>}</div>) : <div className="empty-state">No questions have been exchanged.</div>}</div>
+            {conversation.moderationEvents.some((event) => event.outcome === "BLOCKED") && <div className="moderation-summary"><ShieldAlert size={15}/><span>{conversation.moderationEvents.filter((event) => event.outcome === "BLOCKED").length} message attempt(s) blocked for privacy. {Array.from(new Set(conversation.moderationEvents.flatMap((event) => event.reasons))).join(" · ")}</span></div>}
+          </article>;
+        }) : <div className="empty-state">Conversations appear after suppliers submit quotations.</div>}</div>
       </section>
       <section className="panel form-section">
         <div className="section-heading"><div><p className="eyebrow">Recorded matching evidence</p><h2>Why suppliers were selected</h2></div></div>

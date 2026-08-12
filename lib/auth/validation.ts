@@ -101,6 +101,21 @@ export const quotationSchema = z.object({
   leadTimeDays: z.coerce.number().int().min(1).max(730),
   validUntil: quotationValidUntil,
   notes: z.string().trim().max(5000).optional(),
+  specification: z.string().trim().max(5000).optional(),
+  deliveryCost: z.coerce.number().nonnegative().max(1_000_000).nullable().optional(),
+  collectionAvailable: z.boolean().optional().default(false),
+  availability: z.string().trim().max(500).optional(),
+  warranty: z.string().trim().max(500).optional(),
+  paymentTerms: z.string().trim().max(1000).optional(),
+  assumptions: z.string().trim().max(3000).optional(),
+  exclusions: z.string().trim().max(3000).optional(),
+  vatIncluded: z.boolean().nullable().optional(),
+});
+
+export const quoteMessageReplySchema = z.object({
+  conversationId: recordIdSchema,
+  replyToId: recordIdSchema,
+  body: z.string().trim().min(2).max(2000),
 });
 
 const optionalText = (max: number) => z.string().trim().max(max).optional().transform((value) => value || null);

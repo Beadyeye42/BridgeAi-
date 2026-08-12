@@ -71,6 +71,22 @@ export async function selectQuotationForCustomer(input: {
       where: { id: quotation.quoteRequestId },
       data: { status: "SELECTED", selectedAt, closedAt: null },
     });
+    await tx.quoteConversation.updateMany({
+      where: { quoteRequestId: quotation.quoteRequestId, quotationId: { not: quotation.id } },
+      data: { status: "CLOSED", closedAt: selectedAt },
+    });
+    await tx.quoteConversation.updateMany({
+      where: { quoteRequestId: quotation.quoteRequestId, quotationId: quotation.id },
+      data: { status: "SELECTED", closedAt: selectedAt },
+    });
+    await tx.quoteSelectionEvent.create({
+      data: {
+        quoteRequestId: quotation.quoteRequestId,
+        quotationId: quotation.id,
+        eventType: "CUSTOMER_SELECTED",
+        evidence: input.evidence.slice(0, 250),
+      },
+    });
     const nextStep = supplierSelectionNextStep(quotation.quoteRequest.category.slug, quotation.quoteRequest.category.parent?.slug);
 
     const members = await tx.supplierTeamMembership.findMany({

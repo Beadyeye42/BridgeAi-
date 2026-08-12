@@ -98,6 +98,7 @@ enum WhatsAppJobType {
   SEND_INTAKE_FALLBACK
   SEND_QUOTE_SUMMARY
   SEND_CONTACT_UNLOCK
+  SEND_QUOTE_MESSAGE
 
   @@schema("bridge_ai")
 }
@@ -169,6 +170,32 @@ enum QuotationStatus {
   REJECTED
   WITHDRAWN
   EXPIRED
+
+  @@schema("bridge_ai")
+}
+
+enum QuoteConversationStatus {
+  OPEN
+  SELECTED
+  CLOSED
+  EXPIRED
+
+  @@schema("bridge_ai")
+}
+
+enum QuoteMessageSender {
+  BUYER
+  SUPPLIER
+  SYSTEM
+
+  @@schema("bridge_ai")
+}
+
+enum QuoteMessageStatus {
+  PENDING
+  DELIVERED
+  BLOCKED
+  FAILED
 
   @@schema("bridge_ai")
 }
@@ -305,6 +332,8 @@ enum SubscriptionAccessSource {
 
 enum NotificationType {
   NEW_QUOTE_REQUEST
+  BUYER_QUESTION
+  QUOTE_REVISED
   REQUEST_EXPIRING
   QUOTATION_ACCEPTED
   QUOTATION_REJECTED
@@ -459,34 +488,37 @@ enum AffiliateNotificationType {
 }
 
 model User {
-  id                       String                    @id @db.Uuid
-  email                    String                    @unique @db.Citext
+  id                       String                        @id @db.Uuid
+  email                    String                        @unique @db.Citext
   firstName                String
   lastName                 String
-  status                   AccountStatus             @default(ACTIVE)
+  status                   AccountStatus                 @default(ACTIVE)
   emailVerifiedAt          DateTime?
   lastLoginAt              DateTime?
   termsAcceptedAt          DateTime?
   termsVersion             String?
-  createdAt                DateTime                  @default(now())
-  updatedAt                DateTime                  @updatedAt
+  createdAt                DateTime                      @default(now())
+  updatedAt                DateTime                      @updatedAt
   memberships              SupplierTeamMembership[]
   platformAdministrator    PlatformAdministrator?
   administratorPermissions AdministratorPermission[]
-  invitationsSent          SupplierInvite[]          @relation("InviteSender")
+  invitationsSent          SupplierInvite[]              @relation("InviteSender")
   notifications            Notification[]
   notificationPrefs        NotificationPreference[]
-  auditLogs                AuditLog[]                @relation("AuditActor")
-  uploadedAttachments      Attachment[]              @relation("AttachmentUploader")
-  approvedSuppliers        SupplierCompany[]         @relation("SupplierApprover")
-  assignmentsCreated       SupplierAssignment[]      @relation("AssignmentCreator")
-  systemEventsResolved     SystemEvent[]             @relation("SystemEventResolver")
-  accreditationsCreated    SupplierAccreditation[]   @relation("AccreditationCreator")
-  accreditationsReviewed   SupplierAccreditation[]   @relation("AccreditationReviewer")
-  complimentaryGranted     Subscription[]            @relation("ComplimentaryMembershipGrantor")
-  complimentaryRevoked     Subscription[]            @relation("ComplimentaryMembershipRevoker")
+  auditLogs                AuditLog[]                    @relation("AuditActor")
+  uploadedAttachments      Attachment[]                  @relation("AttachmentUploader")
+  approvedSuppliers        SupplierCompany[]             @relation("SupplierApprover")
+  assignmentsCreated       SupplierAssignment[]          @relation("AssignmentCreator")
+  quotationVersions        QuotationVersion[]
+  quoteMessages            QuoteMessage[]
+  quoteModerationEvents    QuoteMessageModerationEvent[]
+  systemEventsResolved     SystemEvent[]                 @relation("SystemEventResolver")
+  accreditationsCreated    SupplierAccreditation[]       @relation("AccreditationCreator")
+  accreditationsReviewed   SupplierAccreditation[]       @relation("AccreditationReviewer")
+  complimentaryGranted     Subscription[]                @relation("ComplimentaryMembershipGrantor")
+  complimentaryRevoked     Subscription[]                @relation("ComplimentaryMembershipRevoker")
   affiliate                Affiliate?
-  affiliateAuditLogs       AffiliateAuditLog[]       @relation("AffiliateAuditActor")
+  affiliateAuditLogs       AffiliateAuditLog[]           @relation("AffiliateAuditActor")
 
   @@index([status])
   @@map("portal_profiles")
@@ -580,6 +612,7 @@ model SupplierCompany {
   accreditations                     SupplierAccreditation[]
   affiliateReferral                  AffiliateReferral?
   affiliateCommissions               AffiliateCommission[]
+  quoteConversations                 QuoteConversation[]
 
   @@index([status])
   @@index([postcode])
@@ -762,29 +795,29 @@ model SupplierAccreditation {
 }
 
 model ProductCategory {
-  id                String                    @id @default(cuid())
-  name              String
-  slug              String                    @unique
-  description       String?
-  active            Boolean                   @default(true)
-  adminVisible      Boolean                   @default(true)
-  hyperlocalEnabled Boolean                   @default(false)
-  servesConsumer    Boolean                   @default(false)
-  servesTrade       Boolean                   @default(true)
-  servesBusiness    Boolean                   @default(true)
+  id                           String                    @id @default(cuid())
+  name                         String
+  slug                         String                    @unique
+  description                  String?
+  active                       Boolean                   @default(true)
+  adminVisible                 Boolean                   @default(true)
+  hyperlocalEnabled            Boolean                   @default(false)
+  servesConsumer               Boolean                   @default(false)
+  servesTrade                  Boolean                   @default(true)
+  servesBusiness               Boolean                   @default(true)
   acknowledgementDeadlineHours Int?
   quotationDeadlineHours       Int?
-  parentId          String?
-  displayOrder      Int                       @default(0)
-  createdAt         DateTime                  @default(now())
-  updatedAt         DateTime                  @updatedAt
-  parent            ProductCategory?          @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
-  children          ProductCategory[]         @relation("CategoryTree")
-  suppliers         SupplierProductCategory[]
-  quoteRequests     QuoteRequest[]
-  opportunities     SupplierOpportunity[]
-  capabilities      SupplierCapability[]
-  coverageGaps      CoverageGapSignal[]
+  parentId                     String?
+  displayOrder                 Int                       @default(0)
+  createdAt                    DateTime                  @default(now())
+  updatedAt                    DateTime                  @updatedAt
+  parent                       ProductCategory?          @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children                     ProductCategory[]         @relation("CategoryTree")
+  suppliers                    SupplierProductCategory[]
+  quoteRequests                QuoteRequest[]
+  opportunities                SupplierOpportunity[]
+  capabilities                 SupplierCapability[]
+  coverageGaps                 CoverageGapSignal[]
 
   @@unique([parentId, name])
   @@index([active, displayOrder])
@@ -805,44 +838,44 @@ model SupplierProductCategory {
 }
 
 model SupplierCapability {
-  id                      String                 @id @default(cuid())
-  supplierCompanyId       String
-  productCategoryId       String
-  manufacturerNames       String[]               @default([])
-  systemNames             String[]               @default([])
-  colourNames             String[]               @default([])
-  finishNames             String[]               @default([])
-  minimumOrderValue       Decimal?               @db.Decimal(12, 2)
-  minimumOrderQuantity    Int?
-  standardLeadTimeDays    Int
-  urgentLeadTimeDays      Int?
-  currentLeadTimeDays     Int?
-  supportsSupplyOnly      Boolean                @default(true)
-  supportsDelivery        Boolean                @default(true)
-  supportsInstallation    Boolean                @default(false)
-  supportsService         Boolean                @default(false)
-  servesConsumer          Boolean                @default(false)
-  servesTrade             Boolean                @default(true)
-  servesBusiness          Boolean                @default(true)
-  collectionAvailable     Boolean                @default(false)
-  deliveryDays            Int[]                  @default([])
-  capacityStatus          SupplierCapacityStatus @default(AVAILABLE)
-  liveAvailability        LiveAvailabilityStatus  @default(AVAILABLE_TODAY)
-  nextAvailableAt         DateTime?
-  availabilityLastConfirmedAt DateTime             @default(now())
-  capacityLastConfirmedAt DateTime               @default(now())
-  leadTimeLastConfirmedAt DateTime               @default(now())
-  restrictedProducts      String[]               @default([])
-  deliveryDelayDays       Int?
-  declaredMonthlyCapacity Int?
-  shortageNote            String?
-  shortageUntil           DateTime?
-  active                  Boolean                @default(true)
-  lastConfirmedAt         DateTime               @default(now())
-  createdAt               DateTime               @default(now())
-  updatedAt               DateTime               @updatedAt
-  supplierCompany         SupplierCompany        @relation(fields: [supplierCompanyId], references: [id], onDelete: Cascade)
-  productCategory         ProductCategory        @relation(fields: [productCategoryId], references: [id], onDelete: Cascade)
+  id                          String                 @id @default(cuid())
+  supplierCompanyId           String
+  productCategoryId           String
+  manufacturerNames           String[]               @default([])
+  systemNames                 String[]               @default([])
+  colourNames                 String[]               @default([])
+  finishNames                 String[]               @default([])
+  minimumOrderValue           Decimal?               @db.Decimal(12, 2)
+  minimumOrderQuantity        Int?
+  standardLeadTimeDays        Int
+  urgentLeadTimeDays          Int?
+  currentLeadTimeDays         Int?
+  supportsSupplyOnly          Boolean                @default(true)
+  supportsDelivery            Boolean                @default(true)
+  supportsInstallation        Boolean                @default(false)
+  supportsService             Boolean                @default(false)
+  servesConsumer              Boolean                @default(false)
+  servesTrade                 Boolean                @default(true)
+  servesBusiness              Boolean                @default(true)
+  collectionAvailable         Boolean                @default(false)
+  deliveryDays                Int[]                  @default([])
+  capacityStatus              SupplierCapacityStatus @default(AVAILABLE)
+  liveAvailability            LiveAvailabilityStatus @default(AVAILABLE_TODAY)
+  nextAvailableAt             DateTime?
+  availabilityLastConfirmedAt DateTime               @default(now())
+  capacityLastConfirmedAt     DateTime               @default(now())
+  leadTimeLastConfirmedAt     DateTime               @default(now())
+  restrictedProducts          String[]               @default([])
+  deliveryDelayDays           Int?
+  declaredMonthlyCapacity     Int?
+  shortageNote                String?
+  shortageUntil               DateTime?
+  active                      Boolean                @default(true)
+  lastConfirmedAt             DateTime               @default(now())
+  createdAt                   DateTime               @default(now())
+  updatedAt                   DateTime               @updatedAt
+  supplierCompany             SupplierCompany        @relation(fields: [supplierCompanyId], references: [id], onDelete: Cascade)
+  productCategory             ProductCategory        @relation(fields: [productCategoryId], references: [id], onDelete: Cascade)
 
   @@unique([supplierCompanyId, productCategoryId])
   @@index([productCategoryId, active, capacityStatus])
@@ -852,67 +885,69 @@ model SupplierCapability {
 }
 
 model QuoteRequest {
-  id                            String                  @id @default(cuid())
-  reference                     String                  @unique
-  conversationId                String?
-  customerConfirmationMessageId String?                 @unique
-  customerContactId             String
-  buyerType                     BuyerType
-  intentQuality                 IntentQuality
-  categoryId                    String
-  title                         String
-  summary                       String
-  deliveryPostcode              String
-  deliveryLatitude              Decimal?                @db.Decimal(9, 6)
-  deliveryLongitude             Decimal?                @db.Decimal(9, 6)
-  customerBudget                Decimal?                @db.Decimal(12, 2)
-  requiredManufacturer          String?
-  requiredSystem                String?
-  requiredColour                String?
-  requiredFinish                String?
-  requiredBy                    DateTime?
-  urgency                       RequestUrgency          @default(FLEXIBLE)
-  preferredTime                 String?                 @db.VarChar(80)
-  recurrenceCadence             RecurrenceCadence       @default(ONE_OFF)
-  qualificationData             Json?
-  attachmentExtractionConfidence Decimal?               @db.Decimal(5, 4)
-  previousQuoteRequestId        String?
-  previousSupplierCompanyId     String?
-  collectionRequired            Boolean                 @default(false)
-  fulfilmentMode                FulfilmentMode          @default(DELIVERY)
-  currency                      String                  @default("GBP") @db.VarChar(3)
-  status                        QuoteRequestStatus      @default(DRAFT)
-  distributionLimit             Int                     @default(5)
-  marketDensityMode             MarketDensityMode?
-  consideredSupplierCount       Int                     @default(0)
-  eliminatedSupplierCount       Int                     @default(0)
-  eligibleSupplierCount         Int                     @default(0)
-  invitedSupplierCount          Int                     @default(0)
-  fairnessInfluence             String?
-  matchingEvaluatedAt           DateTime?
-  responseDueAt                 DateTime
-  publishedAt                   DateTime?
-  selectedAt                    DateTime?
-  confirmedAt                   DateTime?
-  completedAt                   DateTime?
-  cancelledAfterSelectionAt     DateTime?
-  closedAt                      DateTime?
-  createdAt                     DateTime                @default(now())
-  updatedAt                     DateTime                @updatedAt
-  conversation                  Conversation?           @relation(fields: [conversationId], references: [id], onDelete: SetNull)
-  customerContact               CustomerContact         @relation(fields: [customerContactId], references: [id], onDelete: Restrict)
-  category                      ProductCategory         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  items                         QuoteRequestItem[]
-  attachments                   Attachment[]
-  assignments                   SupplierAssignment[]
-  quotations                    SupplierQuotation[]
-  successFees                   SupplierSuccessFee[]
-  whatsappJobs                  WhatsAppJob[]
-  opportunity                   SupplierOpportunity?
-  previousQuoteRequest          QuoteRequest?            @relation("RepeatQuoteRequest", fields: [previousQuoteRequestId], references: [id], onDelete: SetNull)
-  repeatQuoteRequests           QuoteRequest[]            @relation("RepeatQuoteRequest")
-  matchDecisions                SupplierMatchDecision[]
-  coverageGap                   CoverageGapSignal?
+  id                             String                  @id @default(cuid())
+  reference                      String                  @unique
+  conversationId                 String?
+  customerConfirmationMessageId  String?                 @unique
+  customerContactId              String
+  buyerType                      BuyerType
+  intentQuality                  IntentQuality
+  categoryId                     String
+  title                          String
+  summary                        String
+  deliveryPostcode               String
+  deliveryLatitude               Decimal?                @db.Decimal(9, 6)
+  deliveryLongitude              Decimal?                @db.Decimal(9, 6)
+  customerBudget                 Decimal?                @db.Decimal(12, 2)
+  requiredManufacturer           String?
+  requiredSystem                 String?
+  requiredColour                 String?
+  requiredFinish                 String?
+  requiredBy                     DateTime?
+  urgency                        RequestUrgency          @default(FLEXIBLE)
+  preferredTime                  String?                 @db.VarChar(80)
+  recurrenceCadence              RecurrenceCadence       @default(ONE_OFF)
+  qualificationData              Json?
+  attachmentExtractionConfidence Decimal?                @db.Decimal(5, 4)
+  previousQuoteRequestId         String?
+  previousSupplierCompanyId      String?
+  collectionRequired             Boolean                 @default(false)
+  fulfilmentMode                 FulfilmentMode          @default(DELIVERY)
+  currency                       String                  @default("GBP") @db.VarChar(3)
+  status                         QuoteRequestStatus      @default(DRAFT)
+  distributionLimit              Int                     @default(5)
+  marketDensityMode              MarketDensityMode?
+  consideredSupplierCount        Int                     @default(0)
+  eliminatedSupplierCount        Int                     @default(0)
+  eligibleSupplierCount          Int                     @default(0)
+  invitedSupplierCount           Int                     @default(0)
+  fairnessInfluence              String?
+  matchingEvaluatedAt            DateTime?
+  responseDueAt                  DateTime
+  publishedAt                    DateTime?
+  selectedAt                     DateTime?
+  confirmedAt                    DateTime?
+  completedAt                    DateTime?
+  cancelledAfterSelectionAt      DateTime?
+  closedAt                       DateTime?
+  createdAt                      DateTime                @default(now())
+  updatedAt                      DateTime                @updatedAt
+  conversation                   Conversation?           @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  customerContact                CustomerContact         @relation(fields: [customerContactId], references: [id], onDelete: Restrict)
+  category                       ProductCategory         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  items                          QuoteRequestItem[]
+  attachments                    Attachment[]
+  assignments                    SupplierAssignment[]
+  quotations                     SupplierQuotation[]
+  successFees                    SupplierSuccessFee[]
+  whatsappJobs                   WhatsAppJob[]
+  opportunity                    SupplierOpportunity?
+  previousQuoteRequest           QuoteRequest?           @relation("RepeatQuoteRequest", fields: [previousQuoteRequestId], references: [id], onDelete: SetNull)
+  repeatQuoteRequests            QuoteRequest[]          @relation("RepeatQuoteRequest")
+  matchDecisions                 SupplierMatchDecision[]
+  coverageGap                    CoverageGapSignal?
+  quoteConversations             QuoteConversation[]
+  selectionEvents                QuoteSelectionEvent[]
 
   @@index([status, responseDueAt])
   @@index([status, selectedAt])
@@ -1021,30 +1056,154 @@ model SupplierAssignment {
 }
 
 model SupplierQuotation {
-  id                String              @id @default(cuid())
-  quoteRequestId    String
-  supplierCompanyId String
-  assignmentId      String              @unique
-  status            QuotationStatus     @default(DRAFT)
-  price             Decimal             @db.Decimal(12, 2)
-  currency          String              @default("GBP") @db.VarChar(3)
-  leadTimeDays      Int
-  validUntil        DateTime?
-  notes             String?
-  submittedAt       DateTime?
-  decidedAt         DateTime?
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
-  quoteRequest      QuoteRequest        @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
-  supplierCompany   SupplierCompany     @relation(fields: [supplierCompanyId], references: [id], onDelete: Cascade)
-  assignment        SupplierAssignment  @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
-  attachments       Attachment[]
-  successFee        SupplierSuccessFee?
-  contactAccess     ContactAccessGrant?
-  whatsappJobs      WhatsAppJob[]
+  id                   String                @id @default(cuid())
+  quoteRequestId       String
+  supplierCompanyId    String
+  assignmentId         String                @unique
+  status               QuotationStatus       @default(DRAFT)
+  price                Decimal               @db.Decimal(12, 2)
+  currency             String                @default("GBP") @db.VarChar(3)
+  leadTimeDays         Int
+  validUntil           DateTime?
+  notes                String?
+  specification        String?
+  deliveryCost         Decimal?              @db.Decimal(12, 2)
+  collectionAvailable  Boolean               @default(false)
+  availability         String?
+  warranty             String?
+  paymentTerms         String?
+  assumptions          String?
+  exclusions           String?
+  vatIncluded          Boolean?
+  currentVersionNumber Int                   @default(0)
+  submittedAt          DateTime?
+  decidedAt            DateTime?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  quoteRequest         QuoteRequest          @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
+  supplierCompany      SupplierCompany       @relation(fields: [supplierCompanyId], references: [id], onDelete: Cascade)
+  assignment           SupplierAssignment    @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  attachments          Attachment[]
+  successFee           SupplierSuccessFee?
+  contactAccess        ContactAccessGrant?
+  whatsappJobs         WhatsAppJob[]
+  versions             QuotationVersion[]
+  conversation         QuoteConversation?
+  selectionEvents      QuoteSelectionEvent[]
 
   @@unique([quoteRequestId, supplierCompanyId])
   @@index([supplierCompanyId, status, submittedAt])
+  @@schema("bridge_ai")
+}
+
+model QuotationVersion {
+  id                  String            @id @default(cuid())
+  quotationId         String
+  versionNumber       Int
+  price               Decimal           @db.Decimal(12, 2)
+  currency            String            @default("GBP") @db.VarChar(3)
+  leadTimeDays        Int
+  validUntil          DateTime?
+  notes               String?
+  specification       String?
+  deliveryCost        Decimal?          @db.Decimal(12, 2)
+  collectionAvailable Boolean           @default(false)
+  availability        String?
+  warranty            String?
+  paymentTerms        String?
+  assumptions         String?
+  exclusions          String?
+  vatIncluded         Boolean?
+  submittedById       String            @db.Uuid
+  submittedAt         DateTime          @default(now())
+  quotation           SupplierQuotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  submittedBy         User              @relation(fields: [submittedById], references: [id], onDelete: Restrict)
+
+  @@unique([quotationId, versionNumber])
+  @@index([quotationId, submittedAt])
+  @@schema("bridge_ai")
+}
+
+model QuoteConversation {
+  id                    String                        @id @default(cuid())
+  quoteRequestId        String
+  quotationId           String                        @unique
+  supplierCompanyId     String
+  anonymousLabel        String                        @db.VarChar(1)
+  status                QuoteConversationStatus       @default(OPEN)
+  questionResponseDueAt DateTime?
+  lastMessageAt         DateTime?
+  closedAt              DateTime?
+  createdAt             DateTime                      @default(now())
+  updatedAt             DateTime                      @updatedAt
+  quoteRequest          QuoteRequest                  @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
+  quotation             SupplierQuotation             @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  supplierCompany       SupplierCompany               @relation(fields: [supplierCompanyId], references: [id], onDelete: Cascade)
+  messages              QuoteMessage[]
+  moderationEvents      QuoteMessageModerationEvent[]
+
+  @@unique([quoteRequestId, anonymousLabel])
+  @@index([supplierCompanyId, status, lastMessageAt])
+  @@index([quoteRequestId, status])
+  @@schema("bridge_ai")
+}
+
+model QuoteMessage {
+  id                  String                        @id @default(cuid())
+  quoteConversationId String
+  sender              QuoteMessageSender
+  senderUserId        String?                       @db.Uuid
+  contentEncrypted    Bytes
+  status              QuoteMessageStatus            @default(PENDING)
+  idempotencyKey      String                        @unique
+  broadcastKey        String?                       @db.Uuid
+  replyToId           String?
+  questionDueAt       DateTime?
+  answeredAt          DateTime?
+  deliveredAt         DateTime?
+  createdAt           DateTime                      @default(now())
+  quoteConversation   QuoteConversation             @relation(fields: [quoteConversationId], references: [id], onDelete: Cascade)
+  senderUser          User?                         @relation(fields: [senderUserId], references: [id], onDelete: SetNull)
+  replyTo             QuoteMessage?                 @relation("QuoteMessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies             QuoteMessage[]                @relation("QuoteMessageReplies")
+  moderationEvents    QuoteMessageModerationEvent[]
+  whatsappJobs        WhatsAppJob[]
+
+  @@index([quoteConversationId, createdAt])
+  @@index([broadcastKey])
+  @@index([status, questionDueAt])
+  @@schema("bridge_ai")
+}
+
+model QuoteMessageModerationEvent {
+  id                  String            @id @default(cuid())
+  quoteConversationId String
+  quoteMessageId      String?
+  actorUserId         String?           @db.Uuid
+  outcome             String            @db.VarChar(32)
+  reasons             String[]          @default([])
+  createdAt           DateTime          @default(now())
+  quoteConversation   QuoteConversation @relation(fields: [quoteConversationId], references: [id], onDelete: Cascade)
+  quoteMessage        QuoteMessage?     @relation(fields: [quoteMessageId], references: [id], onDelete: SetNull)
+  actorUser           User?             @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([quoteConversationId, createdAt])
+  @@index([outcome, createdAt])
+  @@schema("bridge_ai")
+}
+
+model QuoteSelectionEvent {
+  id             String             @id @default(cuid())
+  quoteRequestId String
+  quotationId    String?
+  eventType      String             @db.VarChar(40)
+  evidence       String?            @db.VarChar(250)
+  createdAt      DateTime           @default(now())
+  quoteRequest   QuoteRequest       @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
+  quotation      SupplierQuotation? @relation(fields: [quotationId], references: [id], onDelete: SetNull)
+
+  @@index([quoteRequestId, createdAt])
+  @@index([quotationId, createdAt])
   @@schema("bridge_ai")
 }
 
@@ -1057,6 +1216,7 @@ model WhatsAppJob {
   whatsappMessageId      String?
   quoteRequestId         String?
   quotationId            String?
+  quoteMessageId         String?
   attempts               Int                @default(0)
   availableAt            DateTime           @default(now())
   lockedAt               DateTime?
@@ -1073,12 +1233,14 @@ model WhatsAppJob {
   whatsappMessage        WhatsAppMessage?   @relation(fields: [whatsappMessageId], references: [id], onDelete: Cascade)
   quoteRequest           QuoteRequest?      @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
   quotation              SupplierQuotation? @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  quoteMessage           QuoteMessage?      @relation(fields: [quoteMessageId], references: [id], onDelete: Cascade)
 
   @@index([status, availableAt, createdAt])
   @@index([conversationId, createdAt])
   @@index([whatsappMessageId])
   @@index([quoteRequestId, createdAt])
   @@index([quotationId])
+  @@index([quoteMessageId])
   @@schema("bridge_ai")
 }
 
