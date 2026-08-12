@@ -15,8 +15,6 @@ import { extractQuoteIntake, quoteDraftSchema, type QuoteDraft } from "@/lib/ai/
 import { lookupPostcode, PostcodeLookupError } from "@/lib/location/postcodes";
 import { evaluateSupplierMatches, selectAdaptiveSupplierMatches } from "@/lib/matching/suppliers";
 import { lockSupplierAssignmentScope, recordMatchingEvaluation } from "@/lib/matching/distribution";
-import { expireAndReplaceSupplierInvitations } from "@/lib/matching/replacements";
-import { notifySuppliersWithStaleCapacity } from "@/lib/matching/stale-capacity";
 import { runProductionMonitoringSafely } from "@/lib/monitoring/operational-alerts";
 import { addSupplierResponseHours } from "@/lib/quotes/response-clock";
 import { selectQuotationForCustomer } from "@/lib/quotes/selection";
@@ -2232,34 +2230,42 @@ export async function enqueueContactUnlock(contactAccessGrantId: string) {
   });
 }
 
-export async function processWhatsAppJobs({ limit = 5 }: { limit?: number } = {}) {
+export async function processWhatsAppJobs({
+  limit = 5,
+  concurrency = 3,
+  flushSupplierEmails = true,
+}: {
+  limit?: number;
+  concurrency?: number;
+  flushSupplierEmails?: boolean;
+} = {}) {
   let processed = 0;
-  const safeLimit = Math.max(1, Math.min(20, Math.floor(limit)));
-  for (let index = 0; index < safeLimit; index += 1) {
-    const job = await claimJob();
-    if (!job) break;
-    try {
-      const telemetry = await processJob(job);
-      await completeJob(job, telemetry);
-      processed += 1;
-    } catch (error) {
-      console.error("WhatsApp job processing failed", { jobId: job.id, type: job.type, errorCode: errorCode(error) });
-      const terminal = await failJob(job, error);
-      if (terminal) await runProductionMonitoringSafely();
+  let claimed = 0;
+  let terminalFailure = false;
+  const safeLimit = Math.max(1, Math.min(50, Math.floor(limit)));
+  const safeConcurrency = Math.max(1, Math.min(5, Math.floor(concurrency)));
+
+  async function worker() {
+    while (claimed < safeLimit) {
+      claimed += 1;
+      const job = await claimJob();
+      if (!job) return;
+      try {
+        const telemetry = await processJob(job);
+        await completeJob(job, telemetry);
+        processed += 1;
+      } catch (error) {
+        console.error("WhatsApp job processing failed", { jobId: job.id, type: job.type, errorCode: errorCode(error) });
+        terminalFailure = (await failJob(job, error)) || terminalFailure;
+      }
     }
   }
 
-  // Vercel Hobby cron jobs can run only once per day. Recovering these durable
-  // queues after normal WhatsApp activity keeps winner emails and operational
-  // alerts moving without weakening idempotency or sending duplicate messages.
-  await expireAndReplaceSupplierInvitations({ limit: 25 }).catch((error) => {
-    console.error("Expired supplier invitation recovery failed", error);
-  });
-  await notifySuppliersWithStaleCapacity({ limit: 50 }).catch((error) => {
-    console.error("Stale supplier capacity reminder failed", error);
-  });
-  await processSupplierEmailsSafely({ limit: 25 });
-  await runProductionMonitoringSafely();
+  await Promise.all(Array.from({ length: Math.min(safeConcurrency, safeLimit) }, () => worker()));
+  if (processed > 0 && flushSupplierEmails) {
+    await processSupplierEmailsSafely({ limit: Math.min(50, Math.max(10, processed * 5)) });
+  }
+  if (terminalFailure) await runProductionMonitoringSafely();
 
   return processed;
 }

@@ -72,13 +72,16 @@ describe("production monitoring", () => {
     expect(manual).not.toContain("trustedPrisma");
   });
 
-  it("ignores deliberately superseded WhatsApp failures and recovers durable queues during live traffic", () => {
+  it("ignores deliberately superseded WhatsApp failures and keeps maintenance out of the live message path", () => {
     const monitoring = readFileSync("lib/monitoring/operational-alerts.ts", "utf8");
     const database = readFileSync("lib/db.ts", "utf8");
     const migration = readFileSync("supabase/migrations/20260809145934_production_monitoring_worker_rls.sql", "utf8");
     const triggerMigration = readFileSync("supabase/migrations/20260809152418_production_alert_database_audit_trigger.sql", "utf8");
     const processor = readFileSync("lib/whatsapp/processor.ts", "utf8");
+    const cron = readFileSync("app/api/cron/monitor-production/route.ts", "utf8");
     expect(monitoring).toContain('NOT: { errorCode: { startsWith: "SUPERSEDED_" } }');
+    expect(monitoring).toContain('{ scanStatus: "FAILED" }');
+    expect(monitoring).not.toContain('scanStatus: { in: ["FAILED", "REJECTED"] }');
     expect(monitoring).toContain('runAsDatabaseWorker("production_monitoring"');
     expect(monitoring).not.toContain("trustedPrisma");
     expect(database).toContain('"production_monitoring"');
@@ -88,7 +91,12 @@ describe("production monitoring", () => {
     expect(triggerMigration).toContain("audit_production_alert_change");
     expect(triggerMigration).toContain("DROP POLICY production_monitoring_insert_audit_logs");
     expect(monitoring).not.toContain("tx.auditLog.create");
-    expect(processor).toContain("processSupplierEmailsSafely({ limit: 25 })");
-    expect(processor).toContain("runProductionMonitoringSafely()");
+    expect(processor).not.toContain("expireAndReplaceSupplierInvitations");
+    expect(processor).not.toContain("notifySuppliersWithStaleCapacity");
+    expect(processor).toContain("if (processed > 0 && flushSupplierEmails)");
+    expect(processor).toContain("if (terminalFailure) await runProductionMonitoringSafely()");
+    expect(cron).toContain("expireAndReplaceSupplierInvitations({ limit: 100 })");
+    expect(cron).toContain("notifySuppliersWithStaleCapacity({ limit: 100 })");
+    expect(cron).toContain("processWhatsAppJobs({ limit: 50, concurrency: 5, flushSupplierEmails: false })");
   });
 });
