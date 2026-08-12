@@ -34,6 +34,12 @@ describe("Hyperlocal service network", () => {
     }
   });
 
+  it("keeps recognition phrases unique so requests route to one service", () => {
+    const aliases = HYPERLOCAL_INDUSTRIES.flatMap((industry) => industry.services.flatMap((service) => service.aliases.map((alias) => ({ alias, slug: service.slug }))));
+    const duplicates = aliases.filter((entry, index) => aliases.findIndex((candidate) => candidate.alias.toLocaleLowerCase("en-GB") === entry.alias.toLocaleLowerCase("en-GB")) !== index);
+    expect(duplicates).toEqual([]);
+  });
+
   it.each([
     ["I am locked out of my house", "emergency-locksmith"],
     ["My boiler has stopped and there is no hot water", "boiler-repair"],
@@ -41,6 +47,12 @@ describe("Hyperlocal service network", () => {
     ["My dishwasher is leaking", "dishwasher-repair"],
     ["Can someone clear my overgrown garden?", "garden-clearance"],
     ["I need an end of tenancy deep clean", "deep-end-tenancy-cleaning"],
+    ["Please tow my broken-down van", "breakdown-recovery"],
+    ["There is water coming through my ceiling", "emergency-plumbing"],
+    ["Can someone clear our office?", "property-clearance"],
+    ["I need garden clearance and the waste taken away", "garden-clearance"],
+    ["My Bosch washing machine is showing an error", "washing-laundry-appliance-repair"],
+    ["I need CCTV installed around my shop", "cctv-alarms-intercom"],
   ])("recognises a natural request without an industry menu: %s", (message, slug) => {
     expect(recogniseCatalogueProduct(message, categories)?.categorySlug).toBe(slug);
   });
@@ -101,6 +113,11 @@ describe("Hyperlocal service network", () => {
     expect(migration).toContain("HYPERLOCAL_SERVICE");
     expect(migration).toContain("attachmentExtractionConfidence");
     expect(hyperlocalService("emergency-plumbing")?.service.verification).toContain("insurance");
+    const capabilityManager = read("components/dashboard/capability-manager.tsx");
+    expect(capabilityManager).toContain("Appliance brands supported");
+    expect(capabilityManager).toContain('"Bosch"');
+    const routingMigration = read("supabase/migrations/20260812163000_clarify_hyperlocal_clearance_routing.sql");
+    expect(routingMigration).toContain("SYSTEM.HYPERLOCAL_CLEARANCE_ROUTING_CLARIFIED");
   });
 
   it("blocks regulated work when the required approved evidence is missing", () => {

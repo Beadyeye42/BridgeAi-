@@ -62,6 +62,7 @@ type Capability = {
 type RematchResult = { checked?: number; matched?: number; blocked?: number; blockingReasons?: string[] };
 
 const dayOptions = [[1, "Mon"], [2, "Tue"], [3, "Wed"], [4, "Thu"], [5, "Fri"], [6, "Sat"], [7, "Sun"]] as const;
+const applianceBrandOptions = ["AEG", "Beko", "Bosch", "Hotpoint", "Indesit", "LG", "Miele", "Neff", "Samsung", "Siemens", "Whirlpool"];
 const splitList = (value: FormDataEntryValue | null) => String(value ?? "").split(",").map((item) => item.trim()).filter(Boolean);
 const stringList = (values: FormDataEntryValue[]) => values.map(String).map((item) => item.trim()).filter(Boolean);
 const uniqueList = (values: string[]) => [...new Set(values)];
@@ -231,6 +232,8 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
       const otherTransportFeatures = capability.finishNames.filter((value) => !TRANSPORT_SERVICE_FEATURE_OPTIONS.some((option) => includesCapabilityValue([value], option)));
       const hyperlocalCapabilityOptions = hyperlocal?.service.capabilities ?? [];
       const otherHyperlocalFeatures = capability.finishNames.filter((value) => !hyperlocalCapabilityOptions.includes(value));
+      const isApplianceRepair = hyperlocal?.industry.slug === "appliance-repair-home-equipment";
+      const otherApplianceBrands = capability.manufacturerNames.filter((value) => !applianceBrandOptions.some((option) => includesCapabilityValue([value], option)));
       return <section className="panel capability-advanced-card" key={prefix}>
         <details>
           <summary>
@@ -256,6 +259,13 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
                 </div>
                 <Field name={`${prefix}:finishes`} label="Other specialist capabilities (optional)" value={otherHyperlocalFeatures.join(", ")} placeholder="Add other capabilities, separated by commas" />
               </div>
+              {isApplianceRepair ? <div className="capability-option-section">
+                <div className="capability-option-heading"><b>Appliance brands supported</b><small>Brand-specific requests are only sent when your saved details confirm you repair that manufacturer.</small></div>
+                <div className="capability-option-grid">
+                  {applianceBrandOptions.map((option) => <OptionCard key={option} name={`${prefix}:manufacturer`} value={option} checked={includesCapabilityValue(capability.manufacturerNames, option)} />)}
+                </div>
+                <Field name={`${prefix}:manufacturers`} label="Other appliance brands (optional)" value={otherApplianceBrands.join(", ")} placeholder="Add other brands, separated by commas" />
+              </div> : null}
             </> : isTransport ? <>
               <div className="honesty-note">This setup is specific to transport and removals. Select only vehicles, crew and handling services you can genuinely provide; Bridge-iT uses these details to avoid unsuitable jobs.</div>
               <div className="capability-option-section">
