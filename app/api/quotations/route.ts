@@ -6,6 +6,7 @@ import { writeAuditLog } from "@/lib/audit";
 import { enqueueQuoteSummary, processWhatsAppJobs } from "@/lib/whatsapp/processor";
 import { isMembershipActive } from "@/lib/billing/pricing";
 import { quotationValidUntil } from "@/lib/quotes/validity";
+import { hasCurrentGeographicOpportunityAccess } from "@/lib/billing/opportunity-access";
 
 export const runtime = "nodejs";
 
@@ -20,21 +21,30 @@ export async function POST(request: Request) {
 
   const assignment = await prisma.supplierAssignment.findFirst({
     where: { id: parsed.data.assignmentId, supplierCompanyId: companyId, status: "ACCEPTED", expiresAt: { gt: new Date() } },
-    include: { quoteRequest: { select: { status: true, responseDueAt: true } } },
+    include: { quoteRequest: { select: { status: true, responseDueAt: true, deliveryLatitude: true, deliveryLongitude: true, fulfilmentMode: true } } },
   });
   if (!assignment) return NextResponse.json({ error: "Accepted request not found or response window has closed" }, { status: 404 });
   if (!["OPEN", "MATCHING", "QUOTED"].includes(assignment.quoteRequest.status) || assignment.quoteRequest.responseDueAt <= new Date()) {
     return NextResponse.json({ error: "This request has closed and can no longer receive quotations" }, { status: 409 });
   }
-  const company = await prisma.supplierCompany.findUnique({ where: { id: companyId }, select: { status: true } });
-  const subscription = await prisma.subscription.findUnique({ where: { supplierCompanyId: companyId } });
+  const company = await prisma.supplierCompany.findUnique({
+    where: { id: companyId },
+    include: { subscription: { include: { membershipPlan: true } } },
+  });
   if (!company || company.status !== "APPROVED") return NextResponse.json({ error: "An approved supplier account is required before submitting a quotation" }, { status: 403 });
-  if (!isMembershipActive(subscription)) {
+  if (!isMembershipActive(company.subscription)) {
     return NextResponse.json({
       error: "Your Bridge AI membership is not active. Renew your membership to submit quotations.",
       code: "MEMBERSHIP_REQUIRED",
       actionUrl: "/dashboard/subscription",
     }, { status: 402 });
+  }
+  if (!hasCurrentGeographicOpportunityAccess(company, assignment.quoteRequest)) {
+    return NextResponse.json({
+      error: "This request is outside your current membership area. Upgrade your membership to submit this quotation.",
+      code: "MEMBERSHIP_AREA_REQUIRED",
+      actionUrl: "/dashboard/subscription",
+    }, { status: 403 });
   }
 
   const submittedAt = new Date();

@@ -7,6 +7,8 @@ export type SupplierOnboardingInput = {
   addressLine1: string | null;
   city: string | null;
   postcode: string | null;
+  geographicOriginLatitude: unknown | null;
+  geographicOriginLongitude: unknown | null;
   categories: Array<unknown>;
   coverageAreas: Array<{ active: boolean }>;
   memberships: Array<{ role: string; status: string }>;
@@ -63,7 +65,9 @@ export function supplierApprovalReadiness(company: SupplierOnboardingInput): Sup
       href: "/dashboard/company#company-address",
       complete: hasText(company.addressLine1)
         && hasText(company.city)
-        && hasText(company.postcode, 3),
+        && hasText(company.postcode, 3)
+        && company.geographicOriginLatitude !== null
+        && company.geographicOriginLongitude !== null,
     },
     {
       key: "CONTACT",

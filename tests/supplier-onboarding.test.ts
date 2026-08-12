@@ -10,6 +10,8 @@ const completeSupplier = (): SupplierOnboardingInput => ({
   addressLine1: "1 Trade Park",
   city: "Cheltenham",
   postcode: "GL52 6TD",
+  geographicOriginLatitude: 51.8994,
+  geographicOriginLongitude: -2.0783,
   categories: [{}],
   coverageAreas: [{ active: true }],
   memberships: [{ role: "OWNER", status: "ACTIVE" }],
@@ -40,5 +42,12 @@ describe("supplier onboarding readiness", () => {
     supplier.companyNumber = null;
     supplier.directorName = null;
     expect(supplierApprovalReadiness(supplier).blockers).toEqual(["Company identity"]);
+  });
+
+  it("does not treat an unverified postcode as a complete supplier address", () => {
+    const supplier = completeSupplier();
+    supplier.geographicOriginLatitude = null;
+    supplier.geographicOriginLongitude = null;
+    expect(supplierApprovalReadiness(supplier).blockers).toEqual(["Company address"]);
   });
 });

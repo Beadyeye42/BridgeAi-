@@ -50,10 +50,13 @@ export default async function CoveragePage() {
         name: plan.name,
         tier: limits.tier,
         maximumRadiusMiles: limits.maximumRadiusMiles,
+        maximumServiceRadiusMiles: limits.maximumServiceRadiusMiles,
+        maximumDeliveryRadiusMiles: limits.maximumDeliveryRadiusMiles,
         nationwideAllowed: limits.nationwideAllowed,
         maximumActiveOpportunities: limits.maximumActiveOpportunities,
         onboardingDefault: !activeSubscription?.membershipPlan,
       } : null}
+      companyBasePostcode={company.geographicOriginPostcode ?? company.postcode ?? ""}
     />
   </PortalPage>;
 }

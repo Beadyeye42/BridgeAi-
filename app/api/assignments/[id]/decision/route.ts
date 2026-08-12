@@ -6,6 +6,7 @@ import { writeAuditLog } from "@/lib/audit";
 import { inviteNextEligibleSupplier } from "@/lib/matching/replacements";
 import { processSupplierEmailsSafely } from "@/lib/notifications/email-worker";
 import { isMembershipActive } from "@/lib/billing/pricing";
+import { hasCurrentGeographicOpportunityAccess } from "@/lib/billing/opportunity-access";
 
 export const runtime = "nodejs";
 
@@ -15,8 +16,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const companyId = getPrimarySupplierCompanyId(session);
   if (!companyId) return NextResponse.json({ error: "No supplier company membership" }, { status: 403 });
 
-  const subscription = await prisma.subscription.findUnique({ where: { supplierCompanyId: companyId } });
-  if (!isMembershipActive(subscription)) {
+  const company = await prisma.supplierCompany.findUnique({
+    where: { id: companyId },
+    include: { subscription: { include: { membershipPlan: true } } },
+  });
+  const subscription = company?.subscription;
+  if (!company || !isMembershipActive(subscription)) {
     return NextResponse.json({
       error: "Your Bridge AI membership is not active. Renew your membership to respond to quote opportunities.",
       code: "MEMBERSHIP_REQUIRED",
@@ -29,9 +34,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const { id } = await params;
   const assignment = await prisma.supplierAssignment.findFirst({
     where: { id, supplierCompanyId: companyId },
-    include: { quoteRequest: { select: { status: true, responseDueAt: true } } },
+    include: { quoteRequest: { select: { status: true, responseDueAt: true, deliveryLatitude: true, deliveryLongitude: true, fulfilmentMode: true } } },
   });
   if (!assignment) return NextResponse.json({ error: "Request not found" }, { status: 404 });
+  if (!hasCurrentGeographicOpportunityAccess(company, assignment.quoteRequest)) {
+    return NextResponse.json({
+      error: "This request is outside your current membership area. Upgrade your membership to respond.",
+      code: "MEMBERSHIP_AREA_REQUIRED",
+      actionUrl: "/dashboard/subscription",
+    }, { status: 403 });
+  }
   if (!["PENDING", "VIEWED"].includes(assignment.status)) return NextResponse.json({ error: "This request has already been actioned" }, { status: 409 });
   if (assignment.expiresAt <= new Date()) return NextResponse.json({ error: "The response window has closed" }, { status: 410 });
   if (!["OPEN", "MATCHING", "QUOTED"].includes(assignment.quoteRequest.status) || assignment.quoteRequest.responseDueAt <= new Date()) {

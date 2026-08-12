@@ -6,6 +6,7 @@ import { requireSupplierPage } from "@/lib/auth/guards";
 import { PortalPage, identity } from "@/components/dashboard/portal-page";
 import { isMembershipActive } from "@/lib/billing/pricing";
 import { lifecycleDisplay } from "@/lib/quotes/lifecycle";
+import { canReadSupplierAssignment } from "@/lib/billing/opportunity-access";
 
 export const dynamic = "force-dynamic";
 const views = ["new", "submitted", "selected", "confirmed", "completed", "lost", "expired", "all"] as const;
@@ -39,17 +40,21 @@ function viewFilter(view: View, now: Date): Prisma.SupplierAssignmentWhereInput 
 
 export default async function RequestsPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
   const { session, companyId } = await requireSupplierPage();
-  const company = await prisma.supplierCompany.findUniqueOrThrow({ where: { id: companyId }, include: { subscription: true } });
+  const company = await prisma.supplierCompany.findUniqueOrThrow({
+    where: { id: companyId },
+    include: { subscription: { include: { membershipPlan: true } } },
+  });
   const raw = (await searchParams).view;
   const view: View = views.includes(raw as View) ? raw as View : "new";
   const now = new Date();
   const membershipActive = isMembershipActive(company.subscription, now);
-  const assignments = await prisma.supplierAssignment.findMany({
+  const candidates = await prisma.supplierAssignment.findMany({
     where: { supplierCompanyId: companyId, ...viewFilter(view, now) },
     include: { quoteRequest: { include: { category: true, attachments: { select: { id: true } } } }, quotation: true },
     orderBy: { assignedAt: "desc" },
-    take: 100,
+    take: 500,
   });
+  const assignments = candidates.filter((assignment) => canReadSupplierAssignment(company, assignment, now)).slice(0, 100);
 
   return <PortalPage {...identity(session, company)} eyebrow="Capability-matched requests" title="Bridge Requests" description="Only requests assigned to this supplier company are shown. New matches use confirmed products, coverage, deadlines, lead times and live capacity.">
     {!membershipActive && <section className="panel honesty-note" role="status"><b>Membership required for live quote opportunities</b><p>Your paid access has ended. Existing submitted, selected and closed quotations remain available as read-only history, but new opportunities and quotation submission are locked.</p><Link className="button button-dark" href="/dashboard/subscription">Renew membership</Link></section>}

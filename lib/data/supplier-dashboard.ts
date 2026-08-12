@@ -1,5 +1,6 @@
 import { prisma, runWithDatabaseIdentity } from "@/lib/db";
 import { effectiveMembershipLimits } from "@/lib/billing/membership-plans";
+import { canReadSupplierAssignment } from "@/lib/billing/opportunity-access";
 
 // Every supplier query accepts a company id sourced from a validated membership.
 // Never accept this id directly from an untrusted request body.
@@ -22,7 +23,7 @@ export async function getSupplierDashboard(supplierCompanyId: string, userId: st
         capabilities: { where: { active: true }, select: { capacityStatus: true, declaredMonthlyCapacity: true } },
       },
     });
-    const assignments = await tx.supplierAssignment.findMany({
+    const assignmentCandidates = await tx.supplierAssignment.findMany({
       where: {
         supplierCompanyId,
         status: { in: ["PENDING", "VIEWED", "ACCEPTED"] },
@@ -33,18 +34,14 @@ export async function getSupplierDashboard(supplierCompanyId: string, userId: st
         quoteRequest: {
           include: { category: true, items: true, attachments: true },
         },
+        quotation: { select: { id: true } },
       },
       orderBy: { assignedAt: "desc" },
-      take: 8,
+      take: 500,
     });
-    const openAssignmentCount = await tx.supplierAssignment.count({
-      where: {
-        supplierCompanyId,
-        status: { in: ["PENDING", "VIEWED", "ACCEPTED"] },
-        expiresAt: { gt: now },
-        quoteRequest: { status: { in: ["OPEN", "MATCHING", "QUOTED"] }, responseDueAt: { gt: now } },
-      },
-    });
+    const entitledAssignments = assignmentCandidates.filter((assignment) => canReadSupplierAssignment(company, assignment, now));
+    const assignments = entitledAssignments.slice(0, 8);
+    const openAssignmentCount = entitledAssignments.length;
     const recentQuotations = await tx.supplierQuotation.findMany({
       where: {
         supplierCompanyId,
@@ -152,7 +149,12 @@ export async function getSupplierRequest(
   supplierCompanyId: string,
   reference: string,
 ) {
-  return prisma.supplierAssignment.findFirst({
+  const company = await prisma.supplierCompany.findUnique({
+    where: { id: supplierCompanyId },
+    include: { subscription: { include: { membershipPlan: true } } },
+  });
+  if (!company) return null;
+  const assignment = await prisma.supplierAssignment.findFirst({
     where: {
       supplierCompanyId,
       quoteRequest: { reference },
@@ -165,4 +167,5 @@ export async function getSupplierRequest(
       quotation: { include: { attachments: true, contactAccess: true } },
     },
   });
+  return assignment && canReadSupplierAssignment(company, assignment) ? assignment : null;
 }
