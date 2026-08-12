@@ -65,9 +65,7 @@ export function supplierApprovalReadiness(company: SupplierOnboardingInput): Sup
       href: "/dashboard/company#company-address",
       complete: hasText(company.addressLine1)
         && hasText(company.city)
-        && hasText(company.postcode, 3)
-        && company.geographicOriginLatitude !== null
-        && company.geographicOriginLongitude !== null,
+        && hasText(company.postcode, 3),
     },
     {
       key: "CONTACT",

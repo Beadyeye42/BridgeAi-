@@ -44,10 +44,10 @@ describe("supplier onboarding readiness", () => {
     expect(supplierApprovalReadiness(supplier).blockers).toEqual(["Company identity"]);
   });
 
-  it("does not treat an unverified postcode as a complete supplier address", () => {
+  it("lets the approval action verify coordinates for an otherwise complete address", () => {
     const supplier = completeSupplier();
     supplier.geographicOriginLatitude = null;
     supplier.geographicOriginLongitude = null;
-    expect(supplierApprovalReadiness(supplier).blockers).toEqual(["Company address"]);
+    expect(supplierApprovalReadiness(supplier).blockers).toEqual([]);
   });
 });

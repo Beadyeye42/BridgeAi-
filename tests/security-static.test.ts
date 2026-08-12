@@ -418,6 +418,9 @@ describe("security foundation static controls", () => {
     expect(requests).toContain("expiresAt: { lte: now }");
     const status = read("app/api/admin/suppliers/[id]/status/route.ts");
     expect(status).toContain("supplierApprovalReadiness(existing)");
+    expect(status).toContain("await lookupPostcode(existing.postcode ?? \"\")");
+    expect(status).toContain("postcodeVerifiedDuringApproval");
+    expect(status).toContain('error.code === "GEOCODING_UNAVAILABLE" ? 503 : 422');
     expect(status).toContain('action: `ADMIN.SUPPLIER_${parsed.data.status}`');
     expect(status).not.toContain("supplierTeamMembership.updateMany");
     const team = read("app/dashboard/team/page.tsx");
