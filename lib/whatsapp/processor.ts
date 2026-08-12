@@ -36,6 +36,7 @@ import { downloadMetaMedia, sendMetaTemplate, sendMetaText } from "@/lib/whatsap
 import { attachmentAutomationDecision } from "@/lib/whatsapp/attachment-policy";
 import { buyerTypeAllowed, buyerTypeLabel, classifyBuyerType } from "@/lib/whatsapp/buyer-classification";
 import {
+  isClearCataloguePivot,
   productMessageIntent,
   productRecoveryReply,
   recogniseCatalogueProduct,
@@ -43,12 +44,14 @@ import {
 import { writeWhatsAppSystemEvent } from "@/lib/whatsapp/system-events";
 import {
   attachmentInterpretation,
+  conversationPivotContext,
   earliestInboundAt,
   firstContactConsentReply,
   industryQuoteOfferReply,
   isCancelAllDraftsRequest,
   isCancelDraftRequest,
   isConversationOptOut,
+  isConversationalHelpRequest,
   isIndustryQuoteOfferAccepted,
   isIndustryQuoteOfferDeclined,
   isMenuRequest,
@@ -65,6 +68,7 @@ import {
 import {
   compositeDoorPhotoDecision,
   compositeDoorStylePhotoPrompt,
+  conversationalRecoveryPrompt,
   conversationProgress,
   enforceTradeClarification,
   hyperlocalServiceIntakeDecision,
@@ -142,6 +146,22 @@ function selectedIndustry(categories: IntakeCategory[], categorySlug: string | n
   return category.parent
     ? categories.find((candidate) => candidate.slug === category.parent?.slug) ?? null
     : category;
+}
+
+function productQuestionForCategory(categorySlug: string | null | undefined) {
+  if (categorySlug === "transport-delivery-removals") {
+    return "Yes — I can help with transport. What needs moving, and roughly how much? Send the collection and delivery postcodes too if you have them; a photo is welcome.";
+  }
+  if (categorySlug === "plumbing-heating-mechanical") {
+    return "Yes — I can help with plumbing, heating or mechanical supply. What product, system or work do you need? A schedule, drawing or photo is welcome.";
+  }
+  if (categorySlug === "bespoke-metal-fabrication") {
+    return "Yes — I can help with fabrication. What needs making, and roughly how many? Send a drawing, dimensions or photo if you have one.";
+  }
+  if (categorySlug === "garage-industrial-specialist-doors") {
+    return "Yes — I can help with specialist doors. What type of door or opening do you need? A photo, survey or opening size is welcome.";
+  }
+  return productSelectionPrompt();
 }
 
 function replaceLatestNumberedReply(
@@ -1416,7 +1436,19 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   let draft = decryptedDraft
     ? { ...decryptedDraft, categorySlug: normalizeLaunchCategorySlug(decryptedDraft.categorySlug) }
     : null;
-  const beganWithoutDraft = !draft?.categorySlug;
+  let beganWithoutDraft = !draft?.categorySlug;
+
+  if (isConversationalHelpRequest(text)) {
+    const savedDraft = draft?.title
+      ? ` I still have your unfinished “${draft.title}” request safe. If this is a different job, just tell me the new item or service and I’ll keep the two requests separate.`
+      : "";
+    await sendReply(
+      job,
+      refreshed.conversation,
+      `Yes — absolutely.${savedDraft}\n\nTell me what you need in your own words, or send a photo, drawing or PDF. Include where and when you need it if you can.`,
+    );
+    return undefined;
+  }
 
   if (stage === "AWAITING_CONFIRMATION" && isQuoteConfirmation(text)) {
     if (!draft) throw new Error("QUOTE_DRAFT_MISSING");
@@ -1572,6 +1604,26 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
       return parts;
     });
   const productRecognition = recogniseCatalogueProduct(text, categories);
+  const currentIndustry = selectedIndustry(categories, draft?.categorySlug);
+  if (draft?.categorySlug
+    && currentIndustry
+    && productRecognition
+    && isClearCataloguePivot({
+      text,
+      recognition: productRecognition,
+      currentCategorySlug: draft.categorySlug,
+      currentIndustrySlug: currentIndustry.slug,
+      expectedQuestionKey: refreshed.conversation.aiLastQuestionKey,
+    })) {
+    await startNewQuote(job, refreshed.conversation, inbound, false);
+    const latestTurn = conversationPivotContext(messages, text);
+    messages.splice(0, messages.length, ...latestTurn);
+    draft = null;
+    beganWithoutDraft = true;
+    refreshed.conversation.aiDraftFingerprint = null;
+    refreshed.conversation.aiLastQuestionKey = null;
+    refreshed.conversation.aiUnproductiveTurns = 0;
+  }
   const expectedQuestion = refreshed.conversation.aiLastQuestionKey;
   if (expectedQuestion === "QUOTE_OFFER" && isIndustryQuoteOfferAccepted(text)) {
     replaceLatestNumberedReply(messages, text, "[Customer accepted the offer to find a competitive supplier quote.]");
@@ -1761,12 +1813,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   });
   if (result.intent === "QUESTION") {
     if (!beganWithoutDraft || !initialExtraction) {
-      const continuation = "Your current quote draft is still saved. Continue with the job details whenever you’re ready.";
-      await sendReply(
-        job,
-        refreshed.conversation,
-        `${result.reply}\n\n${continuation}`,
-      );
+      await sendReply(job, refreshed.conversation, result.reply);
       return telemetry;
     }
     const offerFingerprint = quoteDraftFingerprint(result.draft);
@@ -1910,7 +1957,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     await sendReply(
       job,
       refreshed.conversation,
-      `I want to make sure I get this right without holding you up. ${questionKey === "PRODUCT" ? productSelectionPrompt() : repeatClarification(questionKey)}`,
+      `I want to make sure I get this right without holding you up. ${questionKey === "PRODUCT" ? productQuestionForCategory(result.draft.categorySlug) : conversationalRecoveryPrompt(questionKey)}`,
     );
     return telemetry;
   }
@@ -1951,19 +1998,19 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
       ?? `I’ve securely received and read ${currentAttachmentCount === 1 ? "that file" : `those ${currentAttachmentCount} files`} and added the useful details.`
     : null;
   const productQuestionPrompt = !ready && questionKey === "PRODUCT"
-    ? productSelectionPrompt()
+    ? productQuestionForCategory(result.draft.categorySlug)
     : null;
   const repeatedClarification = !ready && progress.repeatedQuestion && !progress.progressed
     ? questionKey === "PRODUCT"
-      ? productSelectionPrompt()
-      : repeatClarification(questionKey)
+      ? productQuestionForCategory(result.draft.categorySlug)
+      : conversationalRecoveryPrompt(questionKey)
     : null;
   const tradeClarification = !ready && questionKey === "SPECIFICATION"
     ? tradeSpecificationClarification(result.tradeClarification, result.draft.items[0]?.description)
     : null;
   const enforcedClarification = !ready && questionKey !== result.nextQuestionKey
     ? questionKey === "PRODUCT"
-      ? productSelectionPrompt()
+      ? productQuestionForCategory(result.draft.categorySlug)
       : repeatClarification(questionKey)
     : null;
   const reply = ready && category

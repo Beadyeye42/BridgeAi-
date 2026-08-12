@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   attachmentInterpretation,
+  conversationPivotContext,
   earliestInboundAt,
   firstContactConsentReply,
   industryQuoteOfferReply,
   isCancelAllDraftsRequest,
   isCancelDraftRequest,
   isConversationOptOut,
+  isConversationalHelpRequest,
   isIndustryQuoteOfferAccepted,
   isIndustryQuoteOfferDeclined,
   isMenuRequest,
@@ -81,6 +83,34 @@ describe("WhatsApp messaging policy", () => {
     expect(["2", "MY QUOTES", "past quotes", "history"].every(isQuoteHistoryRequest)).toBe(true);
     expect(isNewQuoteRequest("five new windows")).toBe(false);
     expect(isQuoteHistoryRequest("quotes")).toBe(false);
+  });
+
+  it("recognises natural requests for help without forcing the next saved-draft field", () => {
+    expect([
+      "Can you help me",
+      "Hi Bridge AI, I need help finding a quote.",
+      "Could you help me get a quote please?",
+      "I need some help",
+    ].every(isConversationalHelpRequest)).toBe(true);
+    expect(isConversationalHelpRequest("Can you help me move a sofa?")).toBe(false);
+  });
+
+  it("keeps the useful deadline when a customer reveals a new subject after asking for help", () => {
+    const transcript = [
+      { direction: "OUTBOUND" as const, text: "Tell me about the saved French-door request." },
+      { direction: "INBOUND" as const, text: "Hi Bridge AI, I need help finding a quote." },
+      { direction: "OUTBOUND" as const, text: "Of course. Tell me what you need." },
+      { direction: "INBOUND" as const, text: "Friday" },
+      { direction: "INBOUND" as const, text: "Transport" },
+    ];
+    const context = conversationPivotContext(transcript, "Transport");
+    expect(context.map((message) => message.text)).toEqual([
+      "Hi Bridge AI, I need help finding a quote.",
+      "Of course. Tell me what you need.",
+      "Friday",
+      "Transport",
+    ]);
+    expect(context.map((message) => message.text)).not.toContain("Tell me about the saved French-door request.");
   });
 
   it("separates draft cancellation from closing the WhatsApp conversation", () => {

@@ -539,3 +539,24 @@ export function repeatClarification(questionKey: IntakeQuestionKey) {
   };
   return questionKey === "NONE" ? null : prompts[questionKey];
 }
+
+export function conversationalRecoveryPrompt(questionKey: IntakeQuestionKey) {
+  const prompts: Record<Exclude<IntakeQuestionKey, "NONE">, string> = {
+    BUYER_TYPE: "Just so I match the right businesses: is this for you personally, for your trade work, or for another business?",
+    PRODUCT: "Tell me the item or job in a few words, or send a photo, drawing or PDF. I’ll work out the right specialist category for you.",
+    DELIVERY_POSTCODE: "I’m ready to help. Send the full postcode for where this is needed—for example GL52 6TD.",
+    REQUIRED_BY: "What deadline should I work to? You can say today, tomorrow, Friday, within seven days, or give me a date.",
+    FULFILMENT: "Should suppliers price delivery, collection, supply only, or work carried out on site?",
+    CATEGORY: "Tell me the exact product or job in your own words and I’ll put it in the right category.",
+    COMPOSITE_STYLE: "A photo or brochure screenshot of the composite-door style would help. If you do not have one, describe the style and I’ll continue.",
+    ROOF_GLAZING_SPECIFICATION: "For the roof glazing, send the INTERNAL opening size, frame material and colour. If one is unknown, say which one.",
+    PHE_SPECIFICATION: "Send the model, schedule, drawing or main heating specification you have. If you are unsure, tell me what the system needs to do.",
+    TRANSPORT_ROUTE_ITEM: "What needs moving, from which full postcode to which full postcode? A photo is welcome.",
+    TRANSPORT_ACCESS: "What is access like at collection and delivery—ground floor, stairs or lift?",
+    TRANSPORT_HANDLING: "Will the driver need to help carry or load, or is help available at both ends?",
+    HYPERLOCAL_SERVICE: "Describe the problem or work needed in one sentence, and send a photo if it helps.",
+    SPECIFICATION: "Which size, material, colour, system or opening detail should suppliers price? Tell me what you know and I’ll work with it.",
+    REQUIREMENTS: "What should the supplier include in the price? A short description is enough.",
+  };
+  return questionKey === "NONE" ? null : prompts[questionKey];
+}

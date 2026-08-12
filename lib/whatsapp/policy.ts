@@ -157,6 +157,34 @@ export function isMenuRequest(value: string) {
   return /^(hi|hello|hey|menu|help|start)$/i.test(value.trim());
 }
 
+export function isConversationalHelpRequest(value: string) {
+  const normalised = value
+    .trim()
+    .replace(/[.!?]+$/g, "")
+    .replace(/\s+/g, " ");
+  return /^(?:(?:hi|hello|hey)(?: bridge ai)?[, ]*)?(?:can|could|would) you help(?: me)?(?: (?:find|get)(?: me| us)?| with)?(?: a)? quote(?: please)?$/i.test(normalised)
+    || /^(?:(?:hi|hello|hey)(?: bridge ai)?[, ]*)?i need help (?:finding|getting|with) (?:a )?quote(?: please)?$/i.test(normalised)
+    || /^(?:can you help me|please help me|i need some help)$/i.test(normalised);
+}
+
+export function conversationPivotContext<T extends { direction: "INBOUND" | "OUTBOUND"; text: string }>(
+  messages: T[],
+  latestText: string,
+) {
+  const latestInboundIndex = messages.findLastIndex(
+    (message) => message.direction === "INBOUND" && message.text === latestText,
+  );
+  if (latestInboundIndex < 0) return [{ direction: "INBOUND" as const, text: latestText }];
+  const recentStart = Math.max(0, latestInboundIndex - 8);
+  const helpIndex = messages.findLastIndex(
+    (message, index) => index >= recentStart
+      && index < latestInboundIndex
+      && message.direction === "INBOUND"
+      && isConversationalHelpRequest(message.text),
+  );
+  return messages.slice(helpIndex >= 0 ? helpIndex : latestInboundIndex);
+}
+
 export function quoteMenu(hasDraft = false) {
   return [
     "Hi 👋 I’m Bridge AI — your industry partner for finding competitive prices and lead times from approved suppliers.",

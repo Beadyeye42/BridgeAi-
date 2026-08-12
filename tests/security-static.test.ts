@@ -443,7 +443,9 @@ describe("security foundation static controls", () => {
     expect(retry).toContain("processWhatsAppJobs({ limit: 20 })");
     const matching = read("lib/matching/suppliers.ts");
     expect(matching).toContain("supplierOnboardingReadiness(supplier).ready");
-    expect(matching).not.toContain("accreditations:");
+    expect(matching).toContain("accreditations: {");
+    expect(matching).toContain('where: { status: "APPROVED", OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }');
+    expect(matching).toContain("select: { type: true, displayName: true, issuingBody: true, referenceNumber: true }");
   });
 
   it("keeps browser location lookup authenticated and non-persistent", () => {

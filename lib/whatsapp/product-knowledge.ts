@@ -97,6 +97,23 @@ const productRules: ProductRule[] = [
   { slug: "steel-security-doors", pattern: /\bsteel\s*security\s*d+o+r+s?\b/i },
   { slug: "shopfronts", pattern: /\bshop\s*fronts?\b/i },
   { slug: "fire-doors", pattern: /\bfire[-\s]*(?:rated[-\s]*)?d+o+r+s?(?:ets?)?\b/i },
+  {
+    slug: "transport-delivery-removals",
+    pattern: /^(?:transport|delivery|deliveries|removal|removals|moving|courier|man and van|man with a van)$/i,
+    answer: "Yes — Bridge AI can help with transport, delivery and removals. Tell me what needs moving and the collection and delivery postcodes; a photo is welcome when it helps show the load.",
+  },
+  {
+    slug: "plumbing-heating-mechanical",
+    pattern: /^(?:plumbing|heating|mechanical|plumbing and heating)$/i,
+  },
+  {
+    slug: "bespoke-metal-fabrication",
+    pattern: /^(?:metal fabrication|steel fabrication|fabrication)$/i,
+  },
+  {
+    slug: "garage-industrial-specialist-doors",
+    pattern: /^(?:industrial doors|specialist doors|garage and industrial doors)$/i,
+  },
 ];
 
 function normaliseWords(value: string) {
@@ -149,6 +166,21 @@ export function productMessageIntent(text: string): "QUOTE_REQUEST" | "QUESTION"
     return "QUESTION";
   }
   return "QUOTE_REQUEST";
+}
+
+export function isClearCataloguePivot(input: {
+  text: string;
+  recognition: ProductRecognition;
+  currentCategorySlug: string;
+  currentIndustrySlug: string;
+  expectedQuestionKey: string | null;
+}) {
+  if (productMessageIntent(input.text) === "QUESTION") return false;
+  const recognisedIndustry = input.recognition.parentSlug ?? input.recognition.categorySlug;
+  if (recognisedIndustry !== input.currentIndustrySlug) return true;
+  if (input.recognition.categorySlug === input.currentCategorySlug) return false;
+  if (input.expectedQuestionKey && input.expectedQuestionKey !== "PRODUCT") return false;
+  return input.text.trim().split(/\s+/).length <= 8;
 }
 
 export function productRecoveryReply(recognition: ProductRecognition, text: string) {
