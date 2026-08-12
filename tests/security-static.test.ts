@@ -150,6 +150,8 @@ describe("security foundation static controls", () => {
     expect(migration).toContain("has_company_membership(c.\"supplierCompanyId\")");
     expect(migration).toContain("parent.sender = 'BUYER'");
     expect(migration).toContain("parent.\"questionDueAt\" > now()");
+    expect(migration).toContain('"QuoteMessage".status = \'PENDING\'');
+    expect(migration).not.toMatch(/\n\s+AND status = 'PENDING'/);
     expect(migration).toContain('GRANT UPDATE ("lastMessageAt") ON bridge_ai."QuoteConversation" TO authenticated');
     expect(migration).not.toContain('GRANT UPDATE ON bridge_ai."QuoteMessage" TO authenticated');
     expect(migration).toContain("SYSTEM.MULTI_SUPPLIER_QUOTE_CONVERSATIONS_ENABLED");
