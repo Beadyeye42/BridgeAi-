@@ -237,7 +237,7 @@ WITH CHECK ((SELECT bridge_private.is_platform_admin()) OR EXISTS (
       AND c.status = 'OPEN'
       AND sender = 'SUPPLIER'
       AND "senderUserId" = (SELECT bridge_private.current_user_id())
-      AND status = 'PENDING'
+      AND "QuoteMessage".status = 'PENDING'
       AND "replyToId" IS NOT NULL
       AND "broadcastKey" IS NULL
       AND "questionDueAt" IS NULL
