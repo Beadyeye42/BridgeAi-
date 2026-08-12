@@ -18,6 +18,8 @@ import { lockSupplierAssignmentScope, recordMatchingEvaluation } from "@/lib/mat
 import { runProductionMonitoringSafely } from "@/lib/monitoring/operational-alerts";
 import { addSupplierResponseHours } from "@/lib/quotes/response-clock";
 import { selectQuotationForCustomer } from "@/lib/quotes/selection";
+import { createBuyerQuestion, newBroadcastKey } from "@/lib/quotes/conversations";
+import { moderatePreSelectionQuoteMessage } from "@/lib/quotes/message-moderation";
 import { processSupplierEmailsSafely } from "@/lib/notifications/email-worker";
 import { queueSupplierAssignmentNotifications } from "@/lib/notifications/assignment-notifications";
 import { decryptPrivateValue, encryptPrivateValue } from "@/lib/security/encryption";
@@ -59,6 +61,7 @@ import {
   isQuoteHistoryRequest,
   isQuoteRefresh,
   isServiceWindowOpen,
+  quoteQuestionIntent,
   quoteSelectionIntent,
   quoteMenu,
   wasReplyRecentlySent,
@@ -246,6 +249,7 @@ async function loadJob(id: string) {
       },
       quoteRequest: true,
       quotation: { include: { supplierCompany: true } },
+      quoteMessage: { include: { quoteConversation: true } },
     },
   }));
 }
@@ -1255,6 +1259,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   let nameCapturedThisTurn = false;
   const text = inbound.bodyEncrypted ? decryptPrivateValue(inbound.bodyEncrypted) : "";
   const selectionIntent = quoteSelectionIntent(text);
+  const questionIntent = quoteQuestionIntent(text);
 
   const controlMessage = isConversationOptOut(text)
     || isConsent(text)
@@ -1267,6 +1272,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     || isNewQuoteRequest(text)
     || isQuoteHistoryRequest(text)
     || isMenuRequest(text)
+    || questionIntent !== null
     || selectionIntent !== null;
   if (!controlMessage && await hasNewerInboundJob(job)) {
     return undefined;
@@ -1509,32 +1515,136 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     const request = await runAsDatabaseWorker("whatsapp_ai", (tx) => tx.quoteRequest.findFirst({
       where: { conversationId: refreshed.conversation!.id, status: { in: ["OPEN", "MATCHING", "QUOTED"] } },
       orderBy: { createdAt: "desc" },
-      include: { quotations: { where: { status: "SUBMITTED" }, orderBy: [{ submittedAt: "asc" }, { id: "asc" }], take: 5 } },
+      include: {
+        quotations: {
+          where: { status: "SUBMITTED" },
+          orderBy: [{ submittedAt: "asc" }, { id: "asc" }],
+          take: 5,
+          include: { conversation: true },
+        },
+      },
     }));
     if (!request || !request.quotations.length) {
       await sendReply(job, refreshed.conversation, "That quote is no longer available. Reply QUOTES and I’ll show the latest prices and lead times.");
       return undefined;
     }
+    if (questionIntent) {
+      const moderation = moderatePreSelectionQuoteMessage(questionIntent.question);
+      if (!moderation.allowed) {
+        await runAsDatabaseWorker("whatsapp_ai", (tx) => writeWhatsAppAudit(tx, {
+          action: "WHATSAPP.BUYER_QUESTION_BLOCKED",
+          entityType: "QuoteRequest",
+          entityId: request.id,
+          summary: "A pre-selection buyer message containing contact details was blocked",
+          metadata: { messageId: inbound.id, reasons: moderation.reasons },
+        }));
+        await sendReply(job, refreshed.conversation, "I can send product, specification, delivery and availability questions privately, but contact details and links stay protected until you select a quote. Please rewrite the question without a phone number, email, address, link or social handle.");
+        return undefined;
+      }
+      const targets = questionIntent.kind === "ALL"
+        ? request.quotations.filter((quotation) => quotation.conversation?.status === "OPEN")
+        : request.quotations.filter((quotation) => quotation.conversation?.anonymousLabel === questionIntent.label && quotation.conversation.status === "OPEN");
+      if (!targets.length) {
+        await sendReply(job, refreshed.conversation, questionIntent.kind === "ALL"
+          ? "There are no open supplier conversations for this request. Reply QUOTES to see the latest list."
+          : `Quote ${questionIntent.label} is not available. Reply QUOTES to see the current quote letters.`);
+        return undefined;
+      }
+      const broadcastKey = questionIntent.kind === "ALL" ? newBroadcastKey() : undefined;
+      const result = await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
+        const created: Array<{ label: string; dueAt: Date }> = [];
+        for (const quotation of targets) {
+          const quoteConversation = quotation.conversation!;
+          const message = await createBuyerQuestion(tx, {
+            conversationId: quoteConversation.id,
+            body: questionIntent.question.slice(0, 2000),
+            idempotencyKey: `buyer-question:${inbound.externalMessageId}:${quoteConversation.id}`,
+            broadcastKey,
+          });
+          const members = await tx.supplierTeamMembership.findMany({
+            where: { supplierCompanyId: quotation.supplierCompanyId, status: "ACTIVE" },
+            select: { userId: true },
+          });
+          if (members.length) {
+            const preferences = await tx.notificationPreference.findMany({
+              where: {
+                supplierCompanyId: quotation.supplierCompanyId,
+                userId: { in: members.map(({ userId }) => userId) },
+              },
+              select: { userId: true, inAppEnabled: true, emailQuotationUpdates: true },
+            });
+            const preferencesByUser = new Map(preferences.map((preference) => [preference.userId, preference]));
+            const notificationRows = members.flatMap(({ userId }) => {
+              const preference = preferencesByUser.get(userId);
+              const rows = [];
+              if (preference?.inAppEnabled !== false) {
+                rows.push({
+                  userId,
+                  supplierCompanyId: quotation.supplierCompanyId,
+                  type: "BUYER_QUESTION" as const,
+                  channel: "IN_APP" as const,
+                  title: `A buyer asked Quote ${quoteConversation.anonymousLabel} a question`,
+                  body: "Reply privately in Bridge-iT. Contact details remain protected before selection.",
+                  actionUrl: `/dashboard/requests/${request.reference}`,
+                });
+              }
+              if (preference?.emailQuotationUpdates !== false) {
+                rows.push({
+                  userId,
+                  supplierCompanyId: quotation.supplierCompanyId,
+                  type: "BUYER_QUESTION" as const,
+                  channel: "EMAIL" as const,
+                  title: `Buyer question for ${request.reference}`,
+                  body: `A buyer asked a private question about Quote ${quoteConversation.anonymousLabel}. Sign in to reply securely.`,
+                  actionUrl: `/dashboard/requests/${request.reference}`,
+                });
+              }
+              return rows;
+            });
+            if (notificationRows.length) {
+              await tx.notification.createMany({ data: notificationRows });
+            }
+          }
+          created.push({ label: quoteConversation.anonymousLabel, dueAt: message.questionDueAt! });
+        }
+        await writeWhatsAppAudit(tx, {
+          action: questionIntent.kind === "ALL" ? "WHATSAPP.BUYER_QUESTION_BROADCAST" : "WHATSAPP.BUYER_QUESTION_SENT",
+          entityType: "QuoteRequest",
+          entityId: request.id,
+          summary: questionIntent.kind === "ALL" ? "Buyer question sent privately to all available quoted suppliers" : "Buyer question sent to one anonymous quoted supplier",
+          metadata: { messageId: inbound.id, labels: created.map(({ label }) => label), broadcastKey },
+        });
+        return created;
+      });
+      await processSupplierEmailsSafely({ limit: 20 });
+      const labels = result.map(({ label }) => `Quote ${label}`).join(", ");
+      await sendReply(job, refreshed.conversation, questionIntent.kind === "ALL"
+        ? `I’ve sent your question privately to ${labels}. Their identities stay hidden, and each reply will return here under the correct quote letter.`
+        : `I’ve sent your question privately to Quote ${questionIntent.label}. Its reply will come back here under the same letter.`);
+      return undefined;
+    }
     if (!selectionIntent) {
       await sendReply(job, refreshed.conversation, request.quotations.length === 1
-        ? "There is one quote available. Reply SELECT 1 and I’ll confirm that exact quote for you."
-        : `Which quote would you like? Reply SELECT followed by its number, from 1 to ${request.quotations.length}. For example, SELECT 2.`);
+        ? `There is one quote available. Reply SELECT ${request.quotations[0]!.conversation?.anonymousLabel ?? "A"} and I’ll confirm that exact quote for you.`
+        : "Which quote would you like? Reply SELECT followed by its letter, for example SELECT B. You can also ask a private question, for example ASK B is delivery included?");
       return undefined;
     }
     if (selectionIntent.kind === "REFERENCE" && selectionIntent.reference !== request.reference.toUpperCase()) {
       await sendReply(job, refreshed.conversation, `That reference is not the quote list currently open. Reply QUOTES to see the latest prices for ${request.reference}.`);
       return undefined;
     }
-    if (selectionIntent.kind !== "POSITION" && request.quotations.length > 1) {
-      await sendReply(job, refreshed.conversation, `There are ${request.quotations.length} quotes available, so I haven’t selected one. Reply SELECT followed by the number you want, from 1 to ${request.quotations.length}. For example, SELECT 2.`);
+    if (!["POSITION", "LABEL"].includes(selectionIntent.kind) && request.quotations.length > 1) {
+      await sendReply(job, refreshed.conversation, `There are ${request.quotations.length} quotes available, so I haven’t selected one. Reply SELECT followed by the quote letter, for example SELECT B.`);
       return undefined;
     }
-    const displayedPosition = selectionIntent.kind === "POSITION" ? selectionIntent.position : 1;
-    const selected = request.quotations[displayedPosition - 1];
+    const selected = selectionIntent.kind === "LABEL"
+      ? request.quotations.find((quotation) => quotation.conversation?.anonymousLabel === selectionIntent.label)
+      : request.quotations[(selectionIntent.kind === "POSITION" ? selectionIntent.position : 1) - 1];
     if (!selected) {
-      await sendReply(job, refreshed.conversation, `That number is not available. Reply with a number from 1 to ${request.quotations.length}.`);
+      await sendReply(job, refreshed.conversation, "That quote is not available. Reply QUOTES to see the current quote letters.");
       return undefined;
     }
+    const selectedLabel = selected.conversation?.anonymousLabel ?? "A";
     const grant = await selectQuotationForCustomer({ quotationId: selected.id, evidence: `WhatsApp message ${inbound.externalMessageId}` });
     await enqueueContactUnlock(grant.id);
     await processSupplierEmailsSafely({ limit: 10 });
@@ -1545,10 +1655,10 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
         entityType: "SupplierQuotation",
         entityId: selected.id,
         summary: "Customer selected an anonymised quote through WhatsApp",
-        metadata: { messageId: inbound.id, quoteRequestId: request.id, displayedPosition },
+        metadata: { messageId: inbound.id, quoteRequestId: request.id, anonymousLabel: selectedLabel },
       });
     });
-    await sendReply(job, refreshed.conversation, `Great choice — you’ve selected quote ${displayedPosition} to move forward. This is not yet a confirmed booking or order. I’m sharing the supplier’s business contact details so you can agree the final arrangements.`);
+    await sendReply(job, refreshed.conversation, `Great choice — you’ve selected Quote ${selectedLabel} to move forward. This is not yet a confirmed booking or order. I’m sharing the supplier’s business contact details so you can agree the final arrangements.`);
     return undefined;
   }
 
@@ -2036,12 +2146,16 @@ async function currentQuoteSummary(conversationId: string) {
   const request = await runAsDatabaseWorker("whatsapp_ai", (tx) => tx.quoteRequest.findFirst({
     where: { conversationId, status: { in: ["OPEN", "MATCHING", "QUOTED"] } },
     orderBy: { createdAt: "desc" },
-    include: { quotations: { where: { status: "SUBMITTED" }, orderBy: [{ submittedAt: "asc" }, { id: "asc" }], take: 5 } },
+    include: { quotations: { where: { status: "SUBMITTED" }, orderBy: [{ submittedAt: "asc" }, { id: "asc" }], take: 5, include: { conversation: true } } },
   }));
   if (!request) return null;
   const quotes = request.quotations.filter((quote) => !quote.validUntil || quote.validUntil > new Date());
   if (!quotes.length) return null;
-  const lines = quotes.map((quote, index) => `Quote ${index + 1}: ${formatPrice(quote.price, quote.currency)} — lead time ${quote.leadTimeDays} day${quote.leadTimeDays === 1 ? "" : "s"}`);
+  const lines = quotes.map((quote, index) => {
+    const label = quote.conversation?.anonymousLabel ?? ["A", "B", "C", "D", "E"][index]!;
+    const delivery = quote.deliveryCost === null ? "delivery not stated" : Number(quote.deliveryCost) === 0 ? "delivery included" : `${formatPrice(quote.deliveryCost, quote.currency)} delivery`;
+    return `Quote ${label}: ${formatPrice(quote.price, quote.currency)} — ${quote.leadTimeDays} day${quote.leadTimeDays === 1 ? "" : "s"} — ${delivery}`;
+  });
   return {
     requestId: request.id,
     reference: request.reference,
@@ -2051,8 +2165,8 @@ async function currentQuoteSummary(conversationId: string) {
       `Current prices for ${request.reference}. Supplier identities remain private:`,
       lines.join("\n"),
       quotes.length === 1
-        ? "To choose this quote, reply SELECT 1. There are no introduction or winning fees."
-        : `To choose, reply SELECT followed by the quote number (1 to ${quotes.length}). For example, SELECT 2. There are no introduction or winning fees.`,
+        ? `To choose this quote, reply SELECT ${quotes[0]!.conversation?.anonymousLabel ?? "A"}. To ask a question, reply ASK ${quotes[0]!.conversation?.anonymousLabel ?? "A"} followed by your question.`
+        : "To choose, reply SELECT followed by its letter, for example SELECT B. To ask one supplier, reply ASK B followed by your question, or use ASK ALL.",
     ].join("\n\n"),
   };
 }
@@ -2142,6 +2256,19 @@ async function processContactUnlock(job: WhatsAppJob, loaded: LoadedJob) {
   return undefined;
 }
 
+async function processQuoteMessage(job: WhatsAppJob, loaded: LoadedJob) {
+  if (!loaded.conversation || !loaded.quoteRequest || !loaded.quoteMessage) throw new Error("QUOTE_MESSAGE_JOB_INVALID");
+  if (loaded.quoteMessage.sender !== "SUPPLIER" || loaded.quoteMessage.status === "BLOCKED") return undefined;
+  const body = decryptPrivateValue(loaded.quoteMessage.contentEncrypted);
+  const label = loaded.quoteMessage.quoteConversation.anonymousLabel;
+  await sendReply(job, loaded.conversation, `Quote ${label} replied:\n\n${body}\n\nSupplier identity and contact details remain private until you select a quote.`);
+  await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
+    await tx.quoteMessage.update({ where: { id: loaded.quoteMessage!.id }, data: { status: "DELIVERED", deliveredAt: new Date() } });
+    await writeWhatsAppAudit(tx, { action: "WHATSAPP.QUOTE_MESSAGE_DELIVERED", entityType: "QuoteMessage", entityId: loaded.quoteMessage!.id, summary: "Private supplier response delivered to the correct customer", metadata: { quoteRequestId: loaded.quoteRequest!.id, anonymousLabel: label } });
+  });
+  return undefined;
+}
+
 async function processIntakeFallback(job: WhatsAppJob, loaded: LoadedJob) {
   if (!loaded.conversation) throw new Error("INTAKE_FALLBACK_INVALID");
   await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
@@ -2181,6 +2308,7 @@ async function processJob(job: WhatsAppJob) {
   if (job.type === "SEND_INTAKE_FALLBACK") return processIntakeFallback(job, loaded);
   if (job.type === "SEND_QUOTE_SUMMARY") return processQuoteSummary(job, loaded);
   if (job.type === "SEND_CONTACT_UNLOCK") return processContactUnlock(job, loaded);
+  if (job.type === "SEND_QUOTE_MESSAGE") return processQuoteMessage(job, loaded);
   throw new Error("JOB_TYPE_UNSUPPORTED");
 }
 

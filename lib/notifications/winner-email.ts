@@ -6,7 +6,7 @@ export type SupplierWinnerEmailInput = {
 };
 
 export type SupplierNotificationEmailInput = SupplierWinnerEmailInput & {
-  kind: "NEW_QUOTE_REQUEST" | "QUOTATION_ACCEPTED";
+  kind: "NEW_QUOTE_REQUEST" | "QUOTATION_ACCEPTED" | "BUYER_QUESTION";
 };
 
 function escapeHtml(value: string) {
@@ -23,14 +23,15 @@ export function buildSupplierNotificationEmail(input: SupplierNotificationEmailI
   const firstName = input.recipientFirstName.trim() || "there";
   const subject = input.title.trim();
   const isOpportunity = input.kind === "NEW_QUOTE_REQUEST";
-  const label = isOpportunity ? "New matched opportunity" : "Quotation selected";
-  const button = isOpportunity ? "Review opportunity" : "Open secure request";
+  const isQuestion = input.kind === "BUYER_QUESTION";
+  const label = isOpportunity ? "New matched opportunity" : isQuestion ? "Private buyer question" : "Quotation selected";
+  const button = isOpportunity ? "Review opportunity" : isQuestion ? "Reply securely" : "Open secure request";
   const preheader = isOpportunity
     ? "A new Bridge-iT opportunity matches your confirmed products, capacity and coverage."
-    : "A customer selected your Bridge-iT quotation.";
+    : isQuestion ? "A buyer has asked a private question about your Bridge-iT quotation." : "A customer selected your Bridge-iT quotation.";
   const privacyText = isOpportunity
     ? "Customer contact details are not included in email. Sign in to your approved supplier workspace to review the secure quote pack."
-    : "Customer contact details are available only after you sign in to your approved supplier workspace.";
+    : isQuestion ? "Reply inside Bridge-iT. Buyer and supplier contact details stay protected until a quotation is selected." : "Customer contact details are available only after you sign in to your approved supplier workspace.";
   const text = [
     `Hi ${firstName},`,
     "",

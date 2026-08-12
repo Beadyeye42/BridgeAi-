@@ -20,6 +20,7 @@ import {
   isServiceWindowOpen,
   RECENT_REPLY_DEDUPE_MS,
   quoteMenu,
+  quoteQuestionIntent,
   quoteSelectionIntent,
   wasReplyRecentlySent,
   WHATSAPP_SERVICE_WINDOW_MS,
@@ -70,11 +71,23 @@ describe("WhatsApp messaging policy", () => {
     expect(quoteSelectionIntent("select 1")).toEqual({ kind: "POSITION", position: 1 });
     expect(quoteSelectionIntent("choose quote 2")).toEqual({ kind: "POSITION", position: 2 });
     expect(quoteSelectionIntent("3")).toEqual({ kind: "POSITION", position: 3 });
+    expect(quoteSelectionIntent("select b")).toEqual({ kind: "LABEL", label: "B" });
+    expect(quoteSelectionIntent("Go with Quote e")).toEqual({ kind: "LABEL", label: "E" });
     expect(quoteSelectionIntent("accept BA-2026-951A09F8")).toEqual({
       kind: "REFERENCE",
       reference: "BA-2026-951A09F8",
     });
     expect(quoteSelectionIntent("maybe quote 1")).toBeNull();
+  });
+
+  it("routes private questions to one anonymous quote or all quoted suppliers", () => {
+    expect(quoteQuestionIntent("ask b is delivery included?"))
+      .toEqual({ kind: "ONE", label: "B", question: "is delivery included?" });
+    expect(quoteQuestionIntent("QUESTION QUOTE C: can you meet Friday?"))
+      .toEqual({ kind: "ONE", label: "C", question: "can you meet Friday?" });
+    expect(quoteQuestionIntent("ask all can you collect the old unit?"))
+      .toEqual({ kind: "ALL", question: "can you collect the old unit?" });
+    expect(quoteQuestionIntent("ask all")).toBeNull();
   });
 
   it("separates menu, new quote and quote history commands", () => {

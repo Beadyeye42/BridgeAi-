@@ -106,6 +106,7 @@ export function isQuoteRefresh(value: string) {
 export type QuoteSelectionIntent =
   | { kind: "CURRENT" }
   | { kind: "POSITION"; position: number }
+  | { kind: "LABEL"; label: string }
   | { kind: "REFERENCE"; reference: string };
 
 export function quoteSelectionIntent(value: string): QuoteSelectionIntent | null {
@@ -113,11 +114,30 @@ export function quoteSelectionIntent(value: string): QuoteSelectionIntent | null
   const position = /^(?:(?:accept|choose|select|take)(?:\s+(?:quote|option))?|quote|option)?\s*([1-5])$/i.exec(trimmed);
   if (position) return { kind: "POSITION", position: Number(position[1]) };
 
+  const label = /^(?:(?:accept|choose|select|take|go with)(?:\s+(?:quote|option))?|quote|option)?\s*([A-E])$/i.exec(trimmed);
+  if (label) return { kind: "LABEL", label: label[1].toUpperCase() };
+
   const reference = /^(?:accept|choose|select|take)(?:\s+(?:quote|option))?\s+(BA-\d{4}-[A-Z0-9]+)$/i.exec(trimmed);
   if (reference) return { kind: "REFERENCE", reference: reference[1].toUpperCase() };
 
   if (/^(?:accept|accept (?:it|quote)|yes|yes please|choose it|select it|take it|go (?:with|for) it)$/i.test(trimmed)) {
     return { kind: "CURRENT" };
+  }
+  return null;
+}
+
+export type QuoteQuestionIntent =
+  | { kind: "ONE"; label: string; question: string }
+  | { kind: "ALL"; question: string };
+
+export function quoteQuestionIntent(value: string): QuoteQuestionIntent | null {
+  const trimmed = value.trim().replace(/\s+/g, " ");
+  const all = /^(?:ask|question)\s+(?:all|everyone|all quotes?|all suppliers?)\s*(?:[:,-]\s*|\s+)(.+)$/i.exec(trimmed);
+  if (all?.[1]?.trim()) return { kind: "ALL", question: all[1].trim() };
+
+  const one = /^(?:ask|question)\s+(?:(?:quote|option|supplier)\s*)?([A-E])\s*(?:[:,-]\s*|\s+)(.+)$/i.exec(trimmed);
+  if (one?.[1] && one[2]?.trim()) {
+    return { kind: "ONE", label: one[1].toUpperCase(), question: one[2].trim() };
   }
   return null;
 }

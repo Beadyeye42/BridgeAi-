@@ -141,6 +141,26 @@ describe("security foundation static controls", () => {
     expect(source).toContain('NextResponse.json({ error: "The quotation could not be submitted. Please try again." }');
   });
 
+  it("isolates anonymous quote conversations and immutable revisions by supplier company", () => {
+    const migration = read("supabase/migrations/20260812190328_multi_supplier_quote_conversations.sql");
+    for (const table of ["QuotationVersion", "QuoteConversation", "QuoteMessage", "QuoteMessageModerationEvent", "QuoteSelectionEvent"]) {
+      expect(migration).toContain(`ALTER TABLE bridge_ai."${table}" FORCE ROW LEVEL SECURITY`);
+    }
+    expect(migration).toContain("quote_message_company_insert");
+    expect(migration).toContain("has_company_membership(c.\"supplierCompanyId\")");
+    expect(migration).toContain("parent.sender = 'BUYER'");
+    expect(migration).toContain("parent.\"questionDueAt\" > now()");
+    expect(migration).toContain('GRANT UPDATE ("lastMessageAt") ON bridge_ai."QuoteConversation" TO authenticated');
+    expect(migration).not.toContain('GRANT UPDATE ON bridge_ai."QuoteMessage" TO authenticated');
+    expect(migration).toContain("SYSTEM.MULTI_SUPPLIER_QUOTE_CONVERSATIONS_ENABLED");
+    const api = read("app/api/quote-conversations/messages/route.ts");
+    expect(api).toContain('supplierCompanyId: companyId');
+    expect(api).toContain('status: "OPEN"');
+    expect(api).toContain('sender: "BUYER"');
+    expect(api).toContain('status: "DELIVERED"');
+    expect(api).toContain('action: "QUOTE_MESSAGE.SUPPLIER_REPLIED"');
+  });
+
   it("does not retain a parallel Prisma migration history", () => {
     expect(globSync("prisma/migrations/**/*.sql")).toHaveLength(0);
     expect(globSync("supabase/migrations/*.sql").length).toBeGreaterThanOrEqual(
@@ -241,7 +261,8 @@ describe("security foundation static controls", () => {
     expect(processor).toContain("earlier.status IN ('PENDING', 'PROCESSING')");
     expect(processor).toContain("STALE_JOB_EXHAUSTED");
     expect(processor).toContain("quote-summary:${quotation.quoteRequestId}:quotation:${quotation.id}");
-    expect(processor).toContain("To choose this quote, reply SELECT 1");
+    expect(processor).toContain("To choose this quote, reply SELECT ${quotes[0]!.conversation?.anonymousLabel ?? \"A\"}");
+    expect(processor).toContain("To ask one supplier, reply ASK B");
     expect(processor).toContain("so I haven’t selected one");
     expect(processor).toContain("META_QUOTE_TEMPLATE_REQUIRED");
     expect(processor).toContain("META_CONTACT_TEMPLATE_REQUIRED");
