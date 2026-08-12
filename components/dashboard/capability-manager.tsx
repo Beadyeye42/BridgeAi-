@@ -240,7 +240,7 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
           <div className="capability-advanced-content">
             <label className="toggle-row"><span><b>Use this product for matching</b><small>Turn this off and save to pause this product</small></span><input type="checkbox" name={`${prefix}:active`} checked={active} onChange={(event) => setActiveByCategory((current) => ({ ...current, [prefix]: event.target.checked }))}/></label>
             <div className="capability-option-section">
-              <div className="capability-option-heading"><b>Who do you want to quote for?</b><small>Bridge AI will only send this product to the buyer types you select.</small></div>
+              <div className="capability-option-heading"><b>Who do you want to quote for?</b><small>Bridge-iT will only send this product to the buyer types you select.</small></div>
               <div className="capability-option-grid capability-audience-grid">
                 <OptionCard name={`${prefix}:consumer`} value="yes" checked={capability.servesConsumer} description="Homeowners and people buying personally" label="Consumers / homeowners" />
                 <OptionCard name={`${prefix}:trade`} value="yes" checked={capability.servesTrade} description="Installers, builders and other trades" label="Trade buyers" />
@@ -257,7 +257,7 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
                 <Field name={`${prefix}:finishes`} label="Other specialist capabilities (optional)" value={otherHyperlocalFeatures.join(", ")} placeholder="Add other capabilities, separated by commas" />
               </div>
             </> : isTransport ? <>
-              <div className="honesty-note">This setup is specific to transport and removals. Select only vehicles, crew and handling services you can genuinely provide; Bridge AI uses these details to avoid unsuitable jobs.</div>
+              <div className="honesty-note">This setup is specific to transport and removals. Select only vehicles, crew and handling services you can genuinely provide; Bridge-iT uses these details to avoid unsuitable jobs.</div>
               <div className="capability-option-section">
                 <div className="capability-option-heading"><b>Vehicles available</b><small>Tick every vehicle type you can allocate to this service.</small></div>
                 <div className="capability-option-grid">
@@ -281,7 +281,7 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
                 <Field name={`${prefix}:manufacturers`} label="Other manufacturers (optional)" value={otherManufacturers.join(", ")} placeholder="Add any other manufacturers" />
               </div>
             </div> : isPhe ? <>
-              <div className="honesty-note">This setup is specific to plumbing, heating and mechanical procurement. Select only brands and system types you can supply; Bridge AI will use them as mandatory filters when a buyer names one.</div>
+              <div className="honesty-note">This setup is specific to plumbing, heating and mechanical procurement. Select only brands and system types you can supply; Bridge-iT will use them as mandatory filters when a buyer names one.</div>
               <div className="capability-option-section">
                 <div className="capability-option-heading"><b>Manufacturers and brands</b><small>Tick every listed brand your company can quote.</small></div>
                 <div className="capability-option-grid">

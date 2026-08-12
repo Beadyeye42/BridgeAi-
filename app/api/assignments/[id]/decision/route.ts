@@ -23,7 +23,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const subscription = company?.subscription;
   if (!company || !isMembershipActive(subscription)) {
     return NextResponse.json({
-      error: "Your Bridge AI membership is not active. Renew your membership to respond to quote opportunities.",
+      error: "Your Bridge-iT membership is not active. Renew your membership to respond to quote opportunities.",
       code: "MEMBERSHIP_REQUIRED",
       actionUrl: "/dashboard/subscription",
     }, { status: 402 });

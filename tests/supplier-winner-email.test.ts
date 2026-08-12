@@ -61,7 +61,7 @@ describe("supplier winner email", () => {
     const email = buildSupplierWinnerEmail({
       recipientFirstName: '<Brian & "team">',
       title: "Your quote was selected for BA-2026-TEST",
-      body: "Open Bridge AI to continue.",
+      body: "Open Bridge-iT to continue.",
       portalUrl: "https://bridge-ai.example/dashboard/requests/BA-2026-TEST",
     });
     expect(email.subject).toBe("Your quote was selected for BA-2026-TEST");

@@ -56,7 +56,7 @@ export const demoRequest = {
   summary: "Supply and fabricate a galvanised maintenance access platform and stair flight to the issued drawings. The structure will provide safe access to a new conveyor line within an operational warehouse.",
   delivery: "Solihull, West Midlands · B90",
   requestedBy: "Verified WhatsApp customer",
-  customerNotice: "Direct customer details are protected. Bridge AI will coordinate contact until your quotation is selected.",
+  customerNotice: "Direct customer details are protected. Bridge-iT will coordinate contact until your quotation is selected.",
   items: [
     { description: "Galvanised access platform", specification: "Approx. 5.2m × 2.4m, complete to drawing A-104", quantity: "1 each" },
     { description: "Stair flight with handrails", specification: "38° pitch, 1,100mm clear width", quantity: "1 each" },

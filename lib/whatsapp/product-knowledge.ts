@@ -27,7 +27,7 @@ const productRules: ProductRule[] = [
   ...hyperlocalRecognitionRules().map(({ serviceSlug, label, alias }) => ({
     slug: serviceSlug,
     pattern: literalPattern(alias),
-    answer: `Bridge AI can match ${label.toLocaleLowerCase("en-GB")} with suitable approved local businesses. Send what you need, the postcode and when you need it; a photo is welcome where useful.`,
+    answer: `Bridge-iT can match ${label.toLocaleLowerCase("en-GB")} with suitable approved local businesses. Send what you need, the postcode and when you need it; a photo is welcome where useful.`,
   })),
   {
     slug: "man-with-a-van",
@@ -37,7 +37,7 @@ const productRules: ProductRule[] = [
   {
     slug: "trade-collection-delivery",
     pattern: /\b(?:trade|merchant|site) collection(?:s)?(?: and deliver(?:y|ies))?|collect (?:my |some )?(?:materials?|order) from (?:a )?(?:merchant|supplier)\b/i,
-    answer: "For a trade collection, Bridge AI needs the collection and delivery postcodes, merchant or site collection details, item sizes or weight, ready time, delivery deadline and any loading restrictions.",
+    answer: "For a trade collection, Bridge-iT needs the collection and delivery postcodes, merchant or site collection details, item sizes or weight, ready time, delivery deadline and any loading restrictions.",
   },
   {
     slug: "same-day-courier",
@@ -54,7 +54,7 @@ const productRules: ProductRule[] = [
   {
     slug: "patio-sliding-doors",
     pattern: /\b(?:french\s*d+o+r+s?|frenchdoors?|patio\s*(?:sliding\s*)?d+o+r+s?|sliding\s*patio\s*d+o+r+s?|patio\s*sliders?|lift[-\s]*and[-\s]*slide|inline\s*sliders?)\b/i,
-    answer: "French doors are a hinged pair that open from the centre, while patio sliders move horizontally and do not need swing space. Bridge AI can source either. Suppliers will normally need the overall frame size, material, colour, opening layout, threshold or glazing requirements, delivery postcode and required date.",
+    answer: "French doors are a hinged pair that open from the centre, while patio sliders move horizontally and do not need swing space. Bridge-iT can source either. Suppliers will normally need the overall frame size, material, colour, opening layout, threshold or glazing requirements, delivery postcode and required date.",
   },
   { slug: "composite-doors", pattern: /\bcomposite\s*d+o+r+s?\b/i },
   { slug: "aluminium-windows", pattern: /\b(?:aluminium|aluminum)\s+(?:windows?|d+o+r+s?|bi[-\s]*folds?)\b|\bbi[-\s]*fold\s*d+o+r+s?\b/i },
@@ -100,7 +100,7 @@ const productRules: ProductRule[] = [
   {
     slug: "transport-delivery-removals",
     pattern: /^(?:transport|delivery|deliveries|removal|removals|moving|courier|man and van|man with a van)$/i,
-    answer: "Yes — Bridge AI can help with transport, delivery and removals. Tell me what needs moving and the collection and delivery postcodes; a photo is welcome when it helps show the load.",
+    answer: "Yes — Bridge-iT can help with transport, delivery and removals. Tell me what needs moving and the collection and delivery postcodes; a photo is welcome when it helps show the load.",
   },
   {
     slug: "plumbing-heating-mechanical",
@@ -148,7 +148,7 @@ export function recogniseCatalogueProduct(
     categoryName: category.name,
     description,
     answer: rule?.answer
-      ?? `Bridge AI covers ${category.name.toLocaleLowerCase("en-GB")} through suitable approved suppliers.${description ? ` ${description}` : ""}`,
+      ?? `Bridge-iT covers ${category.name.toLocaleLowerCase("en-GB")} through suitable approved suppliers.${description ? ` ${description}` : ""}`,
     parentSlug: category.parent?.slug ?? null,
   };
 }

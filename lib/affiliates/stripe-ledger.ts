@@ -139,17 +139,17 @@ export async function syncAffiliateSubscriptionLifecycle(subscription: Stripe.Su
     if (scheduled && priorStatus !== "CANCELLATION_SCHEDULED") administratorAlerts.push({
       fingerprint: `affiliate-cancellation-scheduled:${subscription.id}:${subscription.cancel_at ?? subscription.items.data[0]?.current_period_end ?? "period-end"}`,
       title: "Affiliate referral cancellation scheduled",
-      body: `${referral.supplierCompany.legalName}, attributed to a Bridge AI affiliate, has scheduled membership cancellation. Review the affiliate and subscriber position before access ends.`,
+      body: `${referral.supplierCompany.legalName}, attributed to a Bridge-iT affiliate, has scheduled membership cancellation. Review the affiliate and subscriber position before access ends.`,
     });
     if (ended && priorStatus !== "CANCELLED") notifications.push({
       type: "CANCELLATION_COMPLETED",
       title: "Referred supplier membership ended",
-      body: `${referral.supplierCompany.legalName} has cancelled their Bridge AI membership. Future affiliate commission from this referral has ended.`,
+      body: `${referral.supplierCompany.legalName} has cancelled their Bridge-iT membership. Future affiliate commission from this referral has ended.`,
     });
     if (ended && priorStatus !== "CANCELLED") administratorAlerts.push({
       fingerprint: `affiliate-cancellation-completed:${subscription.id}`,
       title: "Affiliate referral membership ended",
-      body: `${referral.supplierCompany.legalName}, attributed to a Bridge AI affiliate, has ended membership. Future commission has stopped and the cancellation is recorded in the affiliate ledger history.`,
+      body: `${referral.supplierCompany.legalName}, attributed to a Bridge-iT affiliate, has ended membership. Future commission has stopped and the cancellation is recorded in the affiliate ledger history.`,
     });
     if (nextStatus === "PAST_DUE" && priorStatus !== "PAST_DUE") notifications.push({
       type: "PAYMENT_FAILED",

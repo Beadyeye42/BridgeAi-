@@ -26,7 +26,7 @@ export default async function CoveragePage() {
     {...identity(session, company)}
     eyebrow="Geographic matching"
     title="Service, delivery & collection"
-    description="Tell Bridge AI where you install or service, where you deliver products, and where buyers can collect. These are kept separate for accurate matching."
+    description="Tell Bridge-iT where you install or service, where you deliver products, and where buyers can collect. These are kept separate for accurate matching."
   >
     <CoverageManager
       areas={company.coverageAreas.map((area) => ({

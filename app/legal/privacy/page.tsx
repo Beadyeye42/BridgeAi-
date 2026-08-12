@@ -2,12 +2,12 @@ import type { Metadata } from "next";
 import { LegalDocument, LegalSection } from "@/components/legal/legal-document";
 import { BRIDGE_AI_COMPANY } from "@/lib/legal/company";
 
-export const metadata: Metadata = { title: "Privacy notice | Bridge AI", description: "How Bridge AI collects, uses and protects personal information." };
+export const metadata: Metadata = { title: "Privacy notice | Bridge-iT", description: "How Bridge-iT collects, uses and protects personal information." };
 
 export default function PrivacyPage() {
-  return <LegalDocument title="Privacy notice" summary="This notice explains how Bridge AI handles information belonging to WhatsApp customers, supplier representatives, affiliates, administrators and website visitors.">
+  return <LegalDocument title="Privacy notice" summary="This notice explains how Bridge-iT handles information belonging to WhatsApp customers, supplier representatives, affiliates, administrators and website visitors.">
     <LegalSection id="controller" title="1. Who is responsible for your information">
-      <p>{BRIDGE_AI_COMPANY.name} is the controller of personal information used to operate Bridge AI. Our company number is {BRIDGE_AI_COMPANY.companyNumber} and our registered office is {BRIDGE_AI_COMPANY.registeredOffice}.</p>
+      <p>{BRIDGE_AI_COMPANY.name} is the controller of personal information used to operate Bridge-iT. Our company number is {BRIDGE_AI_COMPANY.companyNumber} and our registered office is {BRIDGE_AI_COMPANY.registeredOffice}.</p>
       <p>Questions or privacy requests can be sent to <a href={`mailto:${BRIDGE_AI_COMPANY.contactEmail}`}>{BRIDGE_AI_COMPANY.contactEmail}</a>.</p>
     </LegalSection>
 
@@ -15,7 +15,7 @@ export default function PrivacyPage() {
       <ul>
         <li><b>Customer information:</b> WhatsApp number, profile name where supplied by WhatsApp, messages, quote requirements, delivery location, photos, drawings, PDFs and other attachments.</li>
         <li><b>Supplier and affiliate information:</b> names, business contact details, company information, team memberships, products, capabilities, coverage, capacity, lead times, referrals and account activity.</li>
-        <li><b>Quote and transaction information:</b> requests, assignments, quotations, customer selections, subscription status, Stripe customer and invoice references, and commission ledger records. Bridge AI does not store full card details.</li>
+        <li><b>Quote and transaction information:</b> requests, assignments, quotations, customer selections, subscription status, Stripe customer and invoice references, and commission ledger records. Bridge-iT does not store full card details.</li>
         <li><b>Technical and security information:</b> IP address, browser and device information, session records, error reports, audit logs and evidence needed to investigate misuse or service failures.</li>
       </ul>
     </LegalSection>
@@ -26,8 +26,8 @@ export default function PrivacyPage() {
     </LegalSection>
 
     <LegalSection id="ai" title="4. AI and supplier matching">
-      <p>Bridge AI uses automated tools to interpret messages and attachments, identify requirements, ask follow-up questions, and filter and rank suppliers using factors such as product capability, specification, coverage, capacity and deadline. AI output can be incomplete or wrong, so customers and suppliers must check important specifications before relying on them.</p>
-      <p>AI does not enter a customer or supplier into a final supply contract. Suppliers decide whether and how to quote, customers choose whether to accept, and Bridge AI administrators can investigate, correct or override matching records. You may ask us to review information or a decision that materially affects you.</p>
+      <p>Bridge-iT uses automated tools to interpret messages and attachments, identify requirements, ask follow-up questions, and filter and rank suppliers using factors such as product capability, specification, coverage, capacity and deadline. AI output can be incomplete or wrong, so customers and suppliers must check important specifications before relying on them.</p>
+      <p>AI does not enter a customer or supplier into a final supply contract. Suppliers decide whether and how to quote, customers choose whether to accept, and Bridge-iT administrators can investigate, correct or override matching records. You may ask us to review information or a decision that materially affects you.</p>
     </LegalSection>
 
     <LegalSection id="sharing" title="5. Who receives information">
@@ -54,7 +54,7 @@ export default function PrivacyPage() {
     </LegalSection>
 
     <LegalSection id="changes" title="10. Children and changes to this notice">
-      <p>Bridge AI is a business and trade sourcing service and is not intended for anyone under 18. We may update this notice when the service, providers or law changes. The effective date at the top identifies the current version.</p>
+      <p>Bridge-iT is a business and trade sourcing service and is not intended for anyone under 18. We may update this notice when the service, providers or law changes. The effective date at the top identifies the current version.</p>
     </LegalSection>
   </LegalDocument>;
 }

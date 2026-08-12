@@ -88,6 +88,7 @@ describe("WhatsApp messaging policy", () => {
   it("recognises natural requests for help without forcing the next saved-draft field", () => {
     expect([
       "Can you help me",
+      "Hi Bridge-iT, I need help finding a quote.",
       "Hi Bridge AI, I need help finding a quote.",
       "Could you help me get a quote please?",
       "I need some help",
@@ -98,14 +99,14 @@ describe("WhatsApp messaging policy", () => {
   it("keeps the useful deadline when a customer reveals a new subject after asking for help", () => {
     const transcript = [
       { direction: "OUTBOUND" as const, text: "Tell me about the saved French-door request." },
-      { direction: "INBOUND" as const, text: "Hi Bridge AI, I need help finding a quote." },
+      { direction: "INBOUND" as const, text: "Hi Bridge-iT, I need help finding a quote." },
       { direction: "OUTBOUND" as const, text: "Of course. Tell me what you need." },
       { direction: "INBOUND" as const, text: "Friday" },
       { direction: "INBOUND" as const, text: "Transport" },
     ];
     const context = conversationPivotContext(transcript, "Transport");
     expect(context.map((message) => message.text)).toEqual([
-      "Hi Bridge AI, I need help finding a quote.",
+      "Hi Bridge-iT, I need help finding a quote.",
       "Of course. Tell me what you need.",
       "Friday",
       "Transport",

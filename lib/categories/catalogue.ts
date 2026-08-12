@@ -98,13 +98,13 @@ export function unavailableCatalogueForConversation(
   if (fireDoorPattern.test(messageText) && !available.has("fire-doors")) {
     return {
       code: "FIRE_DOORS_NOT_LAUNCHED",
-      reply: "Fire-door quoting is not open yet because the certification and product-data checks must be in place first. I don’t want to route safety-critical work through a general door category. Bridge AI will make this service available only when those controls are ready.",
+      reply: "Fire-door quoting is not open yet because the certification and product-data checks must be in place first. I don’t want to route safety-critical work through a general door category. Bridge-iT will make this service available only when those controls are ready.",
     };
   }
   if (metalFabricationPattern.test(messageText) && !available.has(metalFabricationRootSlug)) {
     return {
       code: "METAL_FABRICATION_NOT_LAUNCHED",
-      reply: "Bespoke metal-fabrication quotes are being prepared but are not open yet. I don’t want to send your drawing to unsuitable suppliers. Bridge AI will make this category available once the approved fabricator network is ready.",
+      reply: "Bespoke metal-fabrication quotes are being prepared but are not open yet. I don’t want to send your drawing to unsuitable suppliers. Bridge-iT will make this category available once the approved fabricator network is ready.",
     };
   }
   const unavailableMetalProduct = metalProducts.find((product) => product.pattern.test(messageText) && !available.has(product.slug));
@@ -158,16 +158,16 @@ export function unavailableCatalogueForConversation(
 
 export function categoryResponsibilityNotice(slug: string, parentSlug?: string | null) {
   if (slug === metalFabricationRootSlug || parentSlug === metalFabricationRootSlug) {
-    return "Bridge AI structures and routes the enquiry only. The appointed supplier remains responsible for final engineering checks, manufacturing drawings, tolerances, fixings, material suitability and statutory compliance before manufacture.";
+    return "Bridge-iT structures and routes the enquiry only. The appointed supplier remains responsible for final engineering checks, manufacturing drawings, tolerances, fixings, material suitability and statutory compliance before manufacture.";
   }
   if (slug === "fire-doors") {
     return "Fire-door work requires verified certification, declared product performance, compatible ironmongery and the correct installation context. The supplier remains responsible for confirming the compliant doorset and installation requirements.";
   }
   if (slug === plumbingHeatingRootSlug || parentSlug === plumbingHeatingRootSlug) {
-    return "Bridge AI structures and routes the enquiry only. The supplier or installer remains responsible for final equipment selection, sizing, compatibility, design, commissioning and compliance with applicable building, gas, electrical, water and heat-pump requirements.";
+    return "Bridge-iT structures and routes the enquiry only. The supplier or installer remains responsible for final equipment selection, sizing, compatibility, design, commissioning and compliance with applicable building, gas, electrical, water and heat-pump requirements.";
   }
   if (slug === transportDeliveryRootSlug || parentSlug === transportDeliveryRootSlug) {
-    return "Bridge AI structures and routes the request only. The appointed operator remains responsible for vehicle suitability, load security, access, lifting and handling, insurance, licences and lawful carriage. Regulated waste disposal is not included unless Bridge AI launches a separately controlled service.";
+    return "Bridge-iT structures and routes the request only. The appointed operator remains responsible for vehicle suitability, load security, access, lifting and handling, insurance, licences and lawful carriage. Regulated waste disposal is not included unless Bridge-iT launches a separately controlled service.";
   }
   return null;
 }

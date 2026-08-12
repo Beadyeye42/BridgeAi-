@@ -40,6 +40,6 @@ function Fact({ icon, label, value }: { icon: React.ReactNode; label: string; va
 
 function QuotationForm() {
   const [sent, setSent] = useState(false);
-  if (sent) return <div className="decision-state success"><span><Check size={17} /></span><b>Quotation ready</b><p>In the connected portal this submission is stored, audited and sent to Bridge AI.</p></div>;
+  if (sent) return <div className="decision-state success"><span><Check size={17} /></span><b>Quotation ready</b><p>In the connected portal this submission is stored, audited and sent to Bridge-iT.</p></div>;
   return <form className="quote-mini-form" onSubmit={(event) => { event.preventDefault(); setSent(true); }}><label>Quote price <span className="currency-input"><i>£</i><input type="number" min="1" step="0.01" placeholder="0.00" required /></span></label><label>Lead time <span className="split-input"><input type="number" min="1" placeholder="14" required /><i>days</i></span></label><label>Notes <textarea rows={3} placeholder="Scope, exclusions or terms…" /></label><label className="upload-control"><Paperclip size={15} /><span><b>Attach quotation PDF</b><small>PDF, up to 10 MB</small></span><input type="file" accept="application/pdf" /></label><button className="button button-dark action-primary"><Send size={15} />Submit quotation</button><p className="form-honesty">Preview only: sign in to save and submit a quotation.</p></form>;
 }

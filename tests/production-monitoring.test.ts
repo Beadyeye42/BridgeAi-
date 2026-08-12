@@ -50,7 +50,7 @@ describe("production monitoring", () => {
 
   it("sends a single idempotent digest to configured administrators", async () => {
     process.env.RESEND_API_KEY = "re_test";
-    process.env.EMAIL_FROM = "Bridge AI <alerts@bridge.example>";
+    process.env.EMAIL_FROM = "Bridge-iT <alerts@bridge.example>";
     process.env.MONITORING_ALERT_EMAILS = "ops@example.com, OPS@example.com";
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: "email_1" }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);

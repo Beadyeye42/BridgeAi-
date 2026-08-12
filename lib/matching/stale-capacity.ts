@@ -34,7 +34,7 @@ export async function notifySuppliersWithStaleCapacity({ limit = 50 }: { limit?:
             type: "ACCOUNT_UPDATE",
             channel: "IN_APP",
             title: "Please confirm your capacity and lead times",
-            body: "Some live capability information is stale. Confirm it now so Bridge AI does not rely on old availability when matching requests.",
+            body: "Some live capability information is stale. Confirm it now so Bridge-iT does not rely on old availability when matching requests.",
             actionUrl,
           },
         });

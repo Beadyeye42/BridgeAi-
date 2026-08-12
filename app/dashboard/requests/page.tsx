@@ -70,7 +70,7 @@ export default async function RequestsPage({ searchParams }: { searchParams: Pro
           <div className="request-browser-meta"><span><MapPin size={14}/>{assignment.quoteRequest.deliveryPostcode}</span><span><Paperclip size={14}/>{assignment.quoteRequest.attachments.length}</span><span><Clock3 size={14}/>{assignment.expiresAt.toLocaleDateString("en-GB")}</span></div>
           <span className={`status-pill ${isSelected ? "selected" : displayStatus.toLowerCase().replaceAll(" ", "-")}`}>{displayStatus}</span>
         </Link>;
-      }) : <div className="empty-state large"><FileText size={28}/><b>No requests in this view</b><p>New work appears after Bridge AI records a suitable capability and capacity match for your company.</p></div>}
+      }) : <div className="empty-state large"><FileText size={28}/><b>No requests in this view</b><p>New work appears after Bridge-iT records a suitable capability and capacity match for your company.</p></div>}
     </section>
   </PortalPage>;
 }

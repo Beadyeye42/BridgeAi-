@@ -33,7 +33,7 @@ export default async function CapabilitiesPage() {
       })
     : [];
   const byCategory = new Map(capabilities.map((item) => [item.productCategoryId, item]));
-  return <PortalPage {...identity(session, company)} eyebrow="Live supplier network" title="Capabilities & capacity" description="Tell Bridge AI exactly what you can supply and your current lead times so only suitable enquiries reach your team.">
+  return <PortalPage {...identity(session, company)} eyebrow="Live supplier network" title="Capabilities & capacity" description="Tell Bridge-iT exactly what you can supply and your current lead times so only suitable enquiries reach your team.">
     <CapabilityManager capabilities={categories.map((productCategory) => {
       const saved = byCategory.get(productCategory.id);
       return {

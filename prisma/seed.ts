@@ -25,7 +25,7 @@ async function main() {
     await trustedPrisma.$queryRaw`
       SELECT bridge_private.bootstrap_supplier(
         ${created.data.user.id}::uuid, ${email}, 'Demo', 'Supplier',
-        'Bridge AI Demonstration Supplier', '+44 0000 000000', 'development-seed'
+        'Bridge-iT Demonstration Supplier', '+44 0000 000000', 'development-seed'
       )
     `;
   } catch (error) {

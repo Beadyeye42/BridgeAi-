@@ -70,6 +70,6 @@ export default async function SubscriptionPage() {
         </section>;
       })}
     </div>
-    <section className="panel form-section"><div className="section-heading"><div><p className="eyebrow">Secure billing</p><h2>Managed by Stripe</h2></div><ShieldCheck size={20}/></div><p className="body-copy">Bridge AI never stores card details. Plan prices and geographic limits are controlled centrally and enforced on every opportunity.</p><p className="body-copy">Review the <Link href="/legal/terms">supplier terms</Link> and <Link href="/legal/cancellation">subscription and cancellation policy</Link>. Cancellation normally takes effect at the end of the current paid monthly period.</p></section>
+    <section className="panel form-section"><div className="section-heading"><div><p className="eyebrow">Secure billing</p><h2>Managed by Stripe</h2></div><ShieldCheck size={20}/></div><p className="body-copy">Bridge-iT never stores card details. Plan prices and geographic limits are controlled centrally and enforced on every opportunity.</p><p className="body-copy">Review the <Link href="/legal/terms">supplier terms</Link> and <Link href="/legal/cancellation">subscription and cancellation policy</Link>. Cancellation normally takes effect at the end of the current paid monthly period.</p></section>
   </PortalPage>;
 }

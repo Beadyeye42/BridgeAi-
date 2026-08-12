@@ -34,7 +34,7 @@ export async function POST(request: Request) {
       `;
       if (preflight?.status === "EMAIL_EXISTS") {
         return NextResponse.json({
-          error: "This email is already linked to a Bridge AI account. Sign in, reset the password, or contact support if you cannot access it.",
+          error: "This email is already linked to a Bridge-iT account. Sign in, reset the password, or contact support if you cannot access it.",
         }, { status: 409 });
       }
       if (preflight?.status === "INVALID_REFERRAL") {

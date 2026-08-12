@@ -18,7 +18,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   });
   if (!accreditation) return NextResponse.json({ error: "Document not found" }, { status: 404 });
   if (!["PENDING", "REJECTED"].includes(accreditation.status)) {
-    return NextResponse.json({ error: "Approved documents cannot be removed; contact Bridge AI support" }, { status: 409 });
+    return NextResponse.json({ error: "Approved documents cannot be removed; contact Bridge-iT support" }, { status: 409 });
   }
 
   await prisma.$transaction(async (tx) => {

@@ -78,7 +78,7 @@ export function SupplierDashboard({ data, demo = false, onboarding, supplierStat
             {data.opportunityAccess ? <section className="panel subscription-card">
               <p className="eyebrow">Opportunity access</p>
               <h3>{data.opportunityAccess.currentActive} active of {data.opportunityAccess.normalActiveLimit || "—"} normal plan places</h3>
-              <p>Bridge AI adapts distribution to market supply. In a sparse market, suitable suppliers may receive a temporary soft-cap invitation so a buyer is not left without a quote.</p>
+              <p>Bridge-iT adapts distribution to market supply. In a sparse market, suitable suppliers may receive a temporary soft-cap invitation so a buyer is not left without a quote.</p>
               <div className="performance-list">
                 <div><span>Invitations in 30 days</span><b>{data.opportunityAccess.invitations30Days}</b></div>
                 <div><span>Declared monthly comfort level</span><b>{data.opportunityAccess.declaredMonthlyCapacity ?? "Not set"}</b></div>

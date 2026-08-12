@@ -387,7 +387,7 @@ describe("security foundation static controls", () => {
     expect(read("lib/matching/distribution.ts")).toContain("supplierMatchDecision.upsert");
     expect(processor).toContain('action: "WHATSAPP.REQUEST_AUTO_ASSIGNED"');
     expect(processor).toContain("automaticAssignmentCount");
-    expect(processor).toContain("Bridge AI is continuing to search");
+    expect(processor).toContain("Bridge-iT is continuing to search");
     expect(migration).toContain("enforce_whatsapp_attachment_quote_consistency");
     expect(migration).toContain('"whatsappMessageId" IS NOT NULL');
     expect(migration).toContain('"quoteRequestId"');

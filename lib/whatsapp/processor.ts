@@ -1284,7 +1284,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
         aiUnproductiveTurns: 0,
       },
     }));
-    await sendReply(job, conversation, "Your Bridge AI conversation is closed. We will not create a quote request from it.");
+    await sendReply(job, conversation, "Your Bridge-iT conversation is closed. We will not create a quote request from it.");
     return undefined;
   }
 
@@ -1480,7 +1480,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     }
     const distributionMessage = request.assignmentCount > 0
       ? `It has been sent to ${request.assignmentCount} approved supplier${request.assignmentCount === 1 ? "" : "s"}.`
-      : "We haven’t found a currently confirmed supplier match yet. Bridge AI is continuing to search and has recorded the coverage gap automatically.";
+      : "We haven’t found a currently confirmed supplier match yet. Bridge-iT is continuing to search and has recorded the coverage gap automatically.";
     await sendReply(job, refreshed.conversation, personaliseOpening(
       `Perfect — request ${request.request.reference} is live. ${distributionMessage} I’ll bring the available prices and lead times back here while keeping identities private. Reply QUOTES for an update, or NEW QUOTE whenever you have another job to price.`,
       preferredFirstName,
@@ -1727,7 +1727,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
         await sendReply(
           job,
           refreshed.conversation,
-          "Bridge AI does not yet have an approved supplier network for that request, so I won’t pretend I can source it. You can send a different request whenever you’re ready.",
+          "Bridge-iT does not yet have an approved supplier network for that request, so I won’t pretend I can source it. You can send a different request whenever you’re ready.",
         );
         return initialExtraction.telemetry;
       }
@@ -1831,7 +1831,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
         action: "WHATSAPP.INDUSTRY_QUOTE_OFFERED",
         entityType: "Conversation",
         entityId: refreshed.conversation!.id,
-        summary: "Bridge AI recognised an industry question and offered trusted supplier quotes",
+        summary: "Bridge-iT recognised an industry question and offered trusted supplier quotes",
         metadata: {
           jobId: job.id,
           categorySlug: result.draft.categorySlug,
@@ -1867,7 +1867,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
       await tx.conversation.update({ where: { id: refreshed.conversation!.id }, data: { aiStage: "HUMAN_REVIEW", aiDraftEncrypted: encryptPrivateValue(JSON.stringify(result.draft)) } });
       await writeWhatsAppSystemEvent(tx, "whatsapp_ai", { severity: "WARNING", code: "CUSTOMER_CONVERSATION_REVIEW", message: "A WhatsApp conversation requires administrator review", context: { conversationId: refreshed.conversation!.id, jobId: job.id } });
     });
-    await sendReply(job, refreshed.conversation, "I can’t safely complete this request automatically. A Bridge AI administrator will need to review it.");
+    await sendReply(job, refreshed.conversation, "I can’t safely complete this request automatically. A Bridge-iT administrator will need to review it.");
     return telemetry;
   }
   const compositeDoorPhoto = compositeDoorPhotoDecision(result.draft, messages);
@@ -1891,7 +1891,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   const industry = category?.parent ?? category;
   if (industry && result.draft.buyerType && !buyerTypeAllowed(result.draft.buyerType, industry)) {
     result.readyForConfirmation = false;
-    result.reply = `Bridge AI does not currently match ${buyerTypeLabel(result.draft.buyerType).toLocaleLowerCase("en-GB")} requests for this industry. I have not shared this request with suppliers.`;
+    result.reply = `Bridge-iT does not currently match ${buyerTypeLabel(result.draft.buyerType).toLocaleLowerCase("en-GB")} requests for this industry. I have not shared this request with suppliers.`;
     result.nextQuestionKey = "NONE";
   }
   const isIndustryRoot = Boolean(category && !category.parent);
@@ -2107,7 +2107,7 @@ async function processContactUnlock(job: WhatsAppJob, loaded: LoadedJob) {
     `Supplier: ${supplierName}`,
     `Email: ${supplier.contactEmail}`,
     `Phone: ${supplier.contactPhone}`,
-    "Use these details only for this enquiry. Bridge AI does not take card or bank details in WhatsApp.",
+    "Use these details only for this enquiry. Bridge-iT does not take card or bank details in WhatsApp.",
   ].join("\n\n");
   await runAsDatabaseWorker("whatsapp_ai", (tx) => tx.contactAccessGrant.update({
     where: { id: grant.id }, data: { notificationAttemptedAt: new Date(), notificationFailureCode: null },

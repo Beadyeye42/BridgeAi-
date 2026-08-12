@@ -34,7 +34,7 @@ export async function POST(request: Request) {
   if (!company || company.status !== "APPROVED") return NextResponse.json({ error: "An approved supplier account is required before submitting a quotation" }, { status: 403 });
   if (!isMembershipActive(company.subscription)) {
     return NextResponse.json({
-      error: "Your Bridge AI membership is not active. Renew your membership to submit quotations.",
+      error: "Your Bridge-iT membership is not active. Renew your membership to submit quotations.",
       code: "MEMBERSHIP_REQUIRED",
       actionUrl: "/dashboard/subscription",
     }, { status: 402 });
@@ -79,7 +79,7 @@ export async function POST(request: Request) {
     }
     if (message.includes("ACTIVE_MEMBERSHIP_REQUIRED") || message.includes("active geographic supplier membership")) {
       return NextResponse.json({
-        error: "Your Bridge AI membership ended before this quotation was submitted. Renew your membership to continue.",
+        error: "Your Bridge-iT membership ended before this quotation was submitted. Renew your membership to continue.",
         code: "MEMBERSHIP_REQUIRED",
         actionUrl: "/dashboard/subscription",
       }, { status: 402 });
