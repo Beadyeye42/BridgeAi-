@@ -261,8 +261,9 @@ describe("security foundation static controls", () => {
     expect(processor).toContain("earlier.status IN ('PENDING', 'PROCESSING')");
     expect(processor).toContain("STALE_JOB_EXHAUSTED");
     expect(processor).toContain("quote-summary:${quotation.quoteRequestId}:quotation:${quotation.id}");
-    expect(processor).toContain("To choose this quote, reply SELECT ${quotes[0]!.conversation?.anonymousLabel ?? \"A\"}");
+    expect(processor).toContain("To choose this quote, reply SELECT ${firstLabel}");
     expect(processor).toContain("To ask one supplier, reply ASK B");
+    expect(processor).toContain("quoteQuestionWhatsAppHelp");
     expect(processor).toContain("so I haven’t selected one");
     expect(processor).toContain("META_QUOTE_TEMPLATE_REQUIRED");
     expect(processor).toContain("META_CONTACT_TEMPLATE_REQUIRED");

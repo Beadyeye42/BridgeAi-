@@ -42,6 +42,7 @@ import {
   recogniseCatalogueProduct,
 } from "@/lib/whatsapp/product-knowledge";
 import { writeWhatsAppSystemEvent } from "@/lib/whatsapp/system-events";
+import { quoteQuestionWhatsAppHelp } from "@/lib/whatsapp/industry-question-guidance";
 import {
   attachmentInterpretation,
   conversationPivotContext,
@@ -1516,6 +1517,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
       where: { conversationId: refreshed.conversation!.id, status: { in: ["OPEN", "MATCHING", "QUOTED"] } },
       orderBy: { createdAt: "desc" },
       include: {
+        category: { include: { parent: true } },
         quotations: {
           where: { status: "SUBMITTED" },
           orderBy: [{ submittedAt: "asc" }, { id: "asc" }],
@@ -1624,9 +1626,13 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
       return undefined;
     }
     if (!selectionIntent) {
+      const questionHelp = quoteQuestionWhatsAppHelp({
+        categorySlug: request.category.slug,
+        parentSlug: request.category.parent?.slug,
+      }, request.quotations[0]?.conversation?.anonymousLabel ?? "B");
       await sendReply(job, refreshed.conversation, request.quotations.length === 1
-        ? `There is one quote available. Reply SELECT ${request.quotations[0]!.conversation?.anonymousLabel ?? "A"} and I’ll confirm that exact quote for you.`
-        : "Which quote would you like? Reply SELECT followed by its letter, for example SELECT B. You can also ask a private question, for example ASK B is delivery included?");
+        ? `There is one quote available. Reply SELECT ${request.quotations[0]!.conversation?.anonymousLabel ?? "A"} and I’ll confirm that exact quote for you.\n\n${questionHelp}`
+        : `Which quote would you like? Reply SELECT followed by its letter, for example SELECT B. To ask one supplier, reply ASK B followed by your question, or use ASK ALL.\n\n${questionHelp}`);
       return undefined;
     }
     if (selectionIntent.kind === "REFERENCE" && selectionIntent.reference !== request.reference.toUpperCase()) {
@@ -2146,7 +2152,10 @@ async function currentQuoteSummary(conversationId: string) {
   const request = await runAsDatabaseWorker("whatsapp_ai", (tx) => tx.quoteRequest.findFirst({
     where: { conversationId, status: { in: ["OPEN", "MATCHING", "QUOTED"] } },
     orderBy: { createdAt: "desc" },
-    include: { quotations: { where: { status: "SUBMITTED" }, orderBy: [{ submittedAt: "asc" }, { id: "asc" }], take: 5, include: { conversation: true } } },
+    include: {
+      category: { include: { parent: true } },
+      quotations: { where: { status: "SUBMITTED" }, orderBy: [{ submittedAt: "asc" }, { id: "asc" }], take: 5, include: { conversation: true } },
+    },
   }));
   if (!request) return null;
   const quotes = request.quotations.filter((quote) => !quote.validUntil || quote.validUntil > new Date());
@@ -2156,6 +2165,11 @@ async function currentQuoteSummary(conversationId: string) {
     const delivery = quote.deliveryCost === null ? "delivery not stated" : Number(quote.deliveryCost) === 0 ? "delivery included" : `${formatPrice(quote.deliveryCost, quote.currency)} delivery`;
     return `Quote ${label}: ${formatPrice(quote.price, quote.currency)} — ${quote.leadTimeDays} day${quote.leadTimeDays === 1 ? "" : "s"} — ${delivery}`;
   });
+  const firstLabel = quotes[0]!.conversation?.anonymousLabel ?? "A";
+  const questionHelp = quoteQuestionWhatsAppHelp({
+    categorySlug: request.category.slug,
+    parentSlug: request.category.parent?.slug,
+  }, firstLabel);
   return {
     requestId: request.id,
     reference: request.reference,
@@ -2165,8 +2179,9 @@ async function currentQuoteSummary(conversationId: string) {
       `Current prices for ${request.reference}. Supplier identities remain private:`,
       lines.join("\n"),
       quotes.length === 1
-        ? `To choose this quote, reply SELECT ${quotes[0]!.conversation?.anonymousLabel ?? "A"}. To ask a question, reply ASK ${quotes[0]!.conversation?.anonymousLabel ?? "A"} followed by your question.`
+        ? `To choose this quote, reply SELECT ${firstLabel}. To ask a question, reply ASK ${firstLabel} followed by your question.`
         : "To choose, reply SELECT followed by its letter, for example SELECT B. To ask one supplier, reply ASK B followed by your question, or use ASK ALL.",
+      questionHelp,
     ].join("\n\n"),
   };
 }
