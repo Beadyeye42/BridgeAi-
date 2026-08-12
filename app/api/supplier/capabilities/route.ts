@@ -5,6 +5,7 @@ import { supplierCapabilitiesSchema, supplierCapabilityActivationSchema, validat
 import { writeAuditLog } from "@/lib/audit";
 import { rematchOpenRequestsForSupplier } from "@/lib/matching/rematch";
 import { launchedSupplierCategoryWhere, transportDeliveryRootSlug } from "@/lib/categories/catalogue";
+import { hyperlocalIndustry } from "@/lib/categories/hyperlocal-industries";
 import { processSupplierEmailsSafely } from "@/lib/notifications/email-worker";
 
 export const runtime = "nodejs";
@@ -34,6 +35,7 @@ export async function PATCH(request: Request) {
 
   const confirmedAt = new Date();
   const isTransport = selectedCategory.parent?.slug === transportDeliveryRootSlug;
+  const isHyperlocal = Boolean(hyperlocalIndustry(selectedCategory.parent?.slug));
   const capability = await prisma.$transaction(async (tx) => {
     const saved = await tx.supplierCapability.upsert({
       where: {
@@ -47,8 +49,9 @@ export async function PATCH(request: Request) {
         productCategoryId: parsed.data.productCategoryId,
         active: true,
         capacityStatus: "AVAILABLE",
+        liveAvailability: isHyperlocal ? "AVAILABLE_TODAY" : "AVAILABLE_TOMORROW",
         standardLeadTimeDays: isTransport ? 1 : 14,
-        supportsService: isTransport,
+        supportsService: isTransport || isHyperlocal,
         deliveryDays: [1, 2, 3, 4, 5],
         lastConfirmedAt: confirmedAt,
         capacityLastConfirmedAt: confirmedAt,
@@ -58,9 +61,11 @@ export async function PATCH(request: Request) {
       update: {
         active: true,
         capacityStatus: "AVAILABLE",
+        liveAvailability: isHyperlocal ? "AVAILABLE_TODAY" : "AVAILABLE_TOMORROW",
+        availabilityLastConfirmedAt: confirmedAt,
         shortageNote: null,
         shortageUntil: null,
-        ...(isTransport ? { supportsService: true } : {}),
+        ...(isTransport || isHyperlocal ? { supportsService: true } : {}),
         lastConfirmedAt: confirmedAt,
         capacityLastConfirmedAt: confirmedAt,
         leadTimeLastConfirmedAt: confirmedAt,
@@ -132,9 +137,11 @@ export async function PUT(request: Request) {
         ...capability,
         minimumOrderValue: capability.minimumOrderValue,
         shortageUntil: capability.shortageUntil ? new Date(capability.shortageUntil) : null,
+        nextAvailableAt: capability.nextAvailableAt ? new Date(capability.nextAvailableAt) : null,
         lastConfirmedAt: confirmedAt,
         capacityLastConfirmedAt: confirmedAt,
         leadTimeLastConfirmedAt: confirmedAt,
+        availabilityLastConfirmedAt: confirmedAt,
       };
       await tx.supplierCapability.upsert({
         where: { supplierCompanyId_productCategoryId: { supplierCompanyId: auth.companyId, productCategoryId: capability.productCategoryId } },

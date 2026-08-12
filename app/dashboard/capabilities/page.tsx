@@ -62,12 +62,15 @@ export default async function CapabilitiesPage() {
         collectionAvailable: saved?.collectionAvailable ?? false,
         deliveryDays: saved?.deliveryDays ?? [1, 2, 3, 4, 5],
         capacityStatus: saved?.capacityStatus ?? "AVAILABLE",
+        liveAvailability: saved?.liveAvailability ?? "AVAILABLE_TODAY",
+        nextAvailableAt: saved?.nextAvailableAt?.toISOString() ?? null,
         restrictedProducts: saved?.restrictedProducts ?? [],
         deliveryDelayDays: saved?.deliveryDelayDays ?? null,
         shortageNote: saved?.shortageNote ?? null,
         shortageUntil: saved?.shortageUntil?.toISOString() ?? null,
         active: saved?.active ?? true,
         lastConfirmedAt: saved?.lastConfirmedAt?.toISOString() ?? null,
+        availabilityLastConfirmedAt: saved?.availabilityLastConfirmedAt?.toISOString() ?? null,
       };
     })}/>
   </PortalPage>;

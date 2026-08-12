@@ -17,8 +17,10 @@ import {
   TRANSPORT_SERVICE_FEATURE_OPTIONS,
   TRANSPORT_VEHICLE_OPTIONS,
 } from "@/lib/capabilities/options";
+import { hyperlocalService } from "@/lib/categories/hyperlocal-industries";
 
 type CapacityStatus = "AVAILABLE" | "LIMITED" | "URGENT_ONLY" | "FULL" | "PAUSED" | "HOLIDAY" | "NOT_ACCEPTING";
+type LiveAvailabilityStatus = "AVAILABLE_NOW" | "AVAILABLE_TODAY" | "AVAILABLE_TOMORROW" | "LIMITED" | "FULLY_BOOKED" | "PAUSED" | "HOLIDAY";
 
 type Capability = {
   productCategoryId: string;
@@ -46,12 +48,15 @@ type Capability = {
   collectionAvailable: boolean;
   deliveryDays: number[];
   capacityStatus: CapacityStatus;
+  liveAvailability: LiveAvailabilityStatus;
+  nextAvailableAt: string | null;
   restrictedProducts: string[];
   deliveryDelayDays: number | null;
   shortageNote: string | null;
   shortageUntil: string | null;
   active: boolean;
   lastConfirmedAt: string | null;
+  availabilityLastConfirmedAt: string | null;
 };
 
 type RematchResult = { checked?: number; matched?: number; blocked?: number; blockingReasons?: string[] };
@@ -145,6 +150,10 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
         collectionAvailable: form.has(`${prefix}:collection`),
         deliveryDays: dayOptions.filter(([day]) => form.has(`${prefix}:day:${day}`)).map(([day]) => day),
         capacityStatus: String(form.get(`${prefix}:capacity`)),
+        liveAvailability: String(form.get(`${prefix}:liveAvailability`)),
+        nextAvailableAt: String(form.get(`${prefix}:nextAvailableAt`) ?? "").trim()
+          ? new Date(String(form.get(`${prefix}:nextAvailableAt`))).toISOString()
+          : null,
         restrictedProducts: splitList(form.get(`${prefix}:restrictedProducts`)),
         deliveryDelayDays: nullableNumber(form.get(`${prefix}:deliveryDelay`)),
         shortageNote: String(form.get(`${prefix}:shortageNote`) ?? "").trim() || null,
@@ -207,6 +216,8 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
       const active = activeByCategory[prefix];
       const isPhe = isPheCapabilityCategory(capability.categorySlug);
       const isTransport = isTransportCapabilityCategory(capability.categorySlug);
+      const hyperlocal = hyperlocalService(capability.categorySlug);
+      const isHyperlocal = Boolean(hyperlocal);
       const profileOptions = PROFILE_SYSTEM_OPTIONS_BY_CATEGORY[capability.categorySlug] ?? [];
       const manufacturerOptions = PHE_MANUFACTURER_OPTIONS_BY_CATEGORY[capability.categorySlug] ?? [];
       const systemOptions = PHE_SYSTEM_OPTIONS_BY_CATEGORY[capability.categorySlug] ?? [];
@@ -218,6 +229,8 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
       const otherManufacturers = capability.manufacturerNames.filter((value) => ![...profileOptions, ...manufacturerOptions].some((option) => includesCapabilityValue([value], option)));
       const otherTransportVehicles = capability.systemNames.filter((value) => !TRANSPORT_VEHICLE_OPTIONS.some((option) => includesCapabilityValue([value], option)));
       const otherTransportFeatures = capability.finishNames.filter((value) => !TRANSPORT_SERVICE_FEATURE_OPTIONS.some((option) => includesCapabilityValue([value], option)));
+      const hyperlocalCapabilityOptions = hyperlocal?.service.capabilities ?? [];
+      const otherHyperlocalFeatures = capability.finishNames.filter((value) => !hyperlocalCapabilityOptions.includes(value));
       return <section className="panel capability-advanced-card" key={prefix}>
         <details>
           <summary>
@@ -234,7 +247,16 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
                 <OptionCard name={`${prefix}:business`} value="yes" checked={capability.servesBusiness} description="Companies, organisations and commercial buyers" label="Businesses" />
               </div>
             </div>
-            {isTransport ? <>
+            {isHyperlocal ? <>
+              <div className="honesty-note">This setup is specific to {capability.categoryName.toLocaleLowerCase("en-GB")}. Tick only work your team is equipped, qualified and available to perform.</div>
+              <div className="capability-option-section">
+                <div className="capability-option-heading"><b>Service capabilities</b><small>These are used as mandatory filters for detailed requests.</small></div>
+                <div className="capability-option-grid">
+                  {hyperlocalCapabilityOptions.map((option) => <OptionCard key={option} name={`${prefix}:feature`} value={option} checked={includesCapabilityValue(capability.finishNames, option)} label={option.replaceAll("_", " ")} />)}
+                </div>
+                <Field name={`${prefix}:finishes`} label="Other specialist capabilities (optional)" value={otherHyperlocalFeatures.join(", ")} placeholder="Add other capabilities, separated by commas" />
+              </div>
+            </> : isTransport ? <>
               <div className="honesty-note">This setup is specific to transport and removals. Select only vehicles, crew and handling services you can genuinely provide; Bridge AI uses these details to avoid unsuitable jobs.</div>
               <div className="capability-option-section">
                 <div className="capability-option-heading"><b>Vehicles available</b><small>Tick every vehicle type you can allocate to this service.</small></div>
@@ -278,7 +300,7 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
               <Field name={`${prefix}:manufacturers`} label="Manufacturers" value={capability.manufacturerNames.join(", ")} placeholder="Add manufacturers, separated by commas" />
               <Field name={`${prefix}:systems`} label="Systems or brands" value={capability.systemNames.join(", ")} placeholder="Add systems or brands, separated by commas" />
             </div>}
-            {!isPhe && !isTransport ? <div className="capability-option-section">
+            {!isPhe && !isTransport && !isHyperlocal ? <div className="capability-option-section">
               <div className="capability-option-heading"><b>Colours supplied</b><small>Tick every standard colour you supply. Tick RAL colours only if you can supply RAL-specified finishes.</small></div>
               <div className="capability-option-grid capability-colour-grid">
                 {STANDARD_COLOUR_OPTIONS.map((option) => <OptionCard key={option} name={`${prefix}:colour`} value={option} checked={includesCapabilityValue(capability.colourNames, option)} />)}
@@ -290,7 +312,7 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
               </div>
             </div> : null}
             <div className="form-grid capability-fields">
-              <Field name={`${prefix}:finishes`} label={isTransport ? "Other handling or service features" : isPhe ? "Technical variants or specifications" : "Finishes supplied"} value={isTransport ? otherTransportFeatures.join(", ") : capability.finishNames.join(", ")} placeholder={isTransport ? "For example fragile loads, evening collections" : isPhe ? "For example low-temperature, potable-water, commercial duty" : "Foil, powder coat, anodised"} />
+              {!isHyperlocal ? <Field name={`${prefix}:finishes`} label={isTransport ? "Other handling or service features" : isPhe ? "Technical variants or specifications" : "Finishes supplied"} value={isTransport ? otherTransportFeatures.join(", ") : capability.finishNames.join(", ")} placeholder={isTransport ? "For example fragile loads, evening collections" : isPhe ? "For example low-temperature, potable-water, commercial duty" : "Foil, powder coat, anodised"} /> : null}
               <Field name={`${prefix}:minimumQuantity`} label="Minimum order quantity" value={capability.minimumOrderQuantity ?? ""} type="number" min="1" />
               <Field name={`${prefix}:minimumValue`} label="Minimum order value (£)" value={capability.minimumOrderValue ?? ""} type="number" min="0" step="0.01" />
               <Field name={`${prefix}:standardLead`} label={isTransport ? "Standard booking notice (days)" : "Standard lead time (days)"} value={capability.standardLeadTimeDays} type="number" min="1" required />
@@ -298,6 +320,8 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
               <Field name={`${prefix}:urgentLead`} label={isTransport ? "Urgent booking notice (days)" : "Urgent lead time (days)"} value={capability.urgentLeadTimeDays ?? ""} type="number" min="1" />
               <Field name={`${prefix}:declaredMonthlyCapacity`} label="Comfortable monthly opportunity capacity" value={capability.declaredMonthlyCapacity ?? ""} type="number" min="1" />
               <label className="form-control"><span>Current capacity</span><select name={`${prefix}:capacity`} value={capacityByCategory[prefix]} onChange={(event) => setCapacityByCategory((current) => ({ ...current, [prefix]: event.target.value as CapacityStatus }))}><option value="AVAILABLE">Available</option><option value="LIMITED">Limited</option><option value="URGENT_ONLY">Urgent work only</option><option value="FULL">Temporarily full</option><option value="PAUSED">Paused</option><option value="HOLIDAY">Holiday</option><option value="NOT_ACCEPTING">Not accepting new work</option></select></label>
+              <label className="form-control"><span>Live service availability</span><select name={`${prefix}:liveAvailability`} defaultValue={capability.liveAvailability}><option value="AVAILABLE_NOW">Available now</option><option value="AVAILABLE_TODAY">Available today</option><option value="AVAILABLE_TOMORROW">Available tomorrow</option><option value="LIMITED">Limited availability</option><option value="FULLY_BOOKED">Fully booked</option><option value="PAUSED">Paused</option><option value="HOLIDAY">Holiday</option></select></label>
+              <Field name={`${prefix}:nextAvailableAt`} label="Next available appointment" value={capability.nextAvailableAt?.slice(0, 16) ?? ""} type="datetime-local" />
               {isTransport ? <>
                 <label className="toggle-row"><span><b>Transport service available</b><small>Your vehicle and driver can collect and deliver customer loads</small></span><input type="checkbox" name={`${prefix}:service`} defaultChecked={capability.supportsService}/></label>
                 <label className="toggle-row"><span><b>Depot drop-off available</b><small>Customers may bring items to your depot before onward transport</small></span><input type="checkbox" name={`${prefix}:collection`} defaultChecked={capability.collectionAvailable}/></label>

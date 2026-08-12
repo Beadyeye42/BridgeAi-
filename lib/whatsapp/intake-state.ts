@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { hyperlocalService } from "@/lib/categories/hyperlocal-industries";
 
 export const intakeQuestionKeys = [
   "BUYER_TYPE",
@@ -13,6 +14,7 @@ export const intakeQuestionKeys = [
   "TRANSPORT_ROUTE_ITEM",
   "TRANSPORT_ACCESS",
   "TRANSPORT_HANDLING",
+  "HYPERLOCAL_SERVICE",
   "SPECIFICATION",
   "REQUIREMENTS",
   "NONE",
@@ -133,6 +135,88 @@ export type TransportIntakeDecision = {
   nextQuestionKey: "TRANSPORT_ROUTE_ITEM" | "TRANSPORT_ACCESS" | "TRANSPORT_HANDLING" | null;
   shouldAsk: boolean;
 };
+
+export type HyperlocalServiceIntakeDecision = {
+  isHyperlocalService: boolean;
+  serviceSlug: string | null;
+  prompt: string | null;
+  shouldAsk: boolean;
+};
+
+const genericHyperlocalFields = new Set([
+  "postcode",
+  "current_location",
+  "collection_postcode",
+  "delivery_postcode",
+  "required_date",
+  "urgency",
+  "preferred_time",
+  "photos",
+]);
+
+function humaniseField(value: string) {
+  return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function fieldIsKnown(field: string, evidence: string) {
+  const patterns: Record<string, RegExp> = {
+    vehicle_registration: /\b[A-Z]{2}\d{2}\s?[A-Z]{3}\b/i,
+    make_model: /\b(?:make|model|ford|vauxhall|volkswagen|vw|audi|bmw|mercedes|toyota|nissan|kia|hyundai|renault|peugeot|citro[eë]n|skoda|seat)\b/i,
+    driveable: /\b(?:driveable|drivable|not driveable|won['’]?t drive|cannot drive|can drive)\b/i,
+    tyre_size: /\b\d{3}\/\d{2}\s?R\d{2}\b/i,
+    authority_to_access: /\b(?:my home|my house|my property|owner|tenant|landlord|authori[sz]ed|permission)\b/i,
+    property_type: /\b(?:house|flat|apartment|office|shop|warehouse|commercial|bungalow|detached|semi[- ]detached|terrace)\b/i,
+    manufacturer: /\b(?:manufacturer|brand|bosch|beko|hotpoint|indesit|samsung|lg|aeg|miele|neff|siemens|whirlpool)\b/i,
+    model: /\b(?:model|model number|rating plate)\b/i,
+    error_code: /\b(?:error|code|[ef]\d{1,3})\b/i,
+    recurrence: /\b(?:one[- ]off|weekly|fortnightly|monthly|regular)\b/i,
+    quantity: /\b\d+\s*(?:items?|units?|tyres?|wheels?)\b/i,
+    photos: /\[Customer (?:attachment|uploaded)\b/i,
+  };
+  const direct = patterns[field];
+  if (direct?.test(evidence)) return true;
+  return new RegExp(`\\b${field.replaceAll("_", "[ -]?")}\\b`, "i").test(evidence);
+}
+
+export function hyperlocalServiceIntakeDecision(
+  draft: TradeDraft,
+  messages: IntakeConversationMessage[],
+): HyperlocalServiceIntakeDecision {
+  const entry = hyperlocalService(draft.categorySlug);
+  if (!entry) return { isHyperlocalService: false, serviceSlug: null, prompt: null, shouldAsk: false };
+
+  const inbound = messages.filter((message) => message.direction === "INBOUND").map((message) => message.text).join("\n");
+  const evidence = [
+    inbound,
+    draft.title,
+    draft.summary,
+    ...draft.items.flatMap((item) => [item.description, item.specification]),
+  ].filter((value): value is string => Boolean(value)).join("\n");
+  const alreadyAsked = messages.some((message) => message.direction === "OUTBOUND"
+    && message.text.includes("To help the right local specialist quote accurately"));
+  if (alreadyAsked) {
+    return { isHyperlocalService: true, serviceSlug: entry.service.slug, prompt: null, shouldAsk: false };
+  }
+
+  const missing = entry.service.requiredInformation
+    .filter((field) => !genericHyperlocalFields.has(field))
+    .filter((field) => !fieldIsKnown(field, evidence))
+    .slice(0, 2);
+  const hasAttachment = /\[Customer (?:attachment|uploaded)\b/i.test(inbound);
+  const detailRequest = missing.length
+    ? `Please tell me ${missing.map((field) => humaniseField(field).toLocaleLowerCase("en-GB")).join(" and ")}.`
+    : null;
+  const photoRequest = !hasAttachment && entry.service.photoPrompt ? entry.service.photoPrompt : null;
+  const prompt = ["To help the right local specialist quote accurately:", detailRequest, photoRequest]
+    .filter((value): value is string => Boolean(value))
+    .join(" ");
+  return {
+    isHyperlocalService: true,
+    serviceSlug: entry.service.slug,
+    prompt: detailRequest || photoRequest ? prompt : null,
+    shouldAsk: Boolean(detailRequest || photoRequest),
+  };
+}
 
 function hasAnswerAfterPrompt(messages: IntakeConversationMessage[], promptPattern: RegExp) {
   const promptIndex = messages.findLastIndex((message) => (
@@ -381,7 +465,7 @@ export function enforceTradeClarification(
   proposed: TradeClarification,
   customerMessages: string[],
 ): TradeClarification {
-  if (draft.categorySlug && (pheCategorySlugs.has(draft.categorySlug) || transportCategorySlugs.has(draft.categorySlug))) {
+  if (draft.categorySlug && (pheCategorySlugs.has(draft.categorySlug) || transportCategorySlugs.has(draft.categorySlug) || hyperlocalService(draft.categorySlug))) {
     return { materialNeeded: false, colourNeeded: false, colourTerm: null };
   }
   const evidence = [
@@ -449,6 +533,7 @@ export function repeatClarification(questionKey: IntakeQuestionKey) {
     TRANSPORT_ROUTE_ITEM: "Please send a photo or short description of what is moving, plus the full collection and delivery postcodes.",
     TRANSPORT_ACCESS: "Is it ground floor at both addresses, or are there stairs or a lift at either end?",
     TRANSPORT_HANDLING: "Will you need the driver to help carry or load it, or will someone help at both ends?",
+    HYPERLOCAL_SERVICE: "Please answer the short service-specific question above so I can match the right local specialist.",
     SPECIFICATION: "What important detail should suppliers price — for example size, material, colour or opening style?",
     REQUIREMENTS: "What would you like the supplier to include in this quote?",
   };

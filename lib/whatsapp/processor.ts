@@ -8,6 +8,7 @@ import {
   normalizeLaunchCategorySlug,
   unavailableCatalogueForConversation,
 } from "@/lib/categories/catalogue";
+import { hyperlocalService, inferUrgency, recurrenceCadence } from "@/lib/categories/hyperlocal-industries";
 import { runAsDatabaseWorker } from "@/lib/db";
 import { analyzeQuoteAttachment, quoteAttachmentAnalysisSchema, type QuoteAttachmentAnalysis } from "@/lib/ai/attachment-intake";
 import { extractQuoteIntake, quoteDraftSchema, type QuoteDraft } from "@/lib/ai/quote-intake";
@@ -66,6 +67,7 @@ import {
   compositeDoorStylePhotoPrompt,
   conversationProgress,
   enforceTradeClarification,
+  hyperlocalServiceIntakeDecision,
   pheSpecificationDecision,
   pheSpecificationPrompt,
   productSelectionPrompt,
@@ -828,6 +830,18 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
   if (!buyerTypeAllowed(draft.buyerType!, category.parent)) throw new Error("BUYER_TYPE_NOT_SUPPORTED_BY_INDUSTRY");
   const delivery = await lookupPostcode(draft.deliveryPostcode!);
   const now = new Date();
+  const requestEvidence = [
+    draft.title,
+    draft.summary,
+    ...draft.items.flatMap((item) => [item.description, item.specification]),
+  ].filter((value): value is string => Boolean(value)).join("\n");
+  const urgency = inferUrgency(requestEvidence, draft.requiredBy ? new Date(draft.requiredBy) : null, now);
+  const recurrence = recurrenceCadence(requestEvidence);
+  const hyperlocal = hyperlocalService(draft.categorySlug);
+  const sessionAttachments = loaded.conversation.messages
+    .filter((message) => message.occurredAt >= loaded.conversation!.aiSessionStartedAt)
+    .flatMap((message) => message.attachments)
+    .filter((attachment) => !["REJECTED", "FAILED"].includes(attachment.scanStatus));
   const { quoteResponseHours, distributionLimit } = whatsappConciergeConfig();
   const reference = `BA-${now.getFullYear()}-${randomBytes(4).toString("hex").toUpperCase()}`;
   return runAsDatabaseWorker("whatsapp_ai", async (tx) => {
@@ -863,6 +877,16 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
         categoryId: category.id,
         buyerType: draft.buyerType!,
         intentQuality: draft.intentQuality === "URGENT" ? "URGENT" : "READY_TO_BUY",
+        urgency,
+        recurrenceCadence: recurrence,
+        qualificationData: hyperlocal ? {
+          industrySlug: hyperlocal.industry.slug,
+          serviceSlug: hyperlocal.service.slug,
+          requiredInformation: hyperlocal.service.requiredInformation,
+          verificationRequirements: hyperlocal.service.verification,
+          photoRecommended: Boolean(hyperlocal.service.photoPrompt),
+        } : undefined,
+        attachmentExtractionConfidence: sessionAttachments.length > 0 ? 0.75 : null,
         title: draft.title!,
         summary: draft.summary!,
         deliveryPostcode: delivery.postcode,
@@ -990,6 +1014,8 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
         attachmentCount: linkedAttachments.count,
         distributionLimit,
         automaticAssignmentCount: assignedSupplierIds.length,
+        urgency,
+        recurrenceCadence: recurrence,
       },
     });
     return { request, assignmentCount: assignedSupplierIds.length };
@@ -1805,7 +1831,13 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   const roofGlazingSpecification = roofGlazingSpecificationDecision(result.draft, messages);
   const pheSpecification = pheSpecificationDecision(result.draft, messages);
   const transportIntake = transportIntakeDecision(result.draft, messages);
+  const hyperlocalIntake = hyperlocalServiceIntakeDecision(result.draft, messages);
   if (transportIntake.isTransport) {
+    result.draft.fulfilmentMode = "SERVICE";
+    result.draft.collectionRequired = false;
+    result.tradeClarification = { materialNeeded: false, colourNeeded: false, colourTerm: null };
+  }
+  if (hyperlocalIntake.isHyperlocalService) {
     result.draft.fulfilmentMode = "SERVICE";
     result.draft.collectionRequired = false;
     result.tradeClarification = { materialNeeded: false, colourNeeded: false, colourTerm: null };
@@ -1837,6 +1869,8 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
           ? "PHE_SPECIFICATION"
           : transportIntake.shouldAsk
             ? transportIntake.nextQuestionKey!
+            : hyperlocalIntake.shouldAsk
+              ? "HYPERLOCAL_SERVICE"
             : requiredQuestionKey(result.draft, result.nextQuestionKey, result.tradeClarification);
   const ready = result.readyForConfirmation && Boolean(category?.parent) && questionKey === "NONE" && draftIsComplete(result.draft);
   const fingerprint = quoteDraftFingerprint(result.draft);
@@ -1940,7 +1974,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
         preferredFirstName,
         categoryResponsibilityNotice(category.slug, category.parent?.slug),
       )
-      : `${mediaAcknowledgement ? `${mediaAcknowledgement}\n\n` : ""}${compositeDoorPhoto.shouldAsk ? compositeDoorStylePhotoPrompt() : roofGlazingSpecification.shouldAsk ? roofGlazingSpecificationPrompt(roofGlazingSpecification) : pheSpecification.shouldAsk ? pheSpecificationPrompt(pheSpecification.categorySlug) : transportIntake.shouldAsk ? transportIntakePrompt(transportIntake) : tradeClarification ?? productQuestionPrompt ?? repeatedClarification ?? enforcedClarification ?? result.reply}${rejectedMedia ? "\n\nI couldn’t use one uploaded file for this quote, so I’ve safely left it out. Send another JPG, PNG or PDF, or describe the job here and I’ll keep going." : ""}`;
+      : `${mediaAcknowledgement ? `${mediaAcknowledgement}\n\n` : ""}${compositeDoorPhoto.shouldAsk ? compositeDoorStylePhotoPrompt() : roofGlazingSpecification.shouldAsk ? roofGlazingSpecificationPrompt(roofGlazingSpecification) : pheSpecification.shouldAsk ? pheSpecificationPrompt(pheSpecification.categorySlug) : transportIntake.shouldAsk ? transportIntakePrompt(transportIntake) : hyperlocalIntake.shouldAsk ? hyperlocalIntake.prompt : tradeClarification ?? productQuestionPrompt ?? repeatedClarification ?? enforcedClarification ?? result.reply}${rejectedMedia ? "\n\nI couldn’t use one uploaded file for this quote, so I’ve safely left it out. Send another JPG, PNG or PDF, or describe the job here and I’ll keep going." : ""}`;
   await sendReply(
     job,
     refreshed.conversation,

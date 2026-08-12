@@ -19,7 +19,16 @@ type ProductRule = {
   answer?: string;
 };
 
+function literalPattern(value: string) {
+  return new RegExp(`\\b${value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+")}\\b`, "i");
+}
+
 const productRules: ProductRule[] = [
+  ...hyperlocalRecognitionRules().map(({ serviceSlug, label, alias }) => ({
+    slug: serviceSlug,
+    pattern: literalPattern(alias),
+    answer: `Bridge AI can match ${label.toLocaleLowerCase("en-GB")} with suitable approved local businesses. Send what you need, the postcode and when you need it; a photo is welcome where useful.`,
+  })),
   {
     slug: "man-with-a-van",
     pattern: /\b(?:man (?:with|and) a van|van and driver|van with (?:a )?driver|small van move)\b/i,
@@ -147,5 +156,10 @@ export function productRecoveryReply(recognition: ProductRecognition, text: stri
   if (recognition.parentSlug === "transport-delivery-removals") {
     return "Yes — I can help. Please send a photo or short description of what is moving, plus the full collection and delivery postcodes.";
   }
+  const localService = hyperlocalService(recognition.categorySlug);
+  if (localService) {
+    return `Yes — I can help with ${recognition.categoryName.toLocaleLowerCase("en-GB")}. What is the postcode and when do you need it? ${localService.service.photoPrompt ?? "You can send a photo or document if it helps explain the job."}`;
+  }
   return `Yes — I can help you source ${recognition.categoryName.toLocaleLowerCase("en-GB")} from suitable approved suppliers. Roughly how many do you need? You can also send a photo, drawing or PDF.`;
 }
+import { hyperlocalRecognitionRules, hyperlocalService } from "@/lib/categories/hyperlocal-industries";

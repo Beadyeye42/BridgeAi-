@@ -10,6 +10,7 @@ import {
 } from "../capabilities/options";
 import { effectiveMembershipLimits } from "../billing/membership-plans";
 import { buyerTypeAllowed, buyerTypeLabel, type BuyerTypeValue } from "../whatsapp/buyer-classification";
+import { hyperlocalService, type RequestUrgency } from "../categories/hyperlocal-industries";
 
 type MatchingClient = Pick<Prisma.TransactionClient, "supplierCompany"> & Partial<Pick<Prisma.TransactionClient, "matchingConfiguration" | "productCategory">>;
 
@@ -26,6 +27,7 @@ type RequestForMatching = {
   requiredColour?: string | null;
   requiredFinish?: string | null;
   requiredBy?: Date | null;
+  urgency?: RequestUrgency;
   collectionRequired?: boolean;
   fulfilmentMode?: "SERVICE" | "INSTALLATION" | "SUPPLY_ONLY" | "DELIVERY" | "COLLECTION";
   items?: Array<{ quantity: Prisma.Decimal | number }>;
@@ -269,6 +271,9 @@ type Capability = {
   supportsService?: boolean;
   deliveryDays: number[];
   capacityStatus: "AVAILABLE" | "LIMITED" | "URGENT_ONLY" | "FULL" | "PAUSED" | "HOLIDAY" | "NOT_ACCEPTING";
+  liveAvailability?: "AVAILABLE_NOW" | "AVAILABLE_TODAY" | "AVAILABLE_TOMORROW" | "LIMITED" | "FULLY_BOOKED" | "PAUSED" | "HOLIDAY";
+  nextAvailableAt?: Date | null;
+  availabilityLastConfirmedAt?: Date;
   capacityLastConfirmedAt?: Date;
   leadTimeLastConfirmedAt?: Date;
   currentLeadTimeDays?: number | null;
@@ -294,6 +299,9 @@ export function evaluateCapability(
   if (!buyerTypeAllowed(buyerType, capability)) rejected.push(`Supplier does not serve ${buyerTypeLabel(buyerType).toLocaleLowerCase("en-GB")} requests for this product`);
   else reasons.push(`Accepts ${buyerTypeLabel(buyerType).toLocaleLowerCase("en-GB")} requests for this product`);
   if (["FULL", "PAUSED", "HOLIDAY", "NOT_ACCEPTING"].includes(capability.capacityStatus)) rejected.push(`Current capacity is ${capability.capacityStatus.toLowerCase().replaceAll("_", " ")}`);
+  if (["FULLY_BOOKED", "PAUSED", "HOLIDAY"].includes(capability.liveAvailability ?? "AVAILABLE_TODAY")) {
+    rejected.push(`Live availability is ${(capability.liveAvailability ?? "PAUSED").toLowerCase().replaceAll("_", " ")}`);
+  }
   const fulfilmentMode = request.fulfilmentMode ?? (request.collectionRequired ? "COLLECTION" : "DELIVERY");
   if (fulfilmentMode === "COLLECTION" && !capability.collectionAvailable) rejected.push("Collection is required but unavailable");
   if (fulfilmentMode === "SUPPLY_ONLY" && capability.supportsSupplyOnly === false) rejected.push("Supplier does not offer supply-only orders");
@@ -329,11 +337,30 @@ export function evaluateCapability(
     rejected.push(`Customer budget is below the supplier minimum order value`);
   }
   const capacityConfirmedAt = capability.capacityLastConfirmedAt ?? capability.lastConfirmedAt;
+  const availabilityConfirmedAt = capability.availabilityLastConfirmedAt ?? capacityConfirmedAt;
   const leadTimeConfirmedAt = capability.leadTimeLastConfirmedAt ?? capability.lastConfirmedAt;
   const ageDays = Math.max(0, Math.floor((now.getTime() - capacityConfirmedAt.getTime()) / DAY_MS));
   const leadTimeAgeDays = Math.max(0, Math.floor((now.getTime() - leadTimeConfirmedAt.getTime()) / DAY_MS));
+  const availabilityAgeDays = Math.max(0, Math.floor((now.getTime() - availabilityConfirmedAt.getTime()) / DAY_MS));
   if (ageDays <= capacityStaleDays) { score += 10; reasons.push(`Availability confirmed ${ageDays === 0 ? "today" : `${ageDays} day${ageDays === 1 ? "" : "s"} ago`}`); }
   else { score = Math.max(0, score - Math.min(20, ageDays - capacityStaleDays)); reasons.push(`Availability is ${ageDays} days old, so confidence is reduced`); }
+
+  const urgentRequest = ["EMERGENCY", "WITHIN_2_HOURS", "SAME_DAY"].includes(request.urgency ?? "FLEXIBLE");
+  if (urgentRequest && availabilityAgeDays > capacityStaleDays) rejected.push("Live availability is too old for an urgent request");
+  if (request.urgency === "EMERGENCY" || request.urgency === "WITHIN_2_HOURS") {
+    if (capability.liveAvailability !== "AVAILABLE_NOW") rejected.push("Supplier has not confirmed immediate availability");
+  } else if (request.urgency === "SAME_DAY" && !["AVAILABLE_NOW", "AVAILABLE_TODAY"].includes(capability.liveAvailability ?? "AVAILABLE_TODAY")) {
+    rejected.push("Supplier has not confirmed same-day availability");
+  } else if (request.urgency === "NEXT_DAY" && !["AVAILABLE_NOW", "AVAILABLE_TODAY", "AVAILABLE_TOMORROW"].includes(capability.liveAvailability ?? "AVAILABLE_TODAY")) {
+    rejected.push("Supplier has not confirmed next-day availability");
+  }
+  if (request.requiredBy && capability.nextAvailableAt && capability.nextAvailableAt > request.requiredBy) {
+    rejected.push(`Next appointment is after the customer's required date`);
+  }
+  if (!rejected.some((reason) => /availability/i.test(reason))) {
+    score += capability.liveAvailability === "AVAILABLE_NOW" ? 10 : capability.liveAvailability === "AVAILABLE_TODAY" ? 8 : capability.liveAvailability === "AVAILABLE_TOMORROW" ? 5 : 2;
+    reasons.push(`Live availability is ${(capability.liveAvailability ?? "AVAILABLE_TODAY").toLowerCase().replaceAll("_", " ")}`);
+  }
 
   if (request.requiredBy) {
     const allowedDays = Math.max(0, Math.ceil((request.requiredBy.getTime() - now.getTime()) / DAY_MS));
@@ -363,7 +390,11 @@ export function evaluateCapability(
     signals: {
       capability: rejected.some((reason) => /manufacturer|system|colour|finish|product/i.test(reason)) ? 0 : 1,
       leadTime: rejected.some((reason) => /lead.time|day requirement/i.test(reason)) ? 0 : Math.max(0.2, 1 - currentLeadTime / 180),
-      capacity: capability.capacityStatus === "AVAILABLE" ? 1 : capability.capacityStatus === "LIMITED" ? 0.55 : capability.capacityStatus === "URGENT_ONLY" ? 0.7 : 0,
+      capacity: ["FULLY_BOOKED", "PAUSED", "HOLIDAY"].includes(capability.liveAvailability ?? "AVAILABLE_TODAY")
+        ? 0
+        : capability.liveAvailability === "AVAILABLE_NOW"
+          ? 1
+          : capability.capacityStatus === "AVAILABLE" ? 0.85 : capability.capacityStatus === "LIMITED" ? 0.55 : capability.capacityStatus === "URGENT_ONLY" ? 0.7 : 0,
       coverage: 1,
       locality: coverage.distanceMiles !== null ? Math.max(0.1, 1 - coverage.distanceMiles / 150) : coverage.type === "POSTCODE" ? 0.75 : 0.4,
     },
@@ -380,14 +411,28 @@ export async function evaluateSupplierMatches(
   const configuration = db.matchingConfiguration
     ? await db.matchingConfiguration.findUnique({ where: { id: "default" } })
     : null;
-  const weights = matchingWeights(configuration?.matchingWeights);
+  let weights = matchingWeights(configuration?.matchingWeights);
   const requestCategory = db.productCategory ? await db.productCategory.findUnique({
     where: { id: request.categoryId },
     select: {
-      name: true, servesConsumer: true, servesTrade: true, servesBusiness: true, hyperlocalEnabled: true,
+      name: true, slug: true, servesConsumer: true, servesTrade: true, servesBusiness: true, hyperlocalEnabled: true,
       parent: { select: { name: true, servesConsumer: true, servesTrade: true, servesBusiness: true, hyperlocalEnabled: true } },
     },
-  }) : { name: "Legacy industry", servesConsumer: false, servesTrade: true, servesBusiness: true, hyperlocalEnabled: false, parent: null };
+  }) : { name: "Legacy industry", slug: "legacy", servesConsumer: false, servesTrade: true, servesBusiness: true, hyperlocalEnabled: false, parent: null };
+  const hyperlocal = hyperlocalService(requestCategory?.slug);
+  if (hyperlocal) {
+    const configured = hyperlocal.service.matchingWeights;
+    weights = {
+      capability: configured.capability,
+      leadTime: Math.round(configured.availability * 0.45),
+      capacity: Math.round(configured.availability * 0.55),
+      coverage: Math.round(configured.location * 0.45),
+      locality: Math.round(configured.location * 0.55),
+      response: configured.response,
+      completion: Math.round(configured.performance * 0.6),
+      reliability: Math.round(configured.performance * 0.4),
+    };
+  }
   const industry = requestCategory?.parent ?? requestCategory;
   const buyerType = request.buyerType ?? "TRADE";
   const purposeForRequest = ["SERVICE", "INSTALLATION"].includes(request.fulfilmentMode ?? "DELIVERY") ? "SERVICE" as const : "DELIVERY" as const;
@@ -580,6 +625,9 @@ export async function evaluateSupplierMatches(
         urgentLeadTimeDays: capability.urgentLeadTimeDays,
         currentLeadTimeDays: capability.currentLeadTimeDays,
         capacityStatus: capability.capacityStatus,
+        liveAvailability: capability.liveAvailability,
+        nextAvailableAt: capability.nextAvailableAt?.toISOString() ?? null,
+        availabilityLastConfirmedAt: capability.availabilityLastConfirmedAt?.toISOString() ?? null,
         capacityLastConfirmedAt: capability.capacityLastConfirmedAt.toISOString(),
         leadTimeLastConfirmedAt: capability.leadTimeLastConfirmedAt.toISOString(),
         lastConfirmedAt: capability.lastConfirmedAt.toISOString(),

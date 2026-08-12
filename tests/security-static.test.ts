@@ -275,7 +275,10 @@ describe("security foundation static controls", () => {
     const buyerTypeQuestion = read("supabase/migrations/20260811201159_allow_buyer_type_question_key.sql");
     expect(buyerTypeQuestion).toContain("conversation_ai_question_key_valid");
     expect(buyerTypeQuestion).toContain("'BUYER_TYPE'");
-    const questionKeySync = read("supabase/migrations/20260811201445_sync_whatsapp_question_keys.sql");
+    const questionKeySync = [
+      read("supabase/migrations/20260811201445_sync_whatsapp_question_keys.sql"),
+      read("supabase/migrations/20260811235611_hyperlocal_industries_expansion.sql"),
+    ].join("\n");
     const intakeQuestionKeys = [...read("lib/whatsapp/intake-state.ts").matchAll(/^  "([A-Z_]+)",$/gm)]
       .map((match) => match[1]);
     expect(intakeQuestionKeys.length).toBeGreaterThan(0);

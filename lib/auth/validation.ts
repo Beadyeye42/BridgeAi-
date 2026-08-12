@@ -144,6 +144,8 @@ export const supplierCapabilitySchema = z.object({
   collectionAvailable: z.boolean(),
   deliveryDays: z.array(z.number().int().min(1).max(7)).max(7).transform((days) => [...new Set(days)].sort()),
   capacityStatus: z.enum(["AVAILABLE", "LIMITED", "URGENT_ONLY", "FULL", "PAUSED", "HOLIDAY", "NOT_ACCEPTING"]),
+  liveAvailability: z.enum(["AVAILABLE_NOW", "AVAILABLE_TODAY", "AVAILABLE_TOMORROW", "LIMITED", "FULLY_BOOKED", "PAUSED", "HOLIDAY"]),
+  nextAvailableAt: z.string().datetime().nullable(),
   restrictedProducts: capabilityNameList,
   deliveryDelayDays: z.number().int().min(0).max(365).nullable(),
   shortageNote: z.string().trim().max(500).nullable(),
@@ -158,6 +160,9 @@ export const supplierCapabilitySchema = z.object({
   }
   if (value.shortageNote && !value.shortageUntil) {
     context.addIssue({ code: "custom", path: ["shortageUntil"], message: "Add an end date for the temporary shortage" });
+  }
+  if (["FULLY_BOOKED", "PAUSED", "HOLIDAY"].includes(value.liveAvailability) && !value.nextAvailableAt) {
+    context.addIssue({ code: "custom", path: ["nextAvailableAt"], message: "Add the next time this service is available" });
   }
 });
 

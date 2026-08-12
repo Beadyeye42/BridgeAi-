@@ -219,6 +219,39 @@ enum SupplierCapacityStatus {
   @@schema("bridge_ai")
 }
 
+enum LiveAvailabilityStatus {
+  AVAILABLE_NOW
+  AVAILABLE_TODAY
+  AVAILABLE_TOMORROW
+  LIMITED
+  FULLY_BOOKED
+  PAUSED
+  HOLIDAY
+
+  @@schema("bridge_ai")
+}
+
+enum RequestUrgency {
+  EMERGENCY
+  WITHIN_2_HOURS
+  SAME_DAY
+  NEXT_DAY
+  THIS_WEEK
+  FLEXIBLE
+  FUTURE_BOOKING
+
+  @@schema("bridge_ai")
+}
+
+enum RecurrenceCadence {
+  ONE_OFF
+  WEEKLY
+  FORTNIGHTLY
+  MONTHLY
+
+  @@schema("bridge_ai")
+}
+
 enum SupplierMatchOutcome {
   MATCHED
   REJECTED
@@ -794,6 +827,9 @@ model SupplierCapability {
   collectionAvailable     Boolean                @default(false)
   deliveryDays            Int[]                  @default([])
   capacityStatus          SupplierCapacityStatus @default(AVAILABLE)
+  liveAvailability        LiveAvailabilityStatus  @default(AVAILABLE_TODAY)
+  nextAvailableAt         DateTime?
+  availabilityLastConfirmedAt DateTime             @default(now())
   capacityLastConfirmedAt DateTime               @default(now())
   leadTimeLastConfirmedAt DateTime               @default(now())
   restrictedProducts      String[]               @default([])
@@ -810,6 +846,7 @@ model SupplierCapability {
 
   @@unique([supplierCompanyId, productCategoryId])
   @@index([productCategoryId, active, capacityStatus])
+  @@index([productCategoryId, active, liveAvailability, availabilityLastConfirmedAt])
   @@index([supplierCompanyId, lastConfirmedAt])
   @@schema("bridge_ai")
 }
@@ -834,6 +871,13 @@ model QuoteRequest {
   requiredColour                String?
   requiredFinish                String?
   requiredBy                    DateTime?
+  urgency                       RequestUrgency          @default(FLEXIBLE)
+  preferredTime                 String?                 @db.VarChar(80)
+  recurrenceCadence             RecurrenceCadence       @default(ONE_OFF)
+  qualificationData             Json?
+  attachmentExtractionConfidence Decimal?               @db.Decimal(5, 4)
+  previousQuoteRequestId        String?
+  previousSupplierCompanyId     String?
   collectionRequired            Boolean                 @default(false)
   fulfilmentMode                FulfilmentMode          @default(DELIVERY)
   currency                      String                  @default("GBP") @db.VarChar(3)
@@ -865,12 +909,16 @@ model QuoteRequest {
   successFees                   SupplierSuccessFee[]
   whatsappJobs                  WhatsAppJob[]
   opportunity                   SupplierOpportunity?
+  previousQuoteRequest          QuoteRequest?            @relation("RepeatQuoteRequest", fields: [previousQuoteRequestId], references: [id], onDelete: SetNull)
+  repeatQuoteRequests           QuoteRequest[]            @relation("RepeatQuoteRequest")
   matchDecisions                SupplierMatchDecision[]
   coverageGap                   CoverageGapSignal?
 
   @@index([status, responseDueAt])
   @@index([status, selectedAt])
   @@index([categoryId, deliveryPostcode])
+  @@index([urgency, status, responseDueAt])
+  @@index([previousQuoteRequestId])
   @@index([customerContactId])
   @@index([conversationId])
   @@schema("bridge_ai")
