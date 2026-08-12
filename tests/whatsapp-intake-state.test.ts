@@ -25,12 +25,27 @@ describe("customer deadline answers", () => {
   const wednesday = new Date("2026-08-12T22:24:00.000Z");
 
   it("resolves a bare weekday to the next local occurrence", () => {
-    expect(resolveCustomerDeadline("Saturday", wednesday)).toBe("2026-08-15T12:00:00.000Z");
+    expect(resolveCustomerDeadline("Saturday", wednesday)).toBe("2026-08-15T11:00:00.000Z");
+  });
+
+  it("resolves a natural weekday and time in Europe/London", () => {
+    expect(resolveCustomerDeadline("Next Saturday 8am", wednesday)).toBe("2026-08-15T07:00:00.000Z");
+    expect(resolveCustomerDeadline("next Saturday at 8:30am collect", wednesday)).toBe("2026-08-15T07:30:00.000Z");
+  });
+
+  it("keeps winter customer times in GMT", () => {
+    const winterWednesday = new Date("2026-12-09T18:00:00.000Z");
+    expect(resolveCustomerDeadline("Saturday 8am", winterWednesday)).toBe("2026-12-12T08:00:00.000Z");
+  });
+
+  it("understands conversational windows and UK dates", () => {
+    expect(resolveCustomerDeadline("this Saturday morning", wednesday)).toBe("2026-08-15T08:00:00.000Z");
+    expect(resolveCustomerDeadline("15/08/2026 afternoon", wednesday)).toBe("2026-08-15T12:00:00.000Z");
   });
 
   it("resolves common relative deadlines without an AI round trip", () => {
-    expect(resolveCustomerDeadline("tomorrow", wednesday)).toBe("2026-08-13T12:00:00.000Z");
-    expect(resolveCustomerDeadline("within 7 days", wednesday)).toBe("2026-08-19T12:00:00.000Z");
+    expect(resolveCustomerDeadline("tomorrow", wednesday)).toBe("2026-08-13T11:00:00.000Z");
+    expect(resolveCustomerDeadline("within 7 days", wednesday)).toBe("2026-08-19T11:00:00.000Z");
     expect(resolveCustomerDeadline("as soon as possible", wednesday)).toBeNull();
   });
 });

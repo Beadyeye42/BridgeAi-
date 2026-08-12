@@ -4,7 +4,7 @@ import { z } from "zod";
 import { openAiCredentials } from "@/lib/config";
 import { normalizeLaunchCategorySlug } from "@/lib/categories/catalogue";
 import { HYPERLOCAL_INDUSTRIES } from "@/lib/categories/hyperlocal-industries";
-import { intakeQuestionKeys } from "@/lib/whatsapp/intake-state";
+import { intakeQuestionKeys, resolveCustomerDeadline } from "@/lib/whatsapp/intake-state";
 
 export const quoteDraftSchema = z.object({
   customerName: z.string().trim().min(1).max(120).nullable(),
@@ -128,12 +128,26 @@ function outputText(value: z.infer<typeof responseSchema>) {
   throw new Error("OPENAI_OUTPUT_MISSING");
 }
 
+function repairRequiredBy(value: unknown, input: {
+  messages: IntakeMessage[];
+  currentDraft: QuoteDraft | null;
+  referenceDate: Date;
+}) {
+  if (typeof value === "string" && z.string().datetime().safeParse(value).success) return value;
+  const latestCustomerMessage = [...input.messages].reverse().find((message) => message.direction === "INBOUND")?.text ?? "";
+  return resolveCustomerDeadline(latestCustomerMessage, input.referenceDate)
+    ?? input.currentDraft?.requiredBy
+    ?? null;
+}
+
 export async function extractQuoteIntake(input: {
   messages: IntakeMessage[];
   currentDraft: QuoteDraft | null;
   categories: Array<{ slug: string; name: string; description: string | null }>;
   safetyIdentifier: string;
+  referenceDate?: Date;
 }) {
+  const referenceDate = input.referenceDate ?? new Date();
   const { apiKey, model } = openAiCredentials();
   const categorySlugs = new Set(input.categories.map((category) => category.slug));
   const response = await fetch("https://api.openai.com/v1/responses", {
@@ -209,7 +223,7 @@ export async function extractQuoteIntake(input: {
         "Set needsHumanReview for threats, self-harm, illegal requests, ambiguous high-risk work, complaints, or anything the quote workflow should not automate.",
       ].join("\n"),
       input: JSON.stringify({
-        currentDate: new Date().toISOString(),
+        currentDate: referenceDate.toISOString(),
         allowedCategories: input.categories,
         hyperlocalServiceGuide: HYPERLOCAL_INDUSTRIES.map((industry) => ({
           industrySlug: industry.slug,
@@ -237,7 +251,16 @@ export async function extractQuoteIntake(input: {
   if (!response.ok) throw new Error(`OPENAI_HTTP_${response.status}`);
   const parsedResponse = responseSchema.parse(await response.json());
   if (parsedResponse.status !== "completed") throw new Error("OPENAI_RESPONSE_INCOMPLETE");
-  const result = intakeResultSchema.parse(JSON.parse(outputText(parsedResponse)));
+  const untrustedResult = JSON.parse(outputText(parsedResponse)) as Record<string, unknown>;
+  if (untrustedResult.draft && typeof untrustedResult.draft === "object") {
+    const draft = untrustedResult.draft as Record<string, unknown>;
+    draft.requiredBy = repairRequiredBy(draft.requiredBy, {
+      messages: input.messages,
+      currentDraft: input.currentDraft,
+      referenceDate,
+    });
+  }
+  const result = intakeResultSchema.parse(untrustedResult);
   result.draft.customerName = null;
   result.draft.categorySlug = normalizeLaunchCategorySlug(result.draft.categorySlug);
   if (result.draft.categorySlug && !categorySlugs.has(result.draft.categorySlug)) {
