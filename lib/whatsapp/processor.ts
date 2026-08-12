@@ -80,6 +80,7 @@ import {
   quoteDraftFingerprint,
   repeatClarification,
   requiredQuestionKey,
+  resolveCustomerDeadline,
   roofGlazingSpecificationDecision,
   roofGlazingSpecificationPrompt,
   tradeSpecificationClarification,
@@ -90,6 +91,7 @@ import {
 
 const MAX_ATTEMPTS = 3;
 const STALE_LOCK_MS = 5 * 60_000;
+const TRANSIENT_RETRY_DELAY_MS = 5_000;
 
 type IntakeCategory = {
   slug: string;
@@ -291,8 +293,23 @@ async function failJob(job: WhatsAppJob, cause: unknown) {
       where: { id: job.id },
       data: terminal
         ? { status: "FAILED", failedAt: new Date(), lockedAt: null, errorCode: code }
-        : { status: "PENDING", failedAt: new Date(), lockedAt: null, errorCode: code, availableAt: new Date(Date.now() + job.attempts * 30_000) },
+        : { status: "PENDING", failedAt: new Date(), lockedAt: null, errorCode: code, availableAt: new Date(Date.now() + TRANSIENT_RETRY_DELAY_MS) },
     });
+    if (!terminal) {
+      await writeWhatsAppSystemEvent(tx, "whatsapp_ai", {
+        severity: "WARNING",
+        code: "WHATSAPP_JOB_RETRY_SCHEDULED",
+        message: "A transient WhatsApp processing failure was scheduled for automatic retry",
+        context: { jobId: job.id, jobType: job.type, errorCode: code, attempts: job.attempts },
+      });
+      await writeWhatsAppAudit(tx, {
+        action: "WHATSAPP.JOB_RETRY_SCHEDULED",
+        entityType: "WhatsAppJob",
+        entityId: job.id,
+        summary: "WhatsApp background job scheduled for automatic retry",
+        metadata: { type: job.type, errorCode: code, attempts: job.attempts },
+      });
+    }
     if (terminal) {
       await writeWhatsAppSystemEvent(tx, "whatsapp_ai", {
         severity: "ERROR",
@@ -349,7 +366,12 @@ async function sendReply(
         body: decryptPrivateValue(message.bodyEncrypted),
       }]
     : []);
-  if (wasReplyRecentlySent(recentMessages, body)) {
+  const latestInboundAt = conversation.messages
+    .filter((message) => message.direction === "INBOUND")
+    .reduce<Date | undefined>((latest, message) => (
+      !latest || message.occurredAt > latest ? message.occurredAt : latest
+    ), undefined);
+  if (wasReplyRecentlySent(recentMessages, body, new Date(), latestInboundAt)) {
     await runAsDatabaseWorker("whatsapp_ai", (tx) => writeWhatsAppAudit(tx, {
       action: "WHATSAPP.REPLY_SUPPRESSED",
       entityType: "WhatsAppJob",
@@ -1739,6 +1761,17 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     refreshed.conversation.aiUnproductiveTurns = 0;
   }
   const expectedQuestion = refreshed.conversation.aiLastQuestionKey;
+  if (expectedQuestion === "REQUIRED_BY" && draft && !draft.requiredBy) {
+    const resolvedDeadline = resolveCustomerDeadline(text, inbound.occurredAt);
+    if (resolvedDeadline) {
+      draft.requiredBy = resolvedDeadline;
+      replaceLatestNumberedReply(
+        messages,
+        text,
+        `[Customer deadline: ${new Date(resolvedDeadline).toLocaleDateString("en-GB", { timeZone: "Europe/London" })}.]`,
+      );
+    }
+  }
   if (expectedQuestion === "QUOTE_OFFER" && isIndustryQuoteOfferAccepted(text)) {
     replaceLatestNumberedReply(messages, text, "[Customer accepted the offer to find a competitive supplier quote.]");
   }
@@ -2385,6 +2418,7 @@ export async function processWhatsAppJobs({
   let processed = 0;
   let claimed = 0;
   let terminalFailure = false;
+  let retryPending = false;
   const safeLimit = Math.max(1, Math.min(50, Math.floor(limit)));
   const safeConcurrency = Math.max(1, Math.min(5, Math.floor(concurrency)));
 
@@ -2399,7 +2433,9 @@ export async function processWhatsAppJobs({
         processed += 1;
       } catch (error) {
         console.error("WhatsApp job processing failed", { jobId: job.id, type: job.type, errorCode: errorCode(error) });
-        terminalFailure = (await failJob(job, error)) || terminalFailure;
+        const terminal = await failJob(job, error);
+        terminalFailure = terminal || terminalFailure;
+        retryPending = !terminal || retryPending;
       }
     }
   }
@@ -2409,6 +2445,18 @@ export async function processWhatsAppJobs({
     await processSupplierEmailsSafely({ limit: Math.min(50, Math.max(10, processed * 5)) });
   }
   if (terminalFailure) await runProductionMonitoringSafely();
+
+  // Vercel does not guarantee that another webhook will arrive to wake a delayed
+  // retry. Give transient failures one short in-request retry, while the cron
+  // worker remains the durable recovery path for longer provider incidents.
+  if (retryPending) {
+    await new Promise((resolve) => setTimeout(resolve, TRANSIENT_RETRY_DELAY_MS + 250));
+    processed += await processWhatsAppJobs({
+      limit: Math.min(5, safeLimit),
+      concurrency: 1,
+      flushSupplierEmails: false,
+    });
+  }
 
   return processed;
 }

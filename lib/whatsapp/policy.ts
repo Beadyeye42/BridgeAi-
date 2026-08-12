@@ -92,10 +92,11 @@ export function isServiceWindowOpen(messages: WindowMessage[], now = new Date())
   return Boolean(lastInboundAt && now.getTime() - lastInboundAt.getTime() < WHATSAPP_SERVICE_WINDOW_MS);
 }
 
-export function wasReplyRecentlySent(messages: ReplyMessage[], body: string, now = new Date()) {
+export function wasReplyRecentlySent(messages: ReplyMessage[], body: string, now = new Date(), latestInboundAt?: Date) {
   return messages.some((message) => message.direction === "OUTBOUND"
     && ["SENT", "DELIVERED", "READ"].includes(message.status)
     && message.body === body
+    && (!latestInboundAt || message.occurredAt >= latestInboundAt)
     && now.getTime() - message.occurredAt.getTime() < RECENT_REPLY_DEDUPE_MS);
 }
 

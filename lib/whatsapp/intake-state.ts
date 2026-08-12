@@ -28,6 +28,49 @@ export type TradeClarification = {
   colourTerm: string | null;
 };
 
+const deadlineWeekdays = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
+
+/**
+ * Resolves the short deadline answers customers commonly send after Bridge-iT asks
+ * "When do you need it?". The result is midday in Europe/London so it remains on
+ * the intended local calendar day across GMT/BST changes.
+ */
+export function resolveCustomerDeadline(value: string, now = new Date()) {
+  const normalised = value.trim().toLocaleLowerCase("en-GB").replace(/[.!?]+$/g, "").trim();
+  if (!normalised) return null;
+
+  const londonDateParts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const part = (type: Intl.DateTimeFormatPartTypes) => Number(londonDateParts.find((item) => item.type === type)?.value);
+  const year = part("year");
+  const month = part("month");
+  const day = part("day");
+  if (!year || !month || !day) return null;
+  const localTodayAtNoonUtc = Date.UTC(year, month - 1, day, 12);
+  let daysToAdd: number | null = null;
+
+  if (normalised === "today") daysToAdd = 0;
+  else if (normalised === "tomorrow") daysToAdd = 1;
+  else {
+    const withinDays = /^within\s+(\d{1,3})\s+days?$/.exec(normalised);
+    if (withinDays) daysToAdd = Number(withinDays[1]);
+    else {
+      const requestedWeekday = deadlineWeekdays.indexOf(normalised as (typeof deadlineWeekdays)[number]);
+      if (requestedWeekday >= 0) {
+        const currentWeekday = new Date(localTodayAtNoonUtc).getUTCDay();
+        daysToAdd = (requestedWeekday - currentWeekday + 7) % 7 || 7;
+      }
+    }
+  }
+
+  if (daysToAdd === null || daysToAdd < 0 || daysToAdd > 366) return null;
+  return new Date(localTodayAtNoonUtc + daysToAdd * 86_400_000).toISOString();
+}
+
 type TradeDraft = {
   categorySlug: string | null;
   title: string | null;

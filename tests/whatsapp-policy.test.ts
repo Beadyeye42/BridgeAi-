@@ -57,6 +57,9 @@ describe("WhatsApp messaging policy", () => {
     expect(wasReplyRecentlySent([
       { direction: "OUTBOUND", status: "SENT", occurredAt: sentAt, body: "A different reply" },
     ], "One clear reply", now)).toBe(false);
+    expect(wasReplyRecentlySent([
+      { direction: "OUTBOUND", status: "SENT", occurredAt: sentAt, body: "One clear reply" },
+    ], "One clear reply", now, new Date(now.getTime() - 1_000))).toBe(false);
   });
 
   it("recognises concise customer requests for the latest quote list", () => {
