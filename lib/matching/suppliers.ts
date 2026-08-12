@@ -283,6 +283,47 @@ type Capability = {
   lastConfirmedAt: Date;
 };
 
+type VerificationEvidence = {
+  type: "PUBLIC_LIABILITY_INSURANCE" | "EMPLOYERS_LIABILITY_INSURANCE" | "PROFESSIONAL_INDEMNITY_INSURANCE" | "TRADE_BODY_MEMBERSHIP" | "CERTIFICATION" | "OTHER";
+  displayName: string;
+  issuingBody: string | null;
+  referenceNumber: string | null;
+};
+
+const credentialPatterns: Record<string, RegExp> = {
+  regulated_heating_credential: /gas\s*safe|oftec|mcs|heating|boiler/i,
+  relevant_cylinder_credential: /\bg3\b|unvented|cylinder/i,
+  relevant_refrigerant_credential: /f[ -]?gas|refrigerant/i,
+  waste_carrier_evidence: /waste\s*carrier|environment\s*agency/i,
+  specialist_tree_evidence: /arbor|tree|nptc|lantra/i,
+  relevant_gas_or_electrical_evidence: /gas\s*safe|niceic|napit|electrical|part\s*p/i,
+};
+
+export function missingVerificationRequirements(input: {
+  requirements: readonly string[];
+  status: "PENDING" | "APPROVED" | "SUSPENDED" | "REJECTED";
+  companyNumber: string | null;
+  addressLine1: string | null;
+  postcode: string | null;
+  accreditations: VerificationEvidence[];
+}) {
+  const evidence = input.accreditations.map((entry) => `${entry.displayName} ${entry.issuingBody ?? ""} ${entry.referenceNumber ?? ""}`.trim());
+  return input.requirements.filter((requirement) => {
+    if (requirement === "admin_approval") return input.status !== "APPROVED";
+    if (["business_check", "identity_business_check"].includes(requirement)) return !input.companyNumber;
+    if (requirement === "verified_business_address") return !input.addressLine1 || !input.postcode;
+    if (requirement === "insurance") {
+      return !input.accreditations.some((entry) => [
+        "PUBLIC_LIABILITY_INSURANCE",
+        "EMPLOYERS_LIABILITY_INSURANCE",
+        "PROFESSIONAL_INDEMNITY_INSURANCE",
+      ].includes(entry.type));
+    }
+    const pattern = credentialPatterns[requirement];
+    return pattern ? !evidence.some((value) => pattern.test(value)) : true;
+  });
+}
+
 export function evaluateCapability(
   request: RequestForMatching,
   capability: Capability,
@@ -461,6 +502,10 @@ export async function evaluateSupplierMatches(
         select: { productCategoryId: true },
       },
       memberships: true,
+      accreditations: {
+        where: { status: "APPROVED", OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+        select: { type: true, displayName: true, issuingBody: true, referenceNumber: true },
+      },
       subscription: { include: { membershipPlan: true } },
       capabilities: {
         where: {
@@ -563,6 +608,17 @@ export async function evaluateSupplierMatches(
     if (planLimits && purposeRadius !== null && companyDistance !== null && companyDistance > purposeRadius + 0.01) {
       mandatoryRejections.push(`${plan?.name ?? planLimits.tier} is limited to ${purposeRadius} miles from the registered company base`);
     }
+    const missingVerification = hyperlocal ? missingVerificationRequirements({
+      requirements: hyperlocal.service.verification,
+      status: supplier.status,
+      companyNumber: supplier.companyNumber,
+      addressLine1: supplier.addressLine1,
+      postcode: supplier.postcode,
+      accreditations: supplier.accreditations,
+    }) : [];
+    if (missingVerification.length) {
+      mandatoryRejections.push(`Required supplier verification is missing: ${missingVerification.join(", ").replaceAll("_", " ")}`);
+    }
     if (!capability) {
       const reasons = [...mandatoryRejections, "Supplier has not confirmed capability for this product"];
       evaluations.push({
@@ -633,6 +689,8 @@ export async function evaluateSupplierMatches(
         lastConfirmedAt: capability.lastConfirmedAt.toISOString(),
         declaredMonthlyCapacity: capability.declaredMonthlyCapacity,
         capacityOverride,
+        verificationRequirements: hyperlocal?.service.verification ?? [],
+        verificationRequirementsMet: missingVerification.length === 0,
       },
       rankingSnapshot: {
         membershipTier: planLimits?.tier ?? null,

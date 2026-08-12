@@ -8,7 +8,7 @@ import {
   inferUrgency,
   recurrenceCadence,
 } from "../lib/categories/hyperlocal-industries";
-import { evaluateCapability } from "../lib/matching/suppliers";
+import { evaluateCapability, missingVerificationRequirements } from "../lib/matching/suppliers";
 import { hyperlocalServiceIntakeDecision } from "../lib/whatsapp/intake-state";
 import { recogniseCatalogueProduct, type ProductKnowledgeCategory } from "../lib/whatsapp/product-knowledge";
 
@@ -101,5 +101,22 @@ describe("Hyperlocal service network", () => {
     expect(migration).toContain("HYPERLOCAL_SERVICE");
     expect(migration).toContain("attachmentExtractionConfidence");
     expect(hyperlocalService("emergency-plumbing")?.service.verification).toContain("insurance");
+  });
+
+  it("blocks regulated work when the required approved evidence is missing", () => {
+    const company = { status: "APPROVED" as const, companyNumber: "12345678", addressLine1: "1 Bridge Street", postcode: "GL52 6TD" };
+    expect(missingVerificationRequirements({
+      ...company,
+      requirements: ["regulated_heating_credential", "insurance"],
+      accreditations: [],
+    })).toEqual(["regulated_heating_credential", "insurance"]);
+    expect(missingVerificationRequirements({
+      ...company,
+      requirements: ["identity_business_check", "verified_business_address", "regulated_heating_credential", "insurance", "admin_approval"],
+      accreditations: [
+        { type: "CERTIFICATION", displayName: "Gas Safe Register", issuingBody: "Gas Safe", referenceNumber: "123456" },
+        { type: "PUBLIC_LIABILITY_INSURANCE", displayName: "Public liability", issuingBody: "Insurer", referenceNumber: "PL-1" },
+      ],
+    })).toEqual([]);
   });
 });
