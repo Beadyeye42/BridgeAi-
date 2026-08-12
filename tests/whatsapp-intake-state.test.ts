@@ -11,6 +11,7 @@ import {
   quoteDraftFingerprint,
   repeatClarification,
   requiredQuestionKey,
+  resolveCustomerDeadline,
   productSelectionPrompt,
   roofGlazingSpecificationDecision,
   roofGlazingSpecificationPrompt,
@@ -19,6 +20,20 @@ import {
   transportIntakePrompt,
   universalRequestPrompt,
 } from "../lib/whatsapp/intake-state";
+
+describe("customer deadline answers", () => {
+  const wednesday = new Date("2026-08-12T22:24:00.000Z");
+
+  it("resolves a bare weekday to the next local occurrence", () => {
+    expect(resolveCustomerDeadline("Saturday", wednesday)).toBe("2026-08-15T12:00:00.000Z");
+  });
+
+  it("resolves common relative deadlines without an AI round trip", () => {
+    expect(resolveCustomerDeadline("tomorrow", wednesday)).toBe("2026-08-13T12:00:00.000Z");
+    expect(resolveCustomerDeadline("within 7 days", wednesday)).toBe("2026-08-19T12:00:00.000Z");
+    expect(resolveCustomerDeadline("as soon as possible", wednesday)).toBeNull();
+  });
+});
 
 const completeDraft = {
   buyerType: "TRADE" as const,

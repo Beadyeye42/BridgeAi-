@@ -15,6 +15,7 @@ import { writeWhatsAppSystemEvent } from "@/lib/whatsapp/system-events";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 const PROVIDER = "META_WHATSAPP";
 
