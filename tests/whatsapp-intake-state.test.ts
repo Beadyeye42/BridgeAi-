@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   compositeDoorPhotoDecision,
   compositeDoorStylePhotoPrompt,
+  conversationalRecoveryPrompt,
   conversationProgress,
   enforceTradeClarification,
   isRecognisedIndustryColour,
@@ -59,6 +60,12 @@ describe("WhatsApp intake conversation state", () => {
     const productPrompt = productSelectionPrompt();
     expect(productPrompt).toContain("identify the right specialist suppliers behind the scenes");
     expect(productPrompt).toContain("photo, survey, drawing, schedule or PDF");
+  });
+
+  it("rephrases a repeated deadline question instead of sending the same sentence again", () => {
+    expect(conversationalRecoveryPrompt("REQUIRED_BY")).toContain("What deadline should I work to?");
+    expect(conversationalRecoveryPrompt("REQUIRED_BY")).not.toBe(repeatClarification("REQUIRED_BY"));
+    expect(conversationalRecoveryPrompt("TRANSPORT_ROUTE_ITEM")).toContain("What needs moving");
   });
 
   it("does not allow unresolved trade material or colour to reach confirmation", () => {

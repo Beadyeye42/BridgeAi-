@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  isClearCataloguePivot,
   productMessageIntent,
   productRecoveryReply,
   recogniseCatalogueProduct,
@@ -8,6 +9,8 @@ import {
 
 const categories: ProductKnowledgeCategory[] = [
   { slug: "windows", name: "Windows, doors and glazing", description: "Launch catalogue", parent: null },
+  { slug: "transport-delivery-removals", name: "Transport, delivery and removals", description: "Moving and delivery services", parent: null },
+  { slug: "plumbing-heating-mechanical", name: "Plumbing, heating and mechanical", description: "PHE catalogue", parent: null },
   {
     slug: "patio-sliding-doors",
     name: "Patio and French doors",
@@ -110,5 +113,31 @@ describe("WhatsApp product knowledge safety net", () => {
     expect(recognition?.parentSlug).toBe("transport-delivery-removals");
     expect(productRecoveryReply(recognition!, "I need a man and a van"))
       .toContain("collection and delivery postcodes");
+  });
+
+  it("recognises a plain-language industry pivot and does not force it into an old draft", () => {
+    const recognition = recogniseCatalogueProduct("Transport", categories);
+    expect(recognition?.categorySlug).toBe("transport-delivery-removals");
+    expect(isClearCataloguePivot({
+      text: "Transport",
+      recognition: recognition!,
+      currentCategorySlug: "patio-sliding-doors",
+      currentIndustrySlug: "windows",
+      expectedQuestionKey: "REQUIRED_BY",
+    })).toBe(true);
+  });
+
+  it("does not mistake a material answer inside the same job for a new request", () => {
+    const recognition = recogniseCatalogueProduct("uPVC windows", [
+      ...categories,
+      { slug: "upvc-windows", name: "uPVC windows and doors", description: null, parent: { slug: "windows" } },
+    ]);
+    expect(isClearCataloguePivot({
+      text: "uPVC windows",
+      recognition: recognition!,
+      currentCategorySlug: "patio-sliding-doors",
+      currentIndustrySlug: "windows",
+      expectedQuestionKey: "SPECIFICATION",
+    })).toBe(false);
   });
 });

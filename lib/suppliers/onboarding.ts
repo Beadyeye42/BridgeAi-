@@ -7,6 +7,8 @@ export type SupplierOnboardingInput = {
   addressLine1: string | null;
   city: string | null;
   postcode: string | null;
+  geographicOriginLatitude: unknown | null;
+  geographicOriginLongitude: unknown | null;
   categories: Array<unknown>;
   coverageAreas: Array<{ active: boolean }>;
   memberships: Array<{ role: string; status: string }>;

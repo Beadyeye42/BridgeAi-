@@ -23,10 +23,10 @@ export function OnboardingReadiness({
           <p className="eyebrow">{matching ? "Quote matching checklist" : approved ? "Approved supplier" : "Approval checklist"}</p>
           <h2>{readiness.ready ? (matching ? "Ready to receive matching quotes" : "Ready for approval") : `${readiness.completed} of ${readiness.total} requirements complete`}</h2>
           <p>{matching
-            ? "Complete these details so Bridge AI can send only relevant opportunities to this supplier."
+            ? "Complete these details so Bridge-iT can send only relevant opportunities to this supplier."
             : approved
               ? "Keep these company records current. Product and coverage choices are managed separately for quote matching."
-              : "Bridge AI cannot approve this supplier until the company identity, address and contact details are complete."}</p>
+              : "Bridge-iT cannot approve this supplier until the company identity, address and contact details are complete."}</p>
         </div>
         <strong>{readiness.percentage}%</strong>
       </div>

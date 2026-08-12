@@ -21,7 +21,7 @@ export function AffiliateShell({ name, affiliateId, maximumActive, unreadNotific
     <AffiliateRealtimeRefresh affiliateId={affiliateId} />
     <aside className="sidebar"><div className="sidebar-head"><BrandMark /></div><div className="admin-label">Affiliate portal</div>
       <nav className="sidebar-nav">{links.map(([label, href, Icon]) => <Link className={`sidebar-link${href === "/affiliate" ? pathname === href ? " active" : "" : pathname.startsWith(href) ? " active" : ""}`} href={href} key={href}><Icon size={18} />{label}{href === "/affiliate/notifications" && unreadNotifications > 0 ? <i className="affiliate-nav-count">{Math.min(unreadNotifications, 99)}</i> : null}</Link>)}</nav>
-      <div className="sidebar-bottom"><div className="affiliate-sidebar-place"><Sparkles size={15} /><span><b>Founding Affiliate</b><small>One of only {maximumActive} approved places</small></span></div><LogoutButton /><div className="company-switcher"><span className="avatar avatar-small"><Link2 size={16} /></span><span><b>{name}</b><small>Bridge AI affiliate</small></span></div></div>
+      <div className="sidebar-bottom"><div className="affiliate-sidebar-place"><Sparkles size={15} /><span><b>Founding Affiliate</b><small>One of only {maximumActive} approved places</small></span></div><LogoutButton /><div className="company-switcher"><span className="avatar avatar-small"><Link2 size={16} /></span><span><b>{name}</b><small>Bridge-iT affiliate</small></span></div></div>
     </aside>
     <header className="mobile-header"><BrandMark compact /><span>Affiliate portal</span><LogoutButton compact /></header>
     <main className="portal-main portal-subpage">{children}</main>

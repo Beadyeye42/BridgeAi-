@@ -1,6 +1,7 @@
 import "server-only";
 import Stripe from "stripe";
 import { Prisma, type MembershipPlan, type MembershipPromotion } from "@prisma/client";
+import { BRAND_NAME } from "@/lib/brand";
 import { prisma, runAsDatabaseWorker } from "@/lib/db";
 
 let client: Stripe | null = null;
@@ -8,7 +9,7 @@ let client: Stripe | null = null;
 export function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY?.trim();
   if (!key) throw new Error("Stripe is not configured");
-  client ??= new Stripe(key, { appInfo: { name: "Bridge AI", version: "0.1.0" } });
+  client ??= new Stripe(key, { appInfo: { name: BRAND_NAME, version: "0.1.0" } });
   return client;
 }
 
@@ -42,7 +43,7 @@ export async function ensureMembershipPlanStripePrice(plan: MembershipPlan) {
   let productId = plan.providerProductId;
   if (!productId) {
     const product = await stripe.products.create({
-      name: `Bridge AI ${plan.name}`,
+      name: `${BRAND_NAME} ${plan.name}`,
       description: plan.description ?? undefined,
       metadata: { membershipPlanId: plan.id, planCode: plan.code, membershipTier: plan.tier },
     }, { idempotencyKey: `membership-product:${plan.id}` });

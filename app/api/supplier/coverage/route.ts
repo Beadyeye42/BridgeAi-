@@ -19,6 +19,11 @@ export async function POST(request: Request) {
     include: { subscription: { include: { membershipPlan: true } } },
   });
   if (!company) return NextResponse.json({ error: "Supplier company not found" }, { status: 404 });
+  if (!company.postcode) {
+    return NextResponse.json({
+      error: "Add and save your registered company postcode before configuring coverage.",
+    }, { status: 422 });
+  }
   const activeSubscription = isMembershipActive(company.subscription) ? company.subscription : null;
   const plan = activeSubscription?.membershipPlan
     ?? await prisma.membershipPlan.findUnique({ where: { id: DEFAULT_PLAN_IDS.LOCAL } });
@@ -48,7 +53,7 @@ export async function POST(request: Request) {
           latitude: Number(company.geographicOriginLatitude),
           longitude: Number(company.geographicOriginLongitude),
         }
-        : await lookupPostcode(company.geographicOriginPostcode ?? company.postcode ?? location.postcode);
+        : await lookupPostcode(company.geographicOriginPostcode ?? company.postcode);
       if (purposeRadius !== null) {
         const offsetFromCompanyBase = distanceMiles(geographicOrigin, location);
         if (offsetFromCompanyBase + parsed.data.radiusMiles > purposeRadius + 0.01) {

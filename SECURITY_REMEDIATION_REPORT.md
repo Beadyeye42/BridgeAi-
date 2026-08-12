@@ -1,4 +1,4 @@
-# Bridge AI security-foundation remediation report
+# Bridge-iT security-foundation remediation report
 
 Date: 2 August 2026  
 Supabase project: `dhsdjckobidmsfxmblea` (`eu-west-2`)
@@ -23,7 +23,7 @@ Release decision: **blocked from security-baseline tagging**. The connected Supa
 ### Database and tenancy
 
 - Made the 15 committed Supabase SQL versions the sole migration history and removed Prisma SQL migration authority.
-- Rebuilt the Bridge AI schema as 24 RLS-enabled and RLS-forced tables with 54 application policies plus four Storage policies.
+- Rebuilt the Bridge-iT schema as 24 RLS-enabled and RLS-forced tables with 54 application policies plus four Storage policies.
 - Added an identity-aware Prisma execution layer that installs only a server-verified Auth UUID transaction-locally and remains subject to RLS.
 - Enforced company isolation, request-assignment access, protected administrator access and immediate denial for suspended/removed membership.
 - Added uniqueness, numeric/range, attachment-parent, distribution, date and state-consistency constraints plus deferred active-owner protection.
@@ -40,7 +40,7 @@ Release decision: **blocked from security-baseline tagging**. The connected Supa
 
 ## Verification evidence
 
-- Live catalog: 24/24 Bridge AI tables have RLS enabled and forced; 54 application policies plus four Storage policies; zero custom password/session/reset tables; private Storage bucket.
+- Live catalog: 24/24 Bridge-iT tables have RLS enabled and forced; 54 application policies plus four Storage policies; zero custom password/session/reset tables; private Storage bucket.
 - Live adversarial SQL suite: passed and rolled back. It covers cross-company select/update/insert, membership escalation, Storage access, audit mutation, fake administrator access, suspension, uniqueness/primary membership, numeric/radius/distribution/attachment constraints, assignment/quotation invariants and legacy function execution.
 - Disposable browser Auth journey: registration, delivered confirmation email, callback confirmation, login, logout, cookie persistence in a second tab, protected-route redirect, recovery request, valid recovery callback and invalid/expired callback behaviour passed. The final password mutation is intentionally awaiting authorised human submission.
 - Private Storage through the real application: upload, scan-gated read/download, replace/upsert, delete, cross-company not-found denial and suspended-user forbidden denial passed. Disposable bytes and the cross-company fixture were removed after testing.
@@ -53,7 +53,7 @@ Release decision: **blocked from security-baseline tagging**. The connected Supa
 
 ## Migration reconciliation
 
-The local and connected migration histories contain the same 15 versions. The six `202607...` local files are intentionally documented no-op reconciliation files. They retain the remote history while ensuring a fresh deployment cannot recreate the obsolete public schema. Existing legacy live data was not destructively deleted; its access paths were quarantined. The nine `202608...` migrations establish and harden Bridge AI.
+The local and connected migration histories contain the same 15 versions. The six `202607...` local files are intentionally documented no-op reconciliation files. They retain the remote history while ensuring a fresh deployment cannot recreate the obsolete public schema. Existing legacy live data was not destructively deleted; its access paths were quarantined. The nine `202608...` migrations establish and harden Bridge-iT.
 
 ## Required release follow-ups
 

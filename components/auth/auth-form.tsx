@@ -55,7 +55,7 @@ function Field({ label, name, type = "text", autoComplete, icon }: { label: stri
 }
 
 function submitLabel(mode: Mode) {
-  if (mode === "login") return "Sign in to Bridge AI";
+  if (mode === "login") return "Sign in to Bridge-iT";
   if (mode === "register") return "Create supplier account";
   if (mode === "forgot") return "Send reset link";
   return "Set new password";

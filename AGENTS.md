@@ -1,4 +1,4 @@
-# Bridge AI contributor guide
+# Bridge-iT contributor guide
 
 ## Product and identity boundaries
 

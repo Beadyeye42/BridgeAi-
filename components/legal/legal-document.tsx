@@ -16,8 +16,8 @@ export function LegalDocument({ title, summary, children }: { title: string; sum
   return (
     <main className="legal-shell">
       <header className="legal-topbar">
-        <Link href="/" aria-label="Bridge AI home"><BrandMark /></Link>
-        <Link href="/" className="back-link"><ArrowLeft size={14} /> Bridge AI home</Link>
+        <Link href="/" aria-label="Bridge-iT home"><BrandMark /></Link>
+        <Link href="/" className="back-link"><ArrowLeft size={14} /> Bridge-iT home</Link>
       </header>
       <article className="legal-page">
         <div className="legal-heading">

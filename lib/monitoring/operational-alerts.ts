@@ -33,7 +33,7 @@ export async function discoverOperationalAlerts(now = new Date()) {
     tx.attachment.findMany({
       where: {
         OR: [
-          { scanStatus: { in: ["FAILED", "REJECTED"] } },
+          { scanStatus: "FAILED" },
           { scanStatus: "PENDING", createdAt: { lt: staleAttachmentBefore } },
         ],
       },

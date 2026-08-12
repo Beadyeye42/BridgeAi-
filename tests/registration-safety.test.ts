@@ -17,7 +17,7 @@ describe("supplier registration safety", () => {
   it("returns safe, useful messages for expected registration conflicts", () => {
     expect(supplierBootstrapError(new Error("portal profile already exists"))).toEqual({
       status: 409,
-      message: "This email is already linked to a Bridge AI account. Sign in, reset the password, or contact support if you cannot access it.",
+      message: "This email is already linked to a Bridge-iT account. Sign in, reset the password, or contact support if you cannot access it.",
     });
     expect(supplierBootstrapError(new Error("invalid affiliate referral code"))).toEqual({
       status: 400,

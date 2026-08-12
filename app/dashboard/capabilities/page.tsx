@@ -33,7 +33,7 @@ export default async function CapabilitiesPage() {
       })
     : [];
   const byCategory = new Map(capabilities.map((item) => [item.productCategoryId, item]));
-  return <PortalPage {...identity(session, company)} eyebrow="Live supplier network" title="Capabilities & capacity" description="Tell Bridge AI exactly what you can supply and your current lead times so only suitable enquiries reach your team.">
+  return <PortalPage {...identity(session, company)} eyebrow="Live supplier network" title="Capabilities & capacity" description="Tell Bridge-iT exactly what you can supply and your current lead times so only suitable enquiries reach your team.">
     <CapabilityManager capabilities={categories.map((productCategory) => {
       const saved = byCategory.get(productCategory.id);
       return {
@@ -51,6 +51,7 @@ export default async function CapabilitiesPage() {
         standardLeadTimeDays: saved?.standardLeadTimeDays ?? 14,
         urgentLeadTimeDays: saved?.urgentLeadTimeDays ?? null,
         currentLeadTimeDays: saved?.currentLeadTimeDays ?? null,
+        declaredMonthlyCapacity: saved?.declaredMonthlyCapacity ?? null,
         supportsSupplyOnly: saved?.supportsSupplyOnly ?? true,
         supportsDelivery: saved?.supportsDelivery ?? true,
         supportsInstallation: saved?.supportsInstallation ?? false,
@@ -61,12 +62,15 @@ export default async function CapabilitiesPage() {
         collectionAvailable: saved?.collectionAvailable ?? false,
         deliveryDays: saved?.deliveryDays ?? [1, 2, 3, 4, 5],
         capacityStatus: saved?.capacityStatus ?? "AVAILABLE",
+        liveAvailability: saved?.liveAvailability ?? "AVAILABLE_TODAY",
+        nextAvailableAt: saved?.nextAvailableAt?.toISOString() ?? null,
         restrictedProducts: saved?.restrictedProducts ?? [],
         deliveryDelayDays: saved?.deliveryDelayDays ?? null,
         shortageNote: saved?.shortageNote ?? null,
         shortageUntil: saved?.shortageUntil?.toISOString() ?? null,
         active: saved?.active ?? true,
         lastConfirmedAt: saved?.lastConfirmedAt?.toISOString() ?? null,
+        availabilityLastConfirmedAt: saved?.availabilityLastConfirmedAt?.toISOString() ?? null,
       };
     })}/>
   </PortalPage>;

@@ -43,7 +43,7 @@ export default async function CompanyPage() {
       {...identity(session, company)}
       eyebrow="Supplier workspace"
       title="Company profile"
-      description="Add the company identity, address and contact details Bridge AI needs to review your account."
+      description="Add the company identity, address and contact details Bridge-iT needs to review your account."
     >
       <div className="management-form">
         <OnboardingReadiness readiness={supplierApprovalReadiness(company)} status={company.status} />

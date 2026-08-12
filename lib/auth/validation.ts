@@ -51,10 +51,30 @@ export const affiliateStatusSchema = z.object({
   if (value.status === "SUSPENDED" && !value.reason) context.addIssue({ code: "custom", path: ["reason"], message: "Enter a suspension reason" });
 });
 
+export const affiliateProgrammeAdminSchema = z.object({
+  maximumActive: z.coerce.number().int().min(1).max(100),
+  commissionRateBps: z.coerce.number().int().min(0).max(10_000),
+  qualificationPayments: z.coerce.number().int().min(0).max(24),
+  commissionPayments: z.coerce.number().int().min(1).max(60),
+  validationDays: z.coerce.number().int().min(0).max(180),
+});
+
+export const affiliateProfileAdminSchema = z.object({
+  displayName: z.string().trim().min(2).max(120),
+  code: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{4,24}$/, "Use 4–24 letters or numbers"),
+  commissionRateBps: z.coerce.number().int().min(0).max(10_000).nullable(),
+});
+
 export const assignmentDecisionSchema = z.object({
   decision: z.enum(["accept", "decline"]),
   reason: z.string().trim().max(500).optional(),
 });
+
+export const jobLifecycleSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("confirm") }),
+  z.object({ action: z.literal("complete") }),
+  z.object({ action: z.literal("cancel"), reason: z.string().trim().min(3, "Tell us why the job did not proceed").max(500) }),
+]);
 
 const quotationValidUntil = z.union([
   z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid quotation date"),
@@ -113,6 +133,7 @@ export const supplierCapabilitySchema = z.object({
   standardLeadTimeDays: z.number().int().min(1).max(730),
   urgentLeadTimeDays: z.number().int().min(1).max(730).nullable(),
   currentLeadTimeDays: z.number().int().min(1).max(730).nullable(),
+  declaredMonthlyCapacity: z.number().int().min(1).max(100_000).nullable(),
   supportsSupplyOnly: z.boolean(),
   supportsDelivery: z.boolean(),
   supportsInstallation: z.boolean(),
@@ -123,6 +144,8 @@ export const supplierCapabilitySchema = z.object({
   collectionAvailable: z.boolean(),
   deliveryDays: z.array(z.number().int().min(1).max(7)).max(7).transform((days) => [...new Set(days)].sort()),
   capacityStatus: z.enum(["AVAILABLE", "LIMITED", "URGENT_ONLY", "FULL", "PAUSED", "HOLIDAY", "NOT_ACCEPTING"]),
+  liveAvailability: z.enum(["AVAILABLE_NOW", "AVAILABLE_TODAY", "AVAILABLE_TOMORROW", "LIMITED", "FULLY_BOOKED", "PAUSED", "HOLIDAY"]),
+  nextAvailableAt: z.string().datetime().nullable(),
   restrictedProducts: capabilityNameList,
   deliveryDelayDays: z.number().int().min(0).max(365).nullable(),
   shortageNote: z.string().trim().max(500).nullable(),
@@ -137,6 +160,9 @@ export const supplierCapabilitySchema = z.object({
   }
   if (value.shortageNote && !value.shortageUntil) {
     context.addIssue({ code: "custom", path: ["shortageUntil"], message: "Add an end date for the temporary shortage" });
+  }
+  if (["FULLY_BOOKED", "PAUSED", "HOLIDAY"].includes(value.liveAvailability) && !value.nextAvailableAt) {
+    context.addIssue({ code: "custom", path: ["nextAvailableAt"], message: "Add the next time this service is available" });
   }
 });
 
@@ -190,6 +216,19 @@ export const matchingConfigurationAdminSchema = z.object({
   capacityStaleDays: z.coerce.number().int().min(1).max(90),
   leadTimeStaleDays: z.coerce.number().int().min(1).max(90),
   responseDeadlineHours: z.coerce.number().int().min(1).max(168),
+  acknowledgementDeadlineHours: z.coerce.number().int().min(1).max(168),
+  quotationDeadlineHours: z.coerce.number().int().min(1).max(336),
+  sparseMarketMaximumEligible: z.coerce.number().int().min(1).max(4),
+  healthyMarketMaximumEligible: z.coerce.number().int().min(5).max(100),
+  sparseFairnessWeight: z.coerce.number().int().min(0).max(2),
+  healthyFairnessWeight: z.coerce.number().int().min(3).max(7),
+  denseFairnessWeight: z.coerce.number().int().min(5).max(12),
+  fairnessSimilarityBandPoints: z.coerce.number().int().min(1).max(20),
+  sparseSoftCapEnabled: z.boolean(),
+  healthySoftCapExtraOpportunities: z.coerce.number().int().min(0).max(10),
+  respectDeclaredMonthlyCapacity: z.boolean(),
+  declaredCapacityWarningPercent: z.coerce.number().int().min(50).max(100),
+  coverageGapAlertsEnabled: z.boolean(),
   automaticNextSupplierInvitation: z.boolean(),
   serviceMatchingEnabled: z.boolean(),
   deliveryMatchingEnabled: z.boolean(),
@@ -203,6 +242,10 @@ export const matchingConfigurationAdminSchema = z.object({
     completion: z.coerce.number().min(0).max(100),
     reliability: z.coerce.number().min(0).max(100),
   }).refine((weights) => Object.values(weights).some((weight) => weight > 0), "At least one matching weight must be greater than zero"),
+}).superRefine((value, context) => {
+  if (value.healthyMarketMaximumEligible <= value.sparseMarketMaximumEligible) {
+    context.addIssue({ code: "custom", path: ["healthyMarketMaximumEligible"], message: "Healthy-market maximum must be above the sparse-market maximum" });
+  }
 });
 
 export const adminSupplierGeographySchema = z.object({
@@ -266,6 +309,11 @@ export const adminSupplierEditSchema = z.object({
 export const adminAssignmentSchema = z.object({
   quoteRequestId: z.string().min(1).max(64),
   supplierCompanyIds: z.array(z.string().min(1).max(64)).min(1).max(5),
+  capacityOverrideSupplierIds: z.array(z.string().min(1).max(64)).max(5).default([]),
+}).superRefine((value, context) => {
+  if (value.capacityOverrideSupplierIds.some((id) => !value.supplierCompanyIds.includes(id))) {
+    context.addIssue({ code: "custom", path: ["capacityOverrideSupplierIds"], message: "Capacity overrides must belong to selected suppliers" });
+  }
 });
 export const productCategorySchema = z.object({ name: z.string().trim().min(2).max(100), slug: z.string().trim().min(2).max(100).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).optional(), description: optionalText(500), active: z.boolean().default(true), parentId: z.string().nullable().optional() });
 

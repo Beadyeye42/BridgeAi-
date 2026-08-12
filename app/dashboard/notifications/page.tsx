@@ -27,7 +27,7 @@ export default async function NotificationsPage() {
       {...identity(session, company)}
       eyebrow="Personal settings"
       title="Notifications"
-      description="Choose how and when Bridge AI sends opportunity and quotation updates."
+      description="Choose how and when Bridge-iT sends opportunity and quotation updates."
     >
       <div className="management-grid">
         <NotificationForm

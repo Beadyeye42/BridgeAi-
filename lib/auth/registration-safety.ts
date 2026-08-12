@@ -17,7 +17,7 @@ export function supplierBootstrapError(cause: unknown) {
     return { status: 409, message: "An affiliate cannot refer their own supplier account." } as const;
   }
   if (message.includes("portal profile already exists") || message.includes("portal_profiles_email_key")) {
-    return { status: 409, message: "This email is already linked to a Bridge AI account. Sign in, reset the password, or contact support if you cannot access it." } as const;
+    return { status: 409, message: "This email is already linked to a Bridge-iT account. Sign in, reset the password, or contact support if you cannot access it." } as const;
   }
   return { status: 500, message: "We could not create your supplier workspace." } as const;
 }
@@ -46,7 +46,7 @@ export function supplierSignUpError(error: AuthProviderError | null | undefined,
   if (identitiesMissing || code === "user_already_exists") {
     return {
       status: 409,
-      message: "This email is already linked to a Bridge AI account. Sign in, reset the password, or contact support if you cannot access it.",
+      message: "This email is already linked to a Bridge-iT account. Sign in, reset the password, or contact support if you cannot access it.",
       retryAfterSeconds: null,
     } as const;
   }

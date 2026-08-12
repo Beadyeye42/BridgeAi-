@@ -17,8 +17,10 @@ import {
   TRANSPORT_SERVICE_FEATURE_OPTIONS,
   TRANSPORT_VEHICLE_OPTIONS,
 } from "@/lib/capabilities/options";
+import { hyperlocalService } from "@/lib/categories/hyperlocal-industries";
 
 type CapacityStatus = "AVAILABLE" | "LIMITED" | "URGENT_ONLY" | "FULL" | "PAUSED" | "HOLIDAY" | "NOT_ACCEPTING";
+type LiveAvailabilityStatus = "AVAILABLE_NOW" | "AVAILABLE_TODAY" | "AVAILABLE_TOMORROW" | "LIMITED" | "FULLY_BOOKED" | "PAUSED" | "HOLIDAY";
 
 type Capability = {
   productCategoryId: string;
@@ -35,6 +37,7 @@ type Capability = {
   standardLeadTimeDays: number;
   urgentLeadTimeDays: number | null;
   currentLeadTimeDays: number | null;
+  declaredMonthlyCapacity: number | null;
   supportsSupplyOnly: boolean;
   supportsDelivery: boolean;
   supportsInstallation: boolean;
@@ -45,17 +48,21 @@ type Capability = {
   collectionAvailable: boolean;
   deliveryDays: number[];
   capacityStatus: CapacityStatus;
+  liveAvailability: LiveAvailabilityStatus;
+  nextAvailableAt: string | null;
   restrictedProducts: string[];
   deliveryDelayDays: number | null;
   shortageNote: string | null;
   shortageUntil: string | null;
   active: boolean;
   lastConfirmedAt: string | null;
+  availabilityLastConfirmedAt: string | null;
 };
 
 type RematchResult = { checked?: number; matched?: number; blocked?: number; blockingReasons?: string[] };
 
 const dayOptions = [[1, "Mon"], [2, "Tue"], [3, "Wed"], [4, "Thu"], [5, "Fri"], [6, "Sat"], [7, "Sun"]] as const;
+const applianceBrandOptions = ["AEG", "Beko", "Bosch", "Hotpoint", "Indesit", "LG", "Miele", "Neff", "Samsung", "Siemens", "Whirlpool"];
 const splitList = (value: FormDataEntryValue | null) => String(value ?? "").split(",").map((item) => item.trim()).filter(Boolean);
 const stringList = (values: FormDataEntryValue[]) => values.map(String).map((item) => item.trim()).filter(Boolean);
 const uniqueList = (values: string[]) => [...new Set(values)];
@@ -133,6 +140,7 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
         standardLeadTimeDays: Number(form.get(`${prefix}:standardLead`)),
         urgentLeadTimeDays: nullableNumber(form.get(`${prefix}:urgentLead`)),
         currentLeadTimeDays: nullableNumber(form.get(`${prefix}:currentLead`)),
+        declaredMonthlyCapacity: nullableNumber(form.get(`${prefix}:declaredMonthlyCapacity`)),
         supportsSupplyOnly: form.has(`${prefix}:supplyOnly`),
         supportsDelivery: form.has(`${prefix}:delivery`),
         supportsInstallation: form.has(`${prefix}:installation`),
@@ -143,6 +151,10 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
         collectionAvailable: form.has(`${prefix}:collection`),
         deliveryDays: dayOptions.filter(([day]) => form.has(`${prefix}:day:${day}`)).map(([day]) => day),
         capacityStatus: String(form.get(`${prefix}:capacity`)),
+        liveAvailability: String(form.get(`${prefix}:liveAvailability`)),
+        nextAvailableAt: String(form.get(`${prefix}:nextAvailableAt`) ?? "").trim()
+          ? new Date(String(form.get(`${prefix}:nextAvailableAt`))).toISOString()
+          : null,
         restrictedProducts: splitList(form.get(`${prefix}:restrictedProducts`)),
         deliveryDelayDays: nullableNumber(form.get(`${prefix}:deliveryDelay`)),
         shortageNote: String(form.get(`${prefix}:shortageNote`) ?? "").trim() || null,
@@ -205,6 +217,8 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
       const active = activeByCategory[prefix];
       const isPhe = isPheCapabilityCategory(capability.categorySlug);
       const isTransport = isTransportCapabilityCategory(capability.categorySlug);
+      const hyperlocal = hyperlocalService(capability.categorySlug);
+      const isHyperlocal = Boolean(hyperlocal);
       const profileOptions = PROFILE_SYSTEM_OPTIONS_BY_CATEGORY[capability.categorySlug] ?? [];
       const manufacturerOptions = PHE_MANUFACTURER_OPTIONS_BY_CATEGORY[capability.categorySlug] ?? [];
       const systemOptions = PHE_SYSTEM_OPTIONS_BY_CATEGORY[capability.categorySlug] ?? [];
@@ -216,6 +230,10 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
       const otherManufacturers = capability.manufacturerNames.filter((value) => ![...profileOptions, ...manufacturerOptions].some((option) => includesCapabilityValue([value], option)));
       const otherTransportVehicles = capability.systemNames.filter((value) => !TRANSPORT_VEHICLE_OPTIONS.some((option) => includesCapabilityValue([value], option)));
       const otherTransportFeatures = capability.finishNames.filter((value) => !TRANSPORT_SERVICE_FEATURE_OPTIONS.some((option) => includesCapabilityValue([value], option)));
+      const hyperlocalCapabilityOptions = hyperlocal?.service.capabilities ?? [];
+      const otherHyperlocalFeatures = capability.finishNames.filter((value) => !hyperlocalCapabilityOptions.includes(value));
+      const isApplianceRepair = hyperlocal?.industry.slug === "appliance-repair-home-equipment";
+      const otherApplianceBrands = capability.manufacturerNames.filter((value) => !applianceBrandOptions.some((option) => includesCapabilityValue([value], option)));
       return <section className="panel capability-advanced-card" key={prefix}>
         <details>
           <summary>
@@ -225,15 +243,31 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
           <div className="capability-advanced-content">
             <label className="toggle-row"><span><b>Use this product for matching</b><small>Turn this off and save to pause this product</small></span><input type="checkbox" name={`${prefix}:active`} checked={active} onChange={(event) => setActiveByCategory((current) => ({ ...current, [prefix]: event.target.checked }))}/></label>
             <div className="capability-option-section">
-              <div className="capability-option-heading"><b>Who do you want to quote for?</b><small>Bridge AI will only send this product to the buyer types you select.</small></div>
+              <div className="capability-option-heading"><b>Who do you want to quote for?</b><small>Bridge-iT will only send this product to the buyer types you select.</small></div>
               <div className="capability-option-grid capability-audience-grid">
                 <OptionCard name={`${prefix}:consumer`} value="yes" checked={capability.servesConsumer} description="Homeowners and people buying personally" label="Consumers / homeowners" />
                 <OptionCard name={`${prefix}:trade`} value="yes" checked={capability.servesTrade} description="Installers, builders and other trades" label="Trade buyers" />
                 <OptionCard name={`${prefix}:business`} value="yes" checked={capability.servesBusiness} description="Companies, organisations and commercial buyers" label="Businesses" />
               </div>
             </div>
-            {isTransport ? <>
-              <div className="honesty-note">This setup is specific to transport and removals. Select only vehicles, crew and handling services you can genuinely provide; Bridge AI uses these details to avoid unsuitable jobs.</div>
+            {isHyperlocal ? <>
+              <div className="honesty-note">This setup is specific to {capability.categoryName.toLocaleLowerCase("en-GB")}. Tick only work your team is equipped, qualified and available to perform.</div>
+              <div className="capability-option-section">
+                <div className="capability-option-heading"><b>Service capabilities</b><small>These are used as mandatory filters for detailed requests.</small></div>
+                <div className="capability-option-grid">
+                  {hyperlocalCapabilityOptions.map((option) => <OptionCard key={option} name={`${prefix}:feature`} value={option} checked={includesCapabilityValue(capability.finishNames, option)} label={option.replaceAll("_", " ")} />)}
+                </div>
+                <Field name={`${prefix}:finishes`} label="Other specialist capabilities (optional)" value={otherHyperlocalFeatures.join(", ")} placeholder="Add other capabilities, separated by commas" />
+              </div>
+              {isApplianceRepair ? <div className="capability-option-section">
+                <div className="capability-option-heading"><b>Appliance brands supported</b><small>Brand-specific requests are only sent when your saved details confirm you repair that manufacturer.</small></div>
+                <div className="capability-option-grid">
+                  {applianceBrandOptions.map((option) => <OptionCard key={option} name={`${prefix}:manufacturer`} value={option} checked={includesCapabilityValue(capability.manufacturerNames, option)} />)}
+                </div>
+                <Field name={`${prefix}:manufacturers`} label="Other appliance brands (optional)" value={otherApplianceBrands.join(", ")} placeholder="Add other brands, separated by commas" />
+              </div> : null}
+            </> : isTransport ? <>
+              <div className="honesty-note">This setup is specific to transport and removals. Select only vehicles, crew and handling services you can genuinely provide; Bridge-iT uses these details to avoid unsuitable jobs.</div>
               <div className="capability-option-section">
                 <div className="capability-option-heading"><b>Vehicles available</b><small>Tick every vehicle type you can allocate to this service.</small></div>
                 <div className="capability-option-grid">
@@ -257,7 +291,7 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
                 <Field name={`${prefix}:manufacturers`} label="Other manufacturers (optional)" value={otherManufacturers.join(", ")} placeholder="Add any other manufacturers" />
               </div>
             </div> : isPhe ? <>
-              <div className="honesty-note">This setup is specific to plumbing, heating and mechanical procurement. Select only brands and system types you can supply; Bridge AI will use them as mandatory filters when a buyer names one.</div>
+              <div className="honesty-note">This setup is specific to plumbing, heating and mechanical procurement. Select only brands and system types you can supply; Bridge-iT will use them as mandatory filters when a buyer names one.</div>
               <div className="capability-option-section">
                 <div className="capability-option-heading"><b>Manufacturers and brands</b><small>Tick every listed brand your company can quote.</small></div>
                 <div className="capability-option-grid">
@@ -276,7 +310,7 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
               <Field name={`${prefix}:manufacturers`} label="Manufacturers" value={capability.manufacturerNames.join(", ")} placeholder="Add manufacturers, separated by commas" />
               <Field name={`${prefix}:systems`} label="Systems or brands" value={capability.systemNames.join(", ")} placeholder="Add systems or brands, separated by commas" />
             </div>}
-            {!isPhe && !isTransport ? <div className="capability-option-section">
+            {!isPhe && !isTransport && !isHyperlocal ? <div className="capability-option-section">
               <div className="capability-option-heading"><b>Colours supplied</b><small>Tick every standard colour you supply. Tick RAL colours only if you can supply RAL-specified finishes.</small></div>
               <div className="capability-option-grid capability-colour-grid">
                 {STANDARD_COLOUR_OPTIONS.map((option) => <OptionCard key={option} name={`${prefix}:colour`} value={option} checked={includesCapabilityValue(capability.colourNames, option)} />)}
@@ -288,13 +322,16 @@ export function CapabilityManager({ capabilities }: { capabilities: Capability[]
               </div>
             </div> : null}
             <div className="form-grid capability-fields">
-              <Field name={`${prefix}:finishes`} label={isTransport ? "Other handling or service features" : isPhe ? "Technical variants or specifications" : "Finishes supplied"} value={isTransport ? otherTransportFeatures.join(", ") : capability.finishNames.join(", ")} placeholder={isTransport ? "For example fragile loads, evening collections" : isPhe ? "For example low-temperature, potable-water, commercial duty" : "Foil, powder coat, anodised"} />
+              {!isHyperlocal ? <Field name={`${prefix}:finishes`} label={isTransport ? "Other handling or service features" : isPhe ? "Technical variants or specifications" : "Finishes supplied"} value={isTransport ? otherTransportFeatures.join(", ") : capability.finishNames.join(", ")} placeholder={isTransport ? "For example fragile loads, evening collections" : isPhe ? "For example low-temperature, potable-water, commercial duty" : "Foil, powder coat, anodised"} /> : null}
               <Field name={`${prefix}:minimumQuantity`} label="Minimum order quantity" value={capability.minimumOrderQuantity ?? ""} type="number" min="1" />
               <Field name={`${prefix}:minimumValue`} label="Minimum order value (£)" value={capability.minimumOrderValue ?? ""} type="number" min="0" step="0.01" />
               <Field name={`${prefix}:standardLead`} label={isTransport ? "Standard booking notice (days)" : "Standard lead time (days)"} value={capability.standardLeadTimeDays} type="number" min="1" required />
               <Field name={`${prefix}:currentLead`} label={isTransport ? "Current booking notice (days)" : "Current lead time (days)"} value={capability.currentLeadTimeDays ?? capability.standardLeadTimeDays} type="number" min="1" />
               <Field name={`${prefix}:urgentLead`} label={isTransport ? "Urgent booking notice (days)" : "Urgent lead time (days)"} value={capability.urgentLeadTimeDays ?? ""} type="number" min="1" />
+              <Field name={`${prefix}:declaredMonthlyCapacity`} label="Comfortable monthly opportunity capacity" value={capability.declaredMonthlyCapacity ?? ""} type="number" min="1" />
               <label className="form-control"><span>Current capacity</span><select name={`${prefix}:capacity`} value={capacityByCategory[prefix]} onChange={(event) => setCapacityByCategory((current) => ({ ...current, [prefix]: event.target.value as CapacityStatus }))}><option value="AVAILABLE">Available</option><option value="LIMITED">Limited</option><option value="URGENT_ONLY">Urgent work only</option><option value="FULL">Temporarily full</option><option value="PAUSED">Paused</option><option value="HOLIDAY">Holiday</option><option value="NOT_ACCEPTING">Not accepting new work</option></select></label>
+              <label className="form-control"><span>Live service availability</span><select name={`${prefix}:liveAvailability`} defaultValue={capability.liveAvailability}><option value="AVAILABLE_NOW">Available now</option><option value="AVAILABLE_TODAY">Available today</option><option value="AVAILABLE_TOMORROW">Available tomorrow</option><option value="LIMITED">Limited availability</option><option value="FULLY_BOOKED">Fully booked</option><option value="PAUSED">Paused</option><option value="HOLIDAY">Holiday</option></select></label>
+              <Field name={`${prefix}:nextAvailableAt`} label="Next available appointment" value={capability.nextAvailableAt?.slice(0, 16) ?? ""} type="datetime-local" />
               {isTransport ? <>
                 <label className="toggle-row"><span><b>Transport service available</b><small>Your vehicle and driver can collect and deliver customer loads</small></span><input type="checkbox" name={`${prefix}:service`} defaultChecked={capability.supportsService}/></label>
                 <label className="toggle-row"><span><b>Depot drop-off available</b><small>Customers may bring items to your depot before onward transport</small></span><input type="checkbox" name={`${prefix}:collection`} defaultChecked={capability.collectionAvailable}/></label>

@@ -9,7 +9,7 @@ describe("affiliate invitation delivery", () => {
       firstName: '<Brian & "team">',
       invitationUrl: "https://bridge-ai.example/auth/callback?token_hash=secret&type=invite",
     });
-    expect(email.subject).toBe("Your private Bridge AI affiliate invitation");
+    expect(email.subject).toBe("Your private Bridge-iT affiliate invitation");
     expect(email.html).toContain("&lt;Brian &amp; &quot;team&quot;&gt;");
     expect(email.text).toContain("choose a password");
     expect(email.html).toContain("Ironbridge Group Ltd");

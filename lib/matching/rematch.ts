@@ -1,9 +1,12 @@
 import "server-only";
 import { runAsDatabaseWorker } from "@/lib/db";
-import { evaluateSupplierMatches, resolveDeliveryLocation } from "@/lib/matching/suppliers";
+import { evaluateSupplierMatches, resolveDeliveryLocation, selectAdaptiveSupplierMatches } from "@/lib/matching/suppliers";
+import { recordMatchingEvaluation } from "@/lib/matching/distribution";
 import { queueSupplierAssignmentNotifications } from "@/lib/notifications/assignment-notifications";
+import { addSupplierResponseHours } from "@/lib/quotes/response-clock";
+import { resolveIndustryResponseDeadlines } from "@/lib/matching/deadlines";
 
-const MAX_AUTOMATIC_SUPPLIERS = 3;
+const MAX_AUTOMATIC_SUPPLIERS = 5;
 const MAX_REQUESTS_PER_RECHECK = 50;
 
 export type SupplierRematchResult = {
@@ -85,9 +88,10 @@ export async function rematchOpenRequestsForSupplier({
         return { outcome: "SKIPPED" as const, reasons: [] as string[] };
       }
 
-      const [evaluation] = await evaluateSupplierMatches(tx, quote, resolution.location, {
-        supplierIds: [supplierCompanyId],
-      });
+      const evaluations = await evaluateSupplierMatches(tx, quote, resolution.location);
+      const availableSlots = Math.max(0, Math.min(quote.distributionLimit, MAX_AUTOMATIC_SUPPLIERS) - assignmentCount);
+      const selectedCandidates = selectAdaptiveSupplierMatches(evaluations, availableSlots);
+      const evaluation = evaluations.find((candidate) => candidate.id === supplierCompanyId);
       if (!evaluation) {
         return {
           outcome: "BLOCKED" as const,
@@ -95,50 +99,50 @@ export async function rematchOpenRequestsForSupplier({
         };
       }
 
-      const selected = evaluation.outcome === "MATCHED";
-      await tx.supplierMatchDecision.upsert({
-        where: {
-          quoteRequestId_supplierCompanyId: {
-            quoteRequestId: quote.id,
-            supplierCompanyId,
-          },
-        },
-        create: {
-          quoteRequestId: quote.id,
-          supplierCompanyId,
-          outcome: evaluation.outcome,
-          score: evaluation.score,
-          selected,
-          reasons: evaluation.reasons,
-          capabilitySnapshot: evaluation.capabilitySnapshot,
-          membershipTier: evaluation.membershipTier,
-          coveragePurpose: evaluation.coveragePurpose,
-          distanceMiles: evaluation.distanceMiles,
-          rankingSnapshot: evaluation.rankingSnapshot,
-        },
-        update: {
-          outcome: evaluation.outcome,
-          score: evaluation.score,
-          selected,
-          reasons: evaluation.reasons,
-          capabilitySnapshot: evaluation.capabilitySnapshot,
-          membershipTier: evaluation.membershipTier,
-          coveragePurpose: evaluation.coveragePurpose,
-          distanceMiles: evaluation.distanceMiles,
-          rankingSnapshot: evaluation.rankingSnapshot,
-          decidedAt: new Date(),
-        },
+      const selected = evaluation.outcome === "MATCHED" && selectedCandidates.some((candidate) => candidate.id === supplierCompanyId);
+      await recordMatchingEvaluation(tx, {
+        quoteRequestId: quote.id,
+        categoryId: quote.categoryId,
+        deliveryPostcode: quote.deliveryPostcode,
+        evaluations,
+        selectedSupplierIds: selected ? [supplierCompanyId] : [],
+        invitedSupplierCount: assignmentCount + (selected ? 1 : 0),
+        preserveExistingSelections: true,
       });
 
-      if (!selected) return { outcome: "BLOCKED" as const, reasons: evaluation.reasons };
+      if (!selected) return {
+        outcome: "BLOCKED" as const,
+        reasons: evaluation.outcome === "MATCHED"
+          ? ["Supplier ranked outside the currently available invitation slots"]
+          : evaluation.reasons,
+      };
+
+      const matchingConfiguration = await tx.matchingConfiguration.findUnique({ where: { id: "default" } });
+      const deadlines = await resolveIndustryResponseDeadlines(tx, quote.categoryId, {
+        acknowledgementHours: matchingConfiguration?.acknowledgementDeadlineHours
+          ?? matchingConfiguration?.responseDeadlineHours
+          ?? 8,
+        quotationHours: matchingConfiguration?.quotationDeadlineHours
+          ?? matchingConfiguration?.responseDeadlineHours
+          ?? 24,
+      });
+      const acknowledgementDueAt = addSupplierResponseHours(
+        new Date(),
+        deadlines.acknowledgementHours,
+      );
+      const invitationExpiresAt = acknowledgementDueAt > quote.responseDueAt
+        ? quote.responseDueAt
+        : acknowledgementDueAt;
 
       const created = await tx.supplierAssignment.createMany({
         data: [{
           quoteRequestId: quote.id,
           supplierCompanyId,
           status: "PENDING",
-          expiresAt: quote.responseDueAt,
+          expiresAt: invitationExpiresAt,
           assignedById: null,
+          marketDensityMode: evaluation.marketDensityMode,
+          softCapOverride: evaluation.softCapOverride,
         }],
         skipDuplicates: true,
       });
@@ -148,7 +152,7 @@ export async function rematchOpenRequestsForSupplier({
         supplierCompanyIds: [supplierCompanyId],
         reference: quote.reference,
         title: quote.title,
-        responseDueAt: quote.responseDueAt,
+        responseDueAt: invitationExpiresAt,
       });
       await tx.quoteRequest.update({ where: { id: quote.id }, data: { status: "MATCHING" } });
       await tx.$queryRaw`

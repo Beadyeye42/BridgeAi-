@@ -8,13 +8,13 @@ import {
   normalizeLaunchCategorySlug,
   unavailableCatalogueForConversation,
 } from "@/lib/categories/catalogue";
+import { hyperlocalService, inferUrgency, recurrenceCadence } from "@/lib/categories/hyperlocal-industries";
 import { runAsDatabaseWorker } from "@/lib/db";
 import { analyzeQuoteAttachment, quoteAttachmentAnalysisSchema, type QuoteAttachmentAnalysis } from "@/lib/ai/attachment-intake";
 import { extractQuoteIntake, quoteDraftSchema, type QuoteDraft } from "@/lib/ai/quote-intake";
 import { lookupPostcode, PostcodeLookupError } from "@/lib/location/postcodes";
-import { evaluateSupplierMatches } from "@/lib/matching/suppliers";
-import { expireAndReplaceSupplierInvitations } from "@/lib/matching/replacements";
-import { notifySuppliersWithStaleCapacity } from "@/lib/matching/stale-capacity";
+import { evaluateSupplierMatches, selectAdaptiveSupplierMatches } from "@/lib/matching/suppliers";
+import { lockSupplierAssignmentScope, recordMatchingEvaluation } from "@/lib/matching/distribution";
 import { runProductionMonitoringSafely } from "@/lib/monitoring/operational-alerts";
 import { addSupplierResponseHours } from "@/lib/quotes/response-clock";
 import { selectQuotationForCustomer } from "@/lib/quotes/selection";
@@ -34,6 +34,7 @@ import { downloadMetaMedia, sendMetaTemplate, sendMetaText } from "@/lib/whatsap
 import { attachmentAutomationDecision } from "@/lib/whatsapp/attachment-policy";
 import { buyerTypeAllowed, buyerTypeLabel, classifyBuyerType } from "@/lib/whatsapp/buyer-classification";
 import {
+  isClearCataloguePivot,
   productMessageIntent,
   productRecoveryReply,
   recogniseCatalogueProduct,
@@ -41,12 +42,14 @@ import {
 import { writeWhatsAppSystemEvent } from "@/lib/whatsapp/system-events";
 import {
   attachmentInterpretation,
+  conversationPivotContext,
   earliestInboundAt,
   firstContactConsentReply,
   industryQuoteOfferReply,
   isCancelAllDraftsRequest,
   isCancelDraftRequest,
   isConversationOptOut,
+  isConversationalHelpRequest,
   isIndustryQuoteOfferAccepted,
   isIndustryQuoteOfferDeclined,
   isMenuRequest,
@@ -63,8 +66,10 @@ import {
 import {
   compositeDoorPhotoDecision,
   compositeDoorStylePhotoPrompt,
+  conversationalRecoveryPrompt,
   conversationProgress,
   enforceTradeClarification,
+  hyperlocalServiceIntakeDecision,
   pheSpecificationDecision,
   pheSpecificationPrompt,
   productSelectionPrompt,
@@ -139,6 +144,22 @@ function selectedIndustry(categories: IntakeCategory[], categorySlug: string | n
   return category.parent
     ? categories.find((candidate) => candidate.slug === category.parent?.slug) ?? null
     : category;
+}
+
+function productQuestionForCategory(categorySlug: string | null | undefined) {
+  if (categorySlug === "transport-delivery-removals") {
+    return "Yes — I can help with transport. What needs moving, and roughly how much? Send the collection and delivery postcodes too if you have them; a photo is welcome.";
+  }
+  if (categorySlug === "plumbing-heating-mechanical") {
+    return "Yes — I can help with plumbing, heating or mechanical supply. What product, system or work do you need? A schedule, drawing or photo is welcome.";
+  }
+  if (categorySlug === "bespoke-metal-fabrication") {
+    return "Yes — I can help with fabrication. What needs making, and roughly how many? Send a drawing, dimensions or photo if you have one.";
+  }
+  if (categorySlug === "garage-industrial-specialist-doors") {
+    return "Yes — I can help with specialist doors. What type of door or opening do you need? A photo, survey or opening size is welcome.";
+  }
+  return productSelectionPrompt();
 }
 
 function replaceLatestNumberedReply(
@@ -818,14 +839,27 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
     where: { slug: draft.categorySlug ?? "" },
     select: {
       id: true, name: true, active: true,
+      acknowledgementDeadlineHours: true, quotationDeadlineHours: true,
       servesConsumer: true, servesTrade: true, servesBusiness: true,
-      parent: { select: { active: true, servesConsumer: true, servesTrade: true, servesBusiness: true } },
+      parent: { select: { active: true, servesConsumer: true, servesTrade: true, servesBusiness: true, acknowledgementDeadlineHours: true, quotationDeadlineHours: true } },
     },
   }));
   if (!category?.active || !category.parent?.active || !draftIsComplete(draft)) throw new Error("QUOTE_DRAFT_INCOMPLETE");
   if (!buyerTypeAllowed(draft.buyerType!, category.parent)) throw new Error("BUYER_TYPE_NOT_SUPPORTED_BY_INDUSTRY");
   const delivery = await lookupPostcode(draft.deliveryPostcode!);
   const now = new Date();
+  const requestEvidence = [
+    draft.title,
+    draft.summary,
+    ...draft.items.flatMap((item) => [item.description, item.specification]),
+  ].filter((value): value is string => Boolean(value)).join("\n");
+  const urgency = inferUrgency(requestEvidence, draft.requiredBy ? new Date(draft.requiredBy) : null, now);
+  const recurrence = recurrenceCadence(requestEvidence);
+  const hyperlocal = hyperlocalService(draft.categorySlug);
+  const sessionAttachments = loaded.conversation.messages
+    .filter((message) => message.occurredAt >= loaded.conversation!.aiSessionStartedAt)
+    .flatMap((message) => message.attachments)
+    .filter((attachment) => !["REJECTED", "FAILED"].includes(attachment.scanStatus));
   const { quoteResponseHours, distributionLimit } = whatsappConciergeConfig();
   const reference = `BA-${now.getFullYear()}-${randomBytes(4).toString("hex").toUpperCase()}`;
   return runAsDatabaseWorker("whatsapp_ai", async (tx) => {
@@ -843,7 +877,15 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
       return { request: existing, assignmentCount };
     }
     const matchingConfiguration = await tx.matchingConfiguration.findUnique({ where: { id: "default" } });
-    const configuredResponseHours = matchingConfiguration?.responseDeadlineHours ?? quoteResponseHours;
+    const configuredQuoteHours = category.parent?.quotationDeadlineHours
+      ?? category.quotationDeadlineHours
+      ?? matchingConfiguration?.quotationDeadlineHours
+      ?? matchingConfiguration?.responseDeadlineHours
+      ?? quoteResponseHours;
+    const configuredAcknowledgementHours = category.parent?.acknowledgementDeadlineHours
+      ?? category.acknowledgementDeadlineHours
+      ?? matchingConfiguration?.acknowledgementDeadlineHours
+      ?? configuredQuoteHours;
     const request = await tx.quoteRequest.create({
       data: {
         reference,
@@ -853,6 +895,16 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
         categoryId: category.id,
         buyerType: draft.buyerType!,
         intentQuality: draft.intentQuality === "URGENT" ? "URGENT" : "READY_TO_BUY",
+        urgency,
+        recurrenceCadence: recurrence,
+        qualificationData: hyperlocal ? {
+          industrySlug: hyperlocal.industry.slug,
+          serviceSlug: hyperlocal.service.slug,
+          requiredInformation: hyperlocal.service.requiredInformation,
+          verificationRequirements: hyperlocal.service.verification,
+          photoRecommended: Boolean(hyperlocal.service.photoPrompt),
+        } : undefined,
+        attachmentExtractionConfidence: sessionAttachments.length > 0 ? 0.75 : null,
         title: draft.title!,
         summary: draft.summary!,
         deliveryPostcode: delivery.postcode,
@@ -868,7 +920,7 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
         fulfilmentMode: draft.fulfilmentMode ?? (draft.collectionRequired ? "COLLECTION" : "DELIVERY"),
         status: "OPEN",
         distributionLimit,
-        responseDueAt: addSupplierResponseHours(now, configuredResponseHours),
+        responseDueAt: addSupplierResponseHours(now, configuredQuoteHours),
         publishedAt: now,
         items: { create: draft.items.map((item, index) => ({ ...item, displayOrder: index })) },
       },
@@ -893,45 +945,25 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
         longitude: delivery.longitude,
       },
     );
-    const matches = evaluations
-      .filter((evaluation) => evaluation.outcome === "MATCHED")
-      .slice(0, Math.min(distributionLimit, matchingConfiguration?.maximumSuppliersPerRequest ?? 5, 5));
+    const matches = selectAdaptiveSupplierMatches(
+      evaluations,
+      Math.min(distributionLimit, matchingConfiguration?.maximumSuppliersPerRequest ?? 5, 5),
+    );
     const selectedSupplierIds = new Set(matches.map((match) => match.id));
-    for (const evaluation of evaluations) {
-      await tx.supplierMatchDecision.upsert({
-        where: {
-          quoteRequestId_supplierCompanyId: {
-            quoteRequestId: request.id,
-            supplierCompanyId: evaluation.id,
-          },
-        },
-        create: {
-          quoteRequestId: request.id,
-          supplierCompanyId: evaluation.id,
-          outcome: evaluation.outcome,
-          score: evaluation.score,
-          selected: selectedSupplierIds.has(evaluation.id),
-          reasons: evaluation.reasons,
-          capabilitySnapshot: evaluation.capabilitySnapshot,
-          membershipTier: evaluation.membershipTier,
-          coveragePurpose: evaluation.coveragePurpose,
-          distanceMiles: evaluation.distanceMiles,
-          rankingSnapshot: evaluation.rankingSnapshot,
-        },
-        update: {
-          outcome: evaluation.outcome,
-          score: evaluation.score,
-          selected: selectedSupplierIds.has(evaluation.id),
-          reasons: evaluation.reasons,
-          capabilitySnapshot: evaluation.capabilitySnapshot,
-          membershipTier: evaluation.membershipTier,
-          coveragePurpose: evaluation.coveragePurpose,
-          distanceMiles: evaluation.distanceMiles,
-          rankingSnapshot: evaluation.rankingSnapshot,
-          decidedAt: now,
-        },
-      });
-    }
+    await recordMatchingEvaluation(tx, {
+      quoteRequestId: request.id,
+      categoryId: request.categoryId,
+      deliveryPostcode: request.deliveryPostcode,
+      evaluations,
+      selectedSupplierIds,
+      invitedSupplierCount: matches.length,
+      alertOnZero: matchingConfiguration?.coverageGapAlertsEnabled ?? true,
+    });
+    await lockSupplierAssignmentScope(tx, selectedSupplierIds);
+    const acknowledgementDueAt = addSupplierResponseHours(now, configuredAcknowledgementHours);
+    const invitationExpiresAt = acknowledgementDueAt > request.responseDueAt
+      ? request.responseDueAt
+      : acknowledgementDueAt;
     const assignedSupplierIds: string[] = [];
     for (const [index, match] of matches.entries()) {
       const assignment = await tx.supplierAssignment.create({
@@ -939,9 +971,11 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
           quoteRequestId: request.id,
           supplierCompanyId: match.id,
           status: "PENDING",
-          expiresAt: request.responseDueAt,
+          expiresAt: invitationExpiresAt,
           assignedById: null,
           invitationRank: index + 1,
+          marketDensityMode: match.marketDensityMode,
+          softCapOverride: match.softCapOverride,
         },
       });
       assignedSupplierIds.push(assignment.supplierCompanyId);
@@ -958,7 +992,8 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
           matchingScore: match.score,
           matchingReasons: match.reasons,
           capabilitySnapshot: match.capabilitySnapshot,
-          responseDueAt: request.responseDueAt.toISOString(),
+          acknowledgementDueAt: assignment.expiresAt.toISOString(),
+          quotationDueAt: request.responseDueAt.toISOString(),
         },
       });
     }
@@ -967,7 +1002,7 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
         supplierCompanyIds: assignedSupplierIds,
         reference: request.reference,
         title: request.title,
-        responseDueAt: request.responseDueAt,
+        responseDueAt: invitationExpiresAt,
       });
       await tx.quoteRequest.update({
         where: { id: request.id },
@@ -997,6 +1032,8 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
         attachmentCount: linkedAttachments.count,
         distributionLimit,
         automaticAssignmentCount: assignedSupplierIds.length,
+        urgency,
+        recurrenceCadence: recurrence,
       },
     });
     return { request, assignmentCount: assignedSupplierIds.length };
@@ -1019,7 +1056,10 @@ async function hasNewerInboundJob(job: WhatsAppJob) {
 }
 
 function quoteRequestStatus(status: string, submittedQuotes: number) {
-  if (status === "WON") return "accepted";
+  if (["WON", "SELECTED"].includes(status)) return "supplier selected—final arrangements pending";
+  if (status === "CONFIRMED") return "job confirmed";
+  if (status === "COMPLETED") return "completed";
+  if (status === "CANCELLED_AFTER_SELECTION") return "did not proceed after selection";
   if (status === "LOST") return "not selected";
   if (status === "EXPIRED") return "expired";
   if (status === "CANCELLED") return "cancelled";
@@ -1244,7 +1284,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
         aiUnproductiveTurns: 0,
       },
     }));
-    await sendReply(job, conversation, "Your Bridge AI conversation is closed. We will not create a quote request from it.");
+    await sendReply(job, conversation, "Your Bridge-iT conversation is closed. We will not create a quote request from it.");
     return undefined;
   }
 
@@ -1394,7 +1434,19 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   let draft = decryptedDraft
     ? { ...decryptedDraft, categorySlug: normalizeLaunchCategorySlug(decryptedDraft.categorySlug) }
     : null;
-  const beganWithoutDraft = !draft?.categorySlug;
+  let beganWithoutDraft = !draft?.categorySlug;
+
+  if (isConversationalHelpRequest(text)) {
+    const savedDraft = draft?.title
+      ? ` I still have your unfinished “${draft.title}” request safe. If this is a different job, just tell me the new item or service and I’ll keep the two requests separate.`
+      : "";
+    await sendReply(
+      job,
+      refreshed.conversation,
+      `Yes — absolutely.${savedDraft}\n\nTell me what you need in your own words, or send a photo, drawing or PDF. Include where and when you need it if you can.`,
+    );
+    return undefined;
+  }
 
   if (stage === "AWAITING_CONFIRMATION" && isQuoteConfirmation(text)) {
     if (!draft) throw new Error("QUOTE_DRAFT_MISSING");
@@ -1428,7 +1480,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     }
     const distributionMessage = request.assignmentCount > 0
       ? `It has been sent to ${request.assignmentCount} approved supplier${request.assignmentCount === 1 ? "" : "s"}.`
-      : "It is safely recorded and awaiting an eligible supplier match. A Bridge AI administrator can review the distribution.";
+      : "We haven’t found a currently confirmed supplier match yet. Bridge-iT is continuing to search and has recorded the coverage gap automatically.";
     await sendReply(job, refreshed.conversation, personaliseOpening(
       `Perfect — request ${request.request.reference} is live. ${distributionMessage} I’ll bring the available prices and lead times back here while keeping identities private. Reply QUOTES for an update, or NEW QUOTE whenever you have another job to price.`,
       preferredFirstName,
@@ -1496,7 +1548,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
         metadata: { messageId: inbound.id, quoteRequestId: request.id, displayedPosition },
       });
     });
-    await sendReply(job, refreshed.conversation, `Great choice — quote ${displayedPosition} is confirmed. There is no introduction fee or winning fee. I’m sharing the selected supplier’s business contact details securely now.`);
+    await sendReply(job, refreshed.conversation, `Great choice — you’ve selected quote ${displayedPosition} to move forward. This is not yet a confirmed booking or order. I’m sharing the supplier’s business contact details so you can agree the final arrangements.`);
     return undefined;
   }
 
@@ -1550,6 +1602,26 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
       return parts;
     });
   const productRecognition = recogniseCatalogueProduct(text, categories);
+  const currentIndustry = selectedIndustry(categories, draft?.categorySlug);
+  if (draft?.categorySlug
+    && currentIndustry
+    && productRecognition
+    && isClearCataloguePivot({
+      text,
+      recognition: productRecognition,
+      currentCategorySlug: draft.categorySlug,
+      currentIndustrySlug: currentIndustry.slug,
+      expectedQuestionKey: refreshed.conversation.aiLastQuestionKey,
+    })) {
+    await startNewQuote(job, refreshed.conversation, inbound, false);
+    const latestTurn = conversationPivotContext(messages, text);
+    messages.splice(0, messages.length, ...latestTurn);
+    draft = null;
+    beganWithoutDraft = true;
+    refreshed.conversation.aiDraftFingerprint = null;
+    refreshed.conversation.aiLastQuestionKey = null;
+    refreshed.conversation.aiUnproductiveTurns = 0;
+  }
   const expectedQuestion = refreshed.conversation.aiLastQuestionKey;
   if (expectedQuestion === "QUOTE_OFFER" && isIndustryQuoteOfferAccepted(text)) {
     replaceLatestNumberedReply(messages, text, "[Customer accepted the offer to find a competitive supplier quote.]");
@@ -1655,7 +1727,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
         await sendReply(
           job,
           refreshed.conversation,
-          "Bridge AI does not yet have an approved supplier network for that request, so I won’t pretend I can source it. You can send a different request whenever you’re ready.",
+          "Bridge-iT does not yet have an approved supplier network for that request, so I won’t pretend I can source it. You can send a different request whenever you’re ready.",
         );
         return initialExtraction.telemetry;
       }
@@ -1739,12 +1811,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   });
   if (result.intent === "QUESTION") {
     if (!beganWithoutDraft || !initialExtraction) {
-      const continuation = "Your current quote draft is still saved. Continue with the job details whenever you’re ready.";
-      await sendReply(
-        job,
-        refreshed.conversation,
-        `${result.reply}\n\n${continuation}`,
-      );
+      await sendReply(job, refreshed.conversation, result.reply);
       return telemetry;
     }
     const offerFingerprint = quoteDraftFingerprint(result.draft);
@@ -1764,7 +1831,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
         action: "WHATSAPP.INDUSTRY_QUOTE_OFFERED",
         entityType: "Conversation",
         entityId: refreshed.conversation!.id,
-        summary: "Bridge AI recognised an industry question and offered trusted supplier quotes",
+        summary: "Bridge-iT recognised an industry question and offered trusted supplier quotes",
         metadata: {
           jobId: job.id,
           categorySlug: result.draft.categorySlug,
@@ -1800,7 +1867,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
       await tx.conversation.update({ where: { id: refreshed.conversation!.id }, data: { aiStage: "HUMAN_REVIEW", aiDraftEncrypted: encryptPrivateValue(JSON.stringify(result.draft)) } });
       await writeWhatsAppSystemEvent(tx, "whatsapp_ai", { severity: "WARNING", code: "CUSTOMER_CONVERSATION_REVIEW", message: "A WhatsApp conversation requires administrator review", context: { conversationId: refreshed.conversation!.id, jobId: job.id } });
     });
-    await sendReply(job, refreshed.conversation, "I can’t safely complete this request automatically. A Bridge AI administrator will need to review it.");
+    await sendReply(job, refreshed.conversation, "I can’t safely complete this request automatically. A Bridge-iT administrator will need to review it.");
     return telemetry;
   }
   const compositeDoorPhoto = compositeDoorPhotoDecision(result.draft, messages);
@@ -1809,7 +1876,13 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   const roofGlazingSpecification = roofGlazingSpecificationDecision(result.draft, messages);
   const pheSpecification = pheSpecificationDecision(result.draft, messages);
   const transportIntake = transportIntakeDecision(result.draft, messages);
+  const hyperlocalIntake = hyperlocalServiceIntakeDecision(result.draft, messages);
   if (transportIntake.isTransport) {
+    result.draft.fulfilmentMode = "SERVICE";
+    result.draft.collectionRequired = false;
+    result.tradeClarification = { materialNeeded: false, colourNeeded: false, colourTerm: null };
+  }
+  if (hyperlocalIntake.isHyperlocalService) {
     result.draft.fulfilmentMode = "SERVICE";
     result.draft.collectionRequired = false;
     result.tradeClarification = { materialNeeded: false, colourNeeded: false, colourTerm: null };
@@ -1818,7 +1891,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   const industry = category?.parent ?? category;
   if (industry && result.draft.buyerType && !buyerTypeAllowed(result.draft.buyerType, industry)) {
     result.readyForConfirmation = false;
-    result.reply = `Bridge AI does not currently match ${buyerTypeLabel(result.draft.buyerType).toLocaleLowerCase("en-GB")} requests for this industry. I have not shared this request with suppliers.`;
+    result.reply = `Bridge-iT does not currently match ${buyerTypeLabel(result.draft.buyerType).toLocaleLowerCase("en-GB")} requests for this industry. I have not shared this request with suppliers.`;
     result.nextQuestionKey = "NONE";
   }
   const isIndustryRoot = Boolean(category && !category.parent);
@@ -1841,6 +1914,8 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
           ? "PHE_SPECIFICATION"
           : transportIntake.shouldAsk
             ? transportIntake.nextQuestionKey!
+            : hyperlocalIntake.shouldAsk
+              ? "HYPERLOCAL_SERVICE"
             : requiredQuestionKey(result.draft, result.nextQuestionKey, result.tradeClarification);
   const ready = result.readyForConfirmation && Boolean(category?.parent) && questionKey === "NONE" && draftIsComplete(result.draft);
   const fingerprint = quoteDraftFingerprint(result.draft);
@@ -1880,7 +1955,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     await sendReply(
       job,
       refreshed.conversation,
-      `I want to make sure I get this right without holding you up. ${questionKey === "PRODUCT" ? productSelectionPrompt() : repeatClarification(questionKey)}`,
+      `I want to make sure I get this right without holding you up. ${questionKey === "PRODUCT" ? productQuestionForCategory(result.draft.categorySlug) : conversationalRecoveryPrompt(questionKey)}`,
     );
     return telemetry;
   }
@@ -1921,19 +1996,19 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
       ?? `I’ve securely received and read ${currentAttachmentCount === 1 ? "that file" : `those ${currentAttachmentCount} files`} and added the useful details.`
     : null;
   const productQuestionPrompt = !ready && questionKey === "PRODUCT"
-    ? productSelectionPrompt()
+    ? productQuestionForCategory(result.draft.categorySlug)
     : null;
   const repeatedClarification = !ready && progress.repeatedQuestion && !progress.progressed
     ? questionKey === "PRODUCT"
-      ? productSelectionPrompt()
-      : repeatClarification(questionKey)
+      ? productQuestionForCategory(result.draft.categorySlug)
+      : conversationalRecoveryPrompt(questionKey)
     : null;
   const tradeClarification = !ready && questionKey === "SPECIFICATION"
     ? tradeSpecificationClarification(result.tradeClarification, result.draft.items[0]?.description)
     : null;
   const enforcedClarification = !ready && questionKey !== result.nextQuestionKey
     ? questionKey === "PRODUCT"
-      ? productSelectionPrompt()
+      ? productQuestionForCategory(result.draft.categorySlug)
       : repeatClarification(questionKey)
     : null;
   const reply = ready && category
@@ -1944,7 +2019,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
         preferredFirstName,
         categoryResponsibilityNotice(category.slug, category.parent?.slug),
       )
-      : `${mediaAcknowledgement ? `${mediaAcknowledgement}\n\n` : ""}${compositeDoorPhoto.shouldAsk ? compositeDoorStylePhotoPrompt() : roofGlazingSpecification.shouldAsk ? roofGlazingSpecificationPrompt(roofGlazingSpecification) : pheSpecification.shouldAsk ? pheSpecificationPrompt(pheSpecification.categorySlug) : transportIntake.shouldAsk ? transportIntakePrompt(transportIntake) : tradeClarification ?? productQuestionPrompt ?? repeatedClarification ?? enforcedClarification ?? result.reply}${rejectedMedia ? "\n\nI couldn’t use one uploaded file for this quote, so I’ve safely left it out. Send another JPG, PNG or PDF, or describe the job here and I’ll keep going." : ""}`;
+      : `${mediaAcknowledgement ? `${mediaAcknowledgement}\n\n` : ""}${compositeDoorPhoto.shouldAsk ? compositeDoorStylePhotoPrompt() : roofGlazingSpecification.shouldAsk ? roofGlazingSpecificationPrompt(roofGlazingSpecification) : pheSpecification.shouldAsk ? pheSpecificationPrompt(pheSpecification.categorySlug) : transportIntake.shouldAsk ? transportIntakePrompt(transportIntake) : hyperlocalIntake.shouldAsk ? hyperlocalIntake.prompt : tradeClarification ?? productQuestionPrompt ?? repeatedClarification ?? enforcedClarification ?? result.reply}${rejectedMedia ? "\n\nI couldn’t use one uploaded file for this quote, so I’ve safely left it out. Send another JPG, PNG or PDF, or describe the job here and I’ll keep going." : ""}`;
   await sendReply(
     job,
     refreshed.conversation,
@@ -2028,11 +2103,11 @@ async function processContactUnlock(job: WhatsAppJob, loaded: LoadedJob) {
   const supplier = loaded.quotation.supplierCompany;
   const supplierName = supplier.tradingName ?? supplier.legalName;
   const body = [
-    `Your selection is confirmed for ${loaded.quoteRequest.reference}. You and the selected supplier can now contact each other.`,
+    `You selected a supplier to move forward for ${loaded.quoteRequest.reference}. The booking or order is not confirmed until you and the supplier agree the final arrangements.`,
     `Supplier: ${supplierName}`,
     `Email: ${supplier.contactEmail}`,
     `Phone: ${supplier.contactPhone}`,
-    "Use these details only for this enquiry. Bridge AI does not take card or bank details in WhatsApp.",
+    "Use these details only for this enquiry. Bridge-iT does not take card or bank details in WhatsApp.",
   ].join("\n\n");
   await runAsDatabaseWorker("whatsapp_ai", (tx) => tx.contactAccessGrant.update({
     where: { id: grant.id }, data: { notificationAttemptedAt: new Date(), notificationFailureCode: null },
@@ -2155,34 +2230,42 @@ export async function enqueueContactUnlock(contactAccessGrantId: string) {
   });
 }
 
-export async function processWhatsAppJobs({ limit = 5 }: { limit?: number } = {}) {
+export async function processWhatsAppJobs({
+  limit = 5,
+  concurrency = 3,
+  flushSupplierEmails = true,
+}: {
+  limit?: number;
+  concurrency?: number;
+  flushSupplierEmails?: boolean;
+} = {}) {
   let processed = 0;
-  const safeLimit = Math.max(1, Math.min(20, Math.floor(limit)));
-  for (let index = 0; index < safeLimit; index += 1) {
-    const job = await claimJob();
-    if (!job) break;
-    try {
-      const telemetry = await processJob(job);
-      await completeJob(job, telemetry);
-      processed += 1;
-    } catch (error) {
-      console.error("WhatsApp job processing failed", { jobId: job.id, type: job.type, errorCode: errorCode(error) });
-      const terminal = await failJob(job, error);
-      if (terminal) await runProductionMonitoringSafely();
+  let claimed = 0;
+  let terminalFailure = false;
+  const safeLimit = Math.max(1, Math.min(50, Math.floor(limit)));
+  const safeConcurrency = Math.max(1, Math.min(5, Math.floor(concurrency)));
+
+  async function worker() {
+    while (claimed < safeLimit) {
+      claimed += 1;
+      const job = await claimJob();
+      if (!job) return;
+      try {
+        const telemetry = await processJob(job);
+        await completeJob(job, telemetry);
+        processed += 1;
+      } catch (error) {
+        console.error("WhatsApp job processing failed", { jobId: job.id, type: job.type, errorCode: errorCode(error) });
+        terminalFailure = (await failJob(job, error)) || terminalFailure;
+      }
     }
   }
 
-  // Vercel Hobby cron jobs can run only once per day. Recovering these durable
-  // queues after normal WhatsApp activity keeps winner emails and operational
-  // alerts moving without weakening idempotency or sending duplicate messages.
-  await expireAndReplaceSupplierInvitations({ limit: 25 }).catch((error) => {
-    console.error("Expired supplier invitation recovery failed", error);
-  });
-  await notifySuppliersWithStaleCapacity({ limit: 50 }).catch((error) => {
-    console.error("Stale supplier capacity reminder failed", error);
-  });
-  await processSupplierEmailsSafely({ limit: 25 });
-  await runProductionMonitoringSafely();
+  await Promise.all(Array.from({ length: Math.min(safeConcurrency, safeLimit) }, () => worker()));
+  if (processed > 0 && flushSupplierEmails) {
+    await processSupplierEmailsSafely({ limit: Math.min(50, Math.max(10, processed * 5)) });
+  }
+  if (terminalFailure) await runProductionMonitoringSafely();
 
   return processed;
 }

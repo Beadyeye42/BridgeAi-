@@ -137,6 +137,10 @@ enum QuoteRequestStatus {
   OPEN
   MATCHING
   QUOTED
+  SELECTED
+  CONFIRMED
+  COMPLETED
+  CANCELLED_AFTER_SELECTION
   WON
   LOST
   EXPIRED
@@ -215,9 +219,51 @@ enum SupplierCapacityStatus {
   @@schema("bridge_ai")
 }
 
+enum LiveAvailabilityStatus {
+  AVAILABLE_NOW
+  AVAILABLE_TODAY
+  AVAILABLE_TOMORROW
+  LIMITED
+  FULLY_BOOKED
+  PAUSED
+  HOLIDAY
+
+  @@schema("bridge_ai")
+}
+
+enum RequestUrgency {
+  EMERGENCY
+  WITHIN_2_HOURS
+  SAME_DAY
+  NEXT_DAY
+  THIS_WEEK
+  FLEXIBLE
+  FUTURE_BOOKING
+
+  @@schema("bridge_ai")
+}
+
+enum RecurrenceCadence {
+  ONE_OFF
+  WEEKLY
+  FORTNIGHTLY
+  MONTHLY
+
+  @@schema("bridge_ai")
+}
+
 enum SupplierMatchOutcome {
   MATCHED
   REJECTED
+
+  @@schema("bridge_ai")
+}
+
+enum MarketDensityMode {
+  EMPTY
+  SPARSE
+  HEALTHY
+  DENSE
 
   @@schema("bridge_ai")
 }
@@ -726,6 +772,8 @@ model ProductCategory {
   servesConsumer    Boolean                   @default(false)
   servesTrade       Boolean                   @default(true)
   servesBusiness    Boolean                   @default(true)
+  acknowledgementDeadlineHours Int?
+  quotationDeadlineHours       Int?
   parentId          String?
   displayOrder      Int                       @default(0)
   createdAt         DateTime                  @default(now())
@@ -736,6 +784,7 @@ model ProductCategory {
   quoteRequests     QuoteRequest[]
   opportunities     SupplierOpportunity[]
   capabilities      SupplierCapability[]
+  coverageGaps      CoverageGapSignal[]
 
   @@unique([parentId, name])
   @@index([active, displayOrder])
@@ -778,10 +827,14 @@ model SupplierCapability {
   collectionAvailable     Boolean                @default(false)
   deliveryDays            Int[]                  @default([])
   capacityStatus          SupplierCapacityStatus @default(AVAILABLE)
+  liveAvailability        LiveAvailabilityStatus  @default(AVAILABLE_TODAY)
+  nextAvailableAt         DateTime?
+  availabilityLastConfirmedAt DateTime             @default(now())
   capacityLastConfirmedAt DateTime               @default(now())
   leadTimeLastConfirmedAt DateTime               @default(now())
   restrictedProducts      String[]               @default([])
   deliveryDelayDays       Int?
+  declaredMonthlyCapacity Int?
   shortageNote            String?
   shortageUntil           DateTime?
   active                  Boolean                @default(true)
@@ -793,6 +846,7 @@ model SupplierCapability {
 
   @@unique([supplierCompanyId, productCategoryId])
   @@index([productCategoryId, active, capacityStatus])
+  @@index([productCategoryId, active, liveAvailability, availabilityLastConfirmedAt])
   @@index([supplierCompanyId, lastConfirmedAt])
   @@schema("bridge_ai")
 }
@@ -817,13 +871,31 @@ model QuoteRequest {
   requiredColour                String?
   requiredFinish                String?
   requiredBy                    DateTime?
+  urgency                       RequestUrgency          @default(FLEXIBLE)
+  preferredTime                 String?                 @db.VarChar(80)
+  recurrenceCadence             RecurrenceCadence       @default(ONE_OFF)
+  qualificationData             Json?
+  attachmentExtractionConfidence Decimal?               @db.Decimal(5, 4)
+  previousQuoteRequestId        String?
+  previousSupplierCompanyId     String?
   collectionRequired            Boolean                 @default(false)
   fulfilmentMode                FulfilmentMode          @default(DELIVERY)
   currency                      String                  @default("GBP") @db.VarChar(3)
   status                        QuoteRequestStatus      @default(DRAFT)
   distributionLimit             Int                     @default(5)
+  marketDensityMode             MarketDensityMode?
+  consideredSupplierCount       Int                     @default(0)
+  eliminatedSupplierCount       Int                     @default(0)
+  eligibleSupplierCount         Int                     @default(0)
+  invitedSupplierCount          Int                     @default(0)
+  fairnessInfluence             String?
+  matchingEvaluatedAt           DateTime?
   responseDueAt                 DateTime
   publishedAt                   DateTime?
+  selectedAt                    DateTime?
+  confirmedAt                   DateTime?
+  completedAt                   DateTime?
+  cancelledAfterSelectionAt     DateTime?
   closedAt                      DateTime?
   createdAt                     DateTime                @default(now())
   updatedAt                     DateTime                @updatedAt
@@ -837,10 +909,16 @@ model QuoteRequest {
   successFees                   SupplierSuccessFee[]
   whatsappJobs                  WhatsAppJob[]
   opportunity                   SupplierOpportunity?
+  previousQuoteRequest          QuoteRequest?            @relation("RepeatQuoteRequest", fields: [previousQuoteRequestId], references: [id], onDelete: SetNull)
+  repeatQuoteRequests           QuoteRequest[]            @relation("RepeatQuoteRequest")
   matchDecisions                SupplierMatchDecision[]
+  coverageGap                   CoverageGapSignal?
 
   @@index([status, responseDueAt])
+  @@index([status, selectedAt])
   @@index([categoryId, deliveryPostcode])
+  @@index([urgency, status, responseDueAt])
+  @@index([previousQuoteRequestId])
   @@index([customerContactId])
   @@index([conversationId])
   @@schema("bridge_ai")
@@ -852,7 +930,12 @@ model SupplierMatchDecision {
   supplierCompanyId  String
   outcome            SupplierMatchOutcome
   score              Int                  @default(0)
+  baseScore          Int                  @default(0)
+  fairnessAdjustment Decimal              @default(0) @db.Decimal(5, 2)
   selected           Boolean              @default(false)
+  marketDensityMode  MarketDensityMode?
+  invitationReason   String?
+  rejectionReason    String?
   reasons            Json
   capabilitySnapshot Json?
   membershipTier     MembershipTier?
@@ -920,6 +1003,9 @@ model SupplierAssignment {
   assignedById      String?              @db.Uuid
   invitationRank    Int                  @default(1)
   replacementForId  String?
+  marketDensityMode MarketDensityMode?
+  softCapOverride   Boolean              @default(false)
+  capacityOverride  Boolean              @default(false)
   quoteRequest      QuoteRequest         @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
   supplierCompany   SupplierCompany      @relation(fields: [supplierCompanyId], references: [id], onDelete: Cascade)
   assignedBy        User?                @relation("AssignmentCreator", fields: [assignedById], references: [id], onDelete: SetNull)
@@ -1115,19 +1201,51 @@ model MembershipPlan {
 }
 
 model MatchingConfiguration {
-  id                              String   @id @default("default")
-  maximumSuppliersPerRequest      Int      @default(5)
-  capacityStaleDays               Int      @default(7)
-  leadTimeStaleDays               Int      @default(14)
-  responseDeadlineHours           Int      @default(8)
-  automaticNextSupplierInvitation Boolean  @default(true)
-  serviceMatchingEnabled          Boolean  @default(true)
-  deliveryMatchingEnabled         Boolean  @default(true)
-  matchingWeights                 Json
-  updatedById                     String?  @db.Uuid
-  createdAt                       DateTime @default(now())
-  updatedAt                       DateTime @updatedAt
+  id                               String   @id @default("default")
+  maximumSuppliersPerRequest       Int      @default(5)
+  capacityStaleDays                Int      @default(7)
+  leadTimeStaleDays                Int      @default(14)
+  responseDeadlineHours            Int      @default(8)
+  acknowledgementDeadlineHours     Int      @default(6)
+  quotationDeadlineHours           Int      @default(24)
+  sparseMarketMaximumEligible      Int      @default(4)
+  healthyMarketMaximumEligible     Int      @default(10)
+  sparseFairnessWeight             Int      @default(2)
+  healthyFairnessWeight            Int      @default(5)
+  denseFairnessWeight              Int      @default(10)
+  fairnessSimilarityBandPoints     Int      @default(5)
+  sparseSoftCapEnabled             Boolean  @default(true)
+  healthySoftCapExtraOpportunities Int      @default(1)
+  respectDeclaredMonthlyCapacity   Boolean  @default(true)
+  declaredCapacityWarningPercent   Int      @default(80)
+  coverageGapAlertsEnabled         Boolean  @default(true)
+  automaticNextSupplierInvitation  Boolean  @default(true)
+  serviceMatchingEnabled           Boolean  @default(true)
+  deliveryMatchingEnabled          Boolean  @default(true)
+  matchingWeights                  Json
+  updatedById                      String?  @db.Uuid
+  createdAt                        DateTime @default(now())
+  updatedAt                        DateTime @updatedAt
 
+  @@schema("bridge_ai")
+}
+
+model CoverageGapSignal {
+  id                    String            @id @default(cuid())
+  quoteRequestId        String            @unique
+  categoryId            String
+  deliveryOutwardCode   String            @db.VarChar(12)
+  eligibleSupplierCount Int
+  marketDensityMode     MarketDensityMode
+  status                String            @default("OPEN") @db.VarChar(20)
+  firstDetectedAt       DateTime          @default(now())
+  lastDetectedAt        DateTime          @default(now())
+  resolvedAt            DateTime?
+  quoteRequest          QuoteRequest      @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
+  category              ProductCategory   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@index([categoryId, deliveryOutwardCode, firstDetectedAt])
+  @@index([status, eligibleSupplierCount, firstDetectedAt])
   @@schema("bridge_ai")
 }
 

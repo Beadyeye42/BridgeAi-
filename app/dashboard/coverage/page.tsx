@@ -26,7 +26,7 @@ export default async function CoveragePage() {
     {...identity(session, company)}
     eyebrow="Geographic matching"
     title="Service, delivery & collection"
-    description="Tell Bridge AI where you install or service, where you deliver products, and where buyers can collect. These are kept separate for accurate matching."
+    description="Tell Bridge-iT where you install or service, where you deliver products, and where buyers can collect. These are kept separate for accurate matching."
   >
     <CoverageManager
       areas={company.coverageAreas.map((area) => ({
@@ -50,10 +50,13 @@ export default async function CoveragePage() {
         name: plan.name,
         tier: limits.tier,
         maximumRadiusMiles: limits.maximumRadiusMiles,
+        maximumServiceRadiusMiles: limits.maximumServiceRadiusMiles,
+        maximumDeliveryRadiusMiles: limits.maximumDeliveryRadiusMiles,
         nationwideAllowed: limits.nationwideAllowed,
         maximumActiveOpportunities: limits.maximumActiveOpportunities,
         onboardingDefault: !activeSubscription?.membershipPlan,
       } : null}
+      companyBasePostcode={company.geographicOriginPostcode ?? company.postcode ?? ""}
     />
   </PortalPage>;
 }

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requireAdminPage } from "@/lib/auth/guards";
 import { AdminHeading } from "@/components/admin/admin-shell";
+import { lifecycleDisplay } from "@/lib/quotes/lifecycle";
 
 export default async function AdminRequests() {
   await requireAdminPage();
@@ -30,7 +31,7 @@ export default async function AdminRequests() {
           <td><Link href={`/admin/requests/${request.id}`}><b>{request.title}</b><small>{request.reference}</small></Link></td>
           <td>{request.category.name}</td>
           <td>{request.deliveryPostcode}</td>
-          <td><span className={`status-pill ${request.status.toLowerCase()}`}>{request.status}</span></td>
+          <td><span className={`status-pill ${request.status.toLowerCase()}`}>{lifecycleDisplay(request.status)}</span></td>
           <td>{request._count.assignments === 0
             ? <span className="status-pill pending">UNASSIGNED</span>
             : `${request._count.assignments} / ${request.distributionLimit}`}</td>

@@ -10,6 +10,7 @@ import {
 } from "../capabilities/options";
 import { effectiveMembershipLimits } from "../billing/membership-plans";
 import { buyerTypeAllowed, buyerTypeLabel, type BuyerTypeValue } from "../whatsapp/buyer-classification";
+import { hyperlocalService, type RequestUrgency } from "../categories/hyperlocal-industries";
 
 type MatchingClient = Pick<Prisma.TransactionClient, "supplierCompany"> & Partial<Pick<Prisma.TransactionClient, "matchingConfiguration" | "productCategory">>;
 
@@ -26,6 +27,7 @@ type RequestForMatching = {
   requiredColour?: string | null;
   requiredFinish?: string | null;
   requiredBy?: Date | null;
+  urgency?: RequestUrgency;
   collectionRequired?: boolean;
   fulfilmentMode?: "SERVICE" | "INSTALLATION" | "SUPPLY_ONLY" | "DELIVERY" | "COLLECTION";
   items?: Array<{ quantity: Prisma.Decimal | number }>;
@@ -43,10 +45,18 @@ export type SupplierMatch = {
   coveragePurpose?: "SERVICE" | "DELIVERY" | null;
   distanceMiles?: number | null;
   rankingSnapshot?: Prisma.InputJsonValue;
+  baseScore: number;
+  fairnessAdjustment: number;
+  marketDensityMode: MarketDensityModeValue;
+  invitationReason: string | null;
+  rejectionReason: string | null;
+  softCapOverride: boolean;
+  exposure: SupplierExposure;
 };
 
 export type SupplierEvaluation = SupplierMatch & {
   outcome: "MATCHED" | "REJECTED";
+  mandatoryEligible: boolean;
 };
 
 export type LocationResolution = { location: DeliveryLocation; warning: string | null };
@@ -54,6 +64,119 @@ export type LocationResolution = { location: DeliveryLocation; warning: string |
 const DEFAULT_CAPACITY_STALE_DAYS = 7;
 const DEFAULT_LEAD_TIME_STALE_DAYS = 14;
 const DAY_MS = 86_400_000;
+
+export type MarketDensityModeValue = "EMPTY" | "SPARSE" | "HEALTHY" | "DENSE";
+export type SupplierExposure = {
+  invitations7Days: number;
+  invitations30Days: number;
+  quotes30Days: number;
+  wins30Days: number;
+  declines30Days: number;
+  expiries30Days: number;
+  currentActiveOpportunities: number;
+};
+
+type AdaptiveMatchingConfiguration = {
+  sparseMarketMaximumEligible: number;
+  healthyMarketMaximumEligible: number;
+  sparseFairnessWeight: number;
+  healthyFairnessWeight: number;
+  denseFairnessWeight: number;
+  fairnessSimilarityBandPoints: number;
+  sparseSoftCapEnabled: boolean;
+  healthySoftCapExtraOpportunities: number;
+  respectDeclaredMonthlyCapacity: boolean;
+  declaredCapacityWarningPercent: number;
+};
+
+const DEFAULT_ADAPTIVE_CONFIGURATION: AdaptiveMatchingConfiguration = {
+  sparseMarketMaximumEligible: 4,
+  healthyMarketMaximumEligible: 10,
+  sparseFairnessWeight: 2,
+  healthyFairnessWeight: 5,
+  denseFairnessWeight: 10,
+  fairnessSimilarityBandPoints: 5,
+  sparseSoftCapEnabled: true,
+  healthySoftCapExtraOpportunities: 1,
+  respectDeclaredMonthlyCapacity: true,
+  declaredCapacityWarningPercent: 80,
+};
+
+export function marketDensityMode(eligibleSupplierCount: number, configuration: Pick<AdaptiveMatchingConfiguration, "sparseMarketMaximumEligible" | "healthyMarketMaximumEligible"> = DEFAULT_ADAPTIVE_CONFIGURATION): MarketDensityModeValue {
+  if (eligibleSupplierCount === 0) return "EMPTY";
+  if (eligibleSupplierCount <= configuration.sparseMarketMaximumEligible) return "SPARSE";
+  if (eligibleSupplierCount <= configuration.healthyMarketMaximumEligible) return "HEALTHY";
+  return "DENSE";
+}
+
+function adaptiveConfiguration(value: Partial<AdaptiveMatchingConfiguration> | null | undefined): AdaptiveMatchingConfiguration {
+  return {
+    sparseMarketMaximumEligible: value?.sparseMarketMaximumEligible ?? DEFAULT_ADAPTIVE_CONFIGURATION.sparseMarketMaximumEligible,
+    healthyMarketMaximumEligible: value?.healthyMarketMaximumEligible ?? DEFAULT_ADAPTIVE_CONFIGURATION.healthyMarketMaximumEligible,
+    sparseFairnessWeight: value?.sparseFairnessWeight ?? DEFAULT_ADAPTIVE_CONFIGURATION.sparseFairnessWeight,
+    healthyFairnessWeight: value?.healthyFairnessWeight ?? DEFAULT_ADAPTIVE_CONFIGURATION.healthyFairnessWeight,
+    denseFairnessWeight: value?.denseFairnessWeight ?? DEFAULT_ADAPTIVE_CONFIGURATION.denseFairnessWeight,
+    fairnessSimilarityBandPoints: value?.fairnessSimilarityBandPoints ?? DEFAULT_ADAPTIVE_CONFIGURATION.fairnessSimilarityBandPoints,
+    sparseSoftCapEnabled: value?.sparseSoftCapEnabled ?? DEFAULT_ADAPTIVE_CONFIGURATION.sparseSoftCapEnabled,
+    healthySoftCapExtraOpportunities: value?.healthySoftCapExtraOpportunities ?? DEFAULT_ADAPTIVE_CONFIGURATION.healthySoftCapExtraOpportunities,
+    respectDeclaredMonthlyCapacity: value?.respectDeclaredMonthlyCapacity ?? DEFAULT_ADAPTIVE_CONFIGURATION.respectDeclaredMonthlyCapacity,
+    declaredCapacityWarningPercent: value?.declaredCapacityWarningPercent ?? DEFAULT_ADAPTIVE_CONFIGURATION.declaredCapacityWarningPercent,
+  };
+}
+
+export function exposureFairnessAdjustment({
+  density,
+  baseScore,
+  bestBaseScore,
+  invitations30Days,
+  maximumInvitations30Days,
+  configuration = DEFAULT_ADAPTIVE_CONFIGURATION,
+}: {
+  density: MarketDensityModeValue;
+  baseScore: number;
+  bestBaseScore: number;
+  invitations30Days: number;
+  maximumInvitations30Days: number;
+  configuration?: AdaptiveMatchingConfiguration;
+}) {
+  if (density === "EMPTY" || bestBaseScore - baseScore > configuration.fairnessSimilarityBandPoints || maximumInvitations30Days <= 0) return 0;
+  const weight = density === "SPARSE"
+    ? configuration.sparseFairnessWeight
+    : density === "HEALTHY"
+      ? configuration.healthyFairnessWeight
+      : configuration.denseFairnessWeight;
+  return Number((weight * Math.max(0, 1 - invitations30Days / maximumInvitations30Days)).toFixed(2));
+}
+
+export function adaptiveOpportunityAccess({
+  density,
+  currentActiveOpportunities,
+  maximumActiveOpportunities,
+  configuration,
+}: {
+  density: MarketDensityModeValue;
+  currentActiveOpportunities: number;
+  maximumActiveOpportunities: number;
+  configuration?: Partial<Pick<AdaptiveMatchingConfiguration, "sparseSoftCapEnabled" | "healthySoftCapExtraOpportunities">>;
+}) {
+  const configured = adaptiveConfiguration(configuration);
+  if (maximumActiveOpportunities < 1) return { allowed: false, softCapOverride: false, effectiveLimit: 0 };
+  if (density === "SPARSE" && configured.sparseSoftCapEnabled) {
+    return { allowed: true, softCapOverride: currentActiveOpportunities >= maximumActiveOpportunities, effectiveLimit: null };
+  }
+  const effectiveLimit = density === "HEALTHY"
+    ? maximumActiveOpportunities + configured.healthySoftCapExtraOpportunities
+    : maximumActiveOpportunities;
+  return {
+    allowed: currentActiveOpportunities < effectiveLimit,
+    softCapOverride: false,
+    effectiveLimit,
+  };
+}
+
+export function selectAdaptiveSupplierMatches<T extends Pick<SupplierEvaluation, "outcome">>(evaluations: T[], limit = 5) {
+  return evaluations.filter((evaluation) => evaluation.outcome === "MATCHED").slice(0, Math.max(0, Math.min(5, limit)));
+}
 
 type MatchingWeights = {
   capability: number;
@@ -148,13 +271,58 @@ type Capability = {
   supportsService?: boolean;
   deliveryDays: number[];
   capacityStatus: "AVAILABLE" | "LIMITED" | "URGENT_ONLY" | "FULL" | "PAUSED" | "HOLIDAY" | "NOT_ACCEPTING";
+  liveAvailability?: "AVAILABLE_NOW" | "AVAILABLE_TODAY" | "AVAILABLE_TOMORROW" | "LIMITED" | "FULLY_BOOKED" | "PAUSED" | "HOLIDAY";
+  nextAvailableAt?: Date | null;
+  availabilityLastConfirmedAt?: Date;
   capacityLastConfirmedAt?: Date;
   leadTimeLastConfirmedAt?: Date;
   currentLeadTimeDays?: number | null;
+  declaredMonthlyCapacity?: number | null;
   shortageNote: string | null;
   shortageUntil: Date | null;
   lastConfirmedAt: Date;
 };
+
+type VerificationEvidence = {
+  type: "PUBLIC_LIABILITY_INSURANCE" | "EMPLOYERS_LIABILITY_INSURANCE" | "PROFESSIONAL_INDEMNITY_INSURANCE" | "TRADE_BODY_MEMBERSHIP" | "CERTIFICATION" | "OTHER";
+  displayName: string;
+  issuingBody: string | null;
+  referenceNumber: string | null;
+};
+
+const credentialPatterns: Record<string, RegExp> = {
+  regulated_heating_credential: /gas\s*safe|oftec|mcs|heating|boiler/i,
+  relevant_cylinder_credential: /\bg3\b|unvented|cylinder/i,
+  relevant_refrigerant_credential: /f[ -]?gas|refrigerant/i,
+  waste_carrier_evidence: /waste\s*carrier|environment\s*agency/i,
+  specialist_tree_evidence: /arbor|tree|nptc|lantra/i,
+  relevant_gas_or_electrical_evidence: /gas\s*safe|niceic|napit|electrical|part\s*p/i,
+};
+
+export function missingVerificationRequirements(input: {
+  requirements: readonly string[];
+  status: "PENDING" | "APPROVED" | "SUSPENDED" | "REJECTED";
+  companyNumber: string | null;
+  addressLine1: string | null;
+  postcode: string | null;
+  accreditations: VerificationEvidence[];
+}) {
+  const evidence = input.accreditations.map((entry) => `${entry.displayName} ${entry.issuingBody ?? ""} ${entry.referenceNumber ?? ""}`.trim());
+  return input.requirements.filter((requirement) => {
+    if (requirement === "admin_approval") return input.status !== "APPROVED";
+    if (["business_check", "identity_business_check"].includes(requirement)) return !input.companyNumber;
+    if (requirement === "verified_business_address") return !input.addressLine1 || !input.postcode;
+    if (requirement === "insurance") {
+      return !input.accreditations.some((entry) => [
+        "PUBLIC_LIABILITY_INSURANCE",
+        "EMPLOYERS_LIABILITY_INSURANCE",
+        "PROFESSIONAL_INDEMNITY_INSURANCE",
+      ].includes(entry.type));
+    }
+    const pattern = credentialPatterns[requirement];
+    return pattern ? !evidence.some((value) => pattern.test(value)) : true;
+  });
+}
 
 export function evaluateCapability(
   request: RequestForMatching,
@@ -172,6 +340,9 @@ export function evaluateCapability(
   if (!buyerTypeAllowed(buyerType, capability)) rejected.push(`Supplier does not serve ${buyerTypeLabel(buyerType).toLocaleLowerCase("en-GB")} requests for this product`);
   else reasons.push(`Accepts ${buyerTypeLabel(buyerType).toLocaleLowerCase("en-GB")} requests for this product`);
   if (["FULL", "PAUSED", "HOLIDAY", "NOT_ACCEPTING"].includes(capability.capacityStatus)) rejected.push(`Current capacity is ${capability.capacityStatus.toLowerCase().replaceAll("_", " ")}`);
+  if (["FULLY_BOOKED", "PAUSED", "HOLIDAY"].includes(capability.liveAvailability ?? "AVAILABLE_TODAY")) {
+    rejected.push(`Live availability is ${(capability.liveAvailability ?? "PAUSED").toLowerCase().replaceAll("_", " ")}`);
+  }
   const fulfilmentMode = request.fulfilmentMode ?? (request.collectionRequired ? "COLLECTION" : "DELIVERY");
   if (fulfilmentMode === "COLLECTION" && !capability.collectionAvailable) rejected.push("Collection is required but unavailable");
   if (fulfilmentMode === "SUPPLY_ONLY" && capability.supportsSupplyOnly === false) rejected.push("Supplier does not offer supply-only orders");
@@ -207,11 +378,30 @@ export function evaluateCapability(
     rejected.push(`Customer budget is below the supplier minimum order value`);
   }
   const capacityConfirmedAt = capability.capacityLastConfirmedAt ?? capability.lastConfirmedAt;
+  const availabilityConfirmedAt = capability.availabilityLastConfirmedAt ?? capacityConfirmedAt;
   const leadTimeConfirmedAt = capability.leadTimeLastConfirmedAt ?? capability.lastConfirmedAt;
   const ageDays = Math.max(0, Math.floor((now.getTime() - capacityConfirmedAt.getTime()) / DAY_MS));
   const leadTimeAgeDays = Math.max(0, Math.floor((now.getTime() - leadTimeConfirmedAt.getTime()) / DAY_MS));
+  const availabilityAgeDays = Math.max(0, Math.floor((now.getTime() - availabilityConfirmedAt.getTime()) / DAY_MS));
   if (ageDays <= capacityStaleDays) { score += 10; reasons.push(`Availability confirmed ${ageDays === 0 ? "today" : `${ageDays} day${ageDays === 1 ? "" : "s"} ago`}`); }
   else { score = Math.max(0, score - Math.min(20, ageDays - capacityStaleDays)); reasons.push(`Availability is ${ageDays} days old, so confidence is reduced`); }
+
+  const urgentRequest = ["EMERGENCY", "WITHIN_2_HOURS", "SAME_DAY"].includes(request.urgency ?? "FLEXIBLE");
+  if (urgentRequest && availabilityAgeDays > capacityStaleDays) rejected.push("Live availability is too old for an urgent request");
+  if (request.urgency === "EMERGENCY" || request.urgency === "WITHIN_2_HOURS") {
+    if (capability.liveAvailability !== "AVAILABLE_NOW") rejected.push("Supplier has not confirmed immediate availability");
+  } else if (request.urgency === "SAME_DAY" && !["AVAILABLE_NOW", "AVAILABLE_TODAY"].includes(capability.liveAvailability ?? "AVAILABLE_TODAY")) {
+    rejected.push("Supplier has not confirmed same-day availability");
+  } else if (request.urgency === "NEXT_DAY" && !["AVAILABLE_NOW", "AVAILABLE_TODAY", "AVAILABLE_TOMORROW"].includes(capability.liveAvailability ?? "AVAILABLE_TODAY")) {
+    rejected.push("Supplier has not confirmed next-day availability");
+  }
+  if (request.requiredBy && capability.nextAvailableAt && capability.nextAvailableAt > request.requiredBy) {
+    rejected.push(`Next appointment is after the customer's required date`);
+  }
+  if (!rejected.some((reason) => /availability/i.test(reason))) {
+    score += capability.liveAvailability === "AVAILABLE_NOW" ? 10 : capability.liveAvailability === "AVAILABLE_TODAY" ? 8 : capability.liveAvailability === "AVAILABLE_TOMORROW" ? 5 : 2;
+    reasons.push(`Live availability is ${(capability.liveAvailability ?? "AVAILABLE_TODAY").toLowerCase().replaceAll("_", " ")}`);
+  }
 
   if (request.requiredBy) {
     const allowedDays = Math.max(0, Math.ceil((request.requiredBy.getTime() - now.getTime()) / DAY_MS));
@@ -241,7 +431,11 @@ export function evaluateCapability(
     signals: {
       capability: rejected.some((reason) => /manufacturer|system|colour|finish|product/i.test(reason)) ? 0 : 1,
       leadTime: rejected.some((reason) => /lead.time|day requirement/i.test(reason)) ? 0 : Math.max(0.2, 1 - currentLeadTime / 180),
-      capacity: capability.capacityStatus === "AVAILABLE" ? 1 : capability.capacityStatus === "LIMITED" ? 0.55 : capability.capacityStatus === "URGENT_ONLY" ? 0.7 : 0,
+      capacity: ["FULLY_BOOKED", "PAUSED", "HOLIDAY"].includes(capability.liveAvailability ?? "AVAILABLE_TODAY")
+        ? 0
+        : capability.liveAvailability === "AVAILABLE_NOW"
+          ? 1
+          : capability.capacityStatus === "AVAILABLE" ? 0.85 : capability.capacityStatus === "LIMITED" ? 0.55 : capability.capacityStatus === "URGENT_ONLY" ? 0.7 : 0,
       coverage: 1,
       locality: coverage.distanceMiles !== null ? Math.max(0.1, 1 - coverage.distanceMiles / 150) : coverage.type === "POSTCODE" ? 0.75 : 0.4,
     },
@@ -252,29 +446,41 @@ export async function evaluateSupplierMatches(
   db: MatchingClient,
   request: RequestForMatching,
   location: DeliveryLocation,
-  options: { supplierIds?: string[]; excludeAssigned?: boolean } = {},
+  options: { supplierIds?: string[]; excludeAssigned?: boolean; capacityOverrideSupplierIds?: string[] } = {},
 ): Promise<SupplierEvaluation[]> {
   const now = new Date();
   const configuration = db.matchingConfiguration
     ? await db.matchingConfiguration.findUnique({ where: { id: "default" } })
     : null;
-  const weights = matchingWeights(configuration?.matchingWeights);
+  let weights = matchingWeights(configuration?.matchingWeights);
   const requestCategory = db.productCategory ? await db.productCategory.findUnique({
     where: { id: request.categoryId },
     select: {
-      name: true, servesConsumer: true, servesTrade: true, servesBusiness: true, hyperlocalEnabled: true,
+      name: true, slug: true, servesConsumer: true, servesTrade: true, servesBusiness: true, hyperlocalEnabled: true,
       parent: { select: { name: true, servesConsumer: true, servesTrade: true, servesBusiness: true, hyperlocalEnabled: true } },
     },
-  }) : { name: "Legacy industry", servesConsumer: false, servesTrade: true, servesBusiness: true, hyperlocalEnabled: false, parent: null };
+  }) : { name: "Legacy industry", slug: "legacy", servesConsumer: false, servesTrade: true, servesBusiness: true, hyperlocalEnabled: false, parent: null };
+  const hyperlocal = hyperlocalService(requestCategory?.slug);
+  if (hyperlocal) {
+    const configured = hyperlocal.service.matchingWeights;
+    weights = {
+      capability: configured.capability,
+      leadTime: Math.round(configured.availability * 0.45),
+      capacity: Math.round(configured.availability * 0.55),
+      coverage: Math.round(configured.location * 0.45),
+      locality: Math.round(configured.location * 0.55),
+      response: configured.response,
+      completion: Math.round(configured.performance * 0.6),
+      reliability: Math.round(configured.performance * 0.4),
+    };
+  }
   const industry = requestCategory?.parent ?? requestCategory;
   const buyerType = request.buyerType ?? "TRADE";
   const purposeForRequest = ["SERVICE", "INSTALLATION"].includes(request.fulfilmentMode ?? "DELIVERY") ? "SERVICE" as const : "DELIVERY" as const;
   const candidates = await db.supplierCompany.findMany({
     where: {
-      id: options.supplierIds ? { in: options.supplierIds } : undefined,
       status: "APPROVED",
       memberships: { some: { role: "OWNER", status: "ACTIVE" } },
-      subscription: { is: { status: "ACTIVE", OR: [{ currentPeriodEnd: null }, { currentPeriodEnd: { gt: now } }] } },
       assignments: options.excludeAssigned === false ? undefined : { none: { quoteRequestId: request.id } },
     },
     include: {
@@ -296,6 +502,10 @@ export async function evaluateSupplierMatches(
         select: { productCategoryId: true },
       },
       memberships: true,
+      accreditations: {
+        where: { status: "APPROVED", OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+        select: { type: true, displayName: true, issuingBody: true, referenceNumber: true },
+      },
       subscription: { include: { membershipPlan: true } },
       capabilities: {
         where: {
@@ -312,6 +522,10 @@ export async function evaluateSupplierMatches(
         where: { assignedAt: { gte: new Date(now.getTime() - 90 * DAY_MS) } },
         select: { status: true, assignedAt: true, respondedAt: true },
       },
+      quotations: {
+        where: { createdAt: { gte: new Date(now.getTime() - 30 * DAY_MS) } },
+        select: { status: true, submittedAt: true, decidedAt: true, createdAt: true },
+      },
       _count: {
         select: {
           assignments: { where: { status: { in: ["PENDING", "VIEWED", "ACCEPTED"] }, expiresAt: { gt: now } } },
@@ -327,6 +541,8 @@ export async function evaluateSupplierMatches(
   for (const supplier of candidates) {
     if (!supplierOnboardingReadiness(supplier).ready) continue;
     const plan = supplier.subscription?.membershipPlan;
+    const subscriptionActive = supplier.subscription?.status === "ACTIVE"
+      && (supplier.subscription.currentPeriodEnd === null || supplier.subscription.currentPeriodEnd > now);
     const purpose = purposeForRequest;
     const categoryEligible = supplier.categories.length > 0;
     const planLimits = plan ? effectiveMembershipLimits(plan, supplier) : null;
@@ -351,12 +567,37 @@ export async function evaluateSupplierMatches(
       : null;
     const fallbackCoverage: CoverageMatch = { type: "DISTANCE", label: "Outside configured area", description: `Outside configured ${purpose.toLowerCase()} coverage`, distanceMiles: companyDistance };
     const capability = supplier.capabilities[0];
-    const base = { id: supplier.id, name: supplier.tradingName ?? supplier.legalName, postcode: supplier.postcode, match: coverage ?? fallbackCoverage, membershipTier: planLimits?.tier ?? null, coveragePurpose: purpose, distanceMiles: companyDistance ?? coverage?.distanceMiles ?? null };
+    const exposure: SupplierExposure = {
+      invitations7Days: supplier.assignments.filter((assignment) => assignment.assignedAt >= new Date(now.getTime() - 7 * DAY_MS)).length,
+      invitations30Days: supplier.assignments.filter((assignment) => assignment.assignedAt >= new Date(now.getTime() - 30 * DAY_MS)).length,
+      quotes30Days: supplier.quotations.filter((quotation) => quotation.submittedAt !== null).length,
+      wins30Days: supplier.quotations.filter((quotation) => quotation.status === "ACCEPTED").length,
+      declines30Days: supplier.assignments.filter((assignment) => assignment.assignedAt >= new Date(now.getTime() - 30 * DAY_MS) && assignment.status === "DECLINED").length,
+      expiries30Days: supplier.assignments.filter((assignment) => assignment.assignedAt >= new Date(now.getTime() - 30 * DAY_MS) && assignment.status === "EXPIRED").length,
+      currentActiveOpportunities: supplier._count.assignments,
+    };
+    const base = {
+      id: supplier.id,
+      name: supplier.tradingName ?? supplier.legalName,
+      postcode: supplier.postcode,
+      match: coverage ?? fallbackCoverage,
+      membershipTier: planLimits?.tier ?? null,
+      coveragePurpose: purpose,
+      distanceMiles: companyDistance ?? coverage?.distanceMiles ?? null,
+      marketDensityMode: "EMPTY" as MarketDensityModeValue,
+      baseScore: 0,
+      fairnessAdjustment: 0,
+      invitationReason: null,
+      rejectionReason: null,
+      softCapOverride: false,
+      exposure,
+    };
     const mandatoryRejections: string[] = [];
     if (!industry) mandatoryRejections.push("Request industry is unavailable");
     else if (!buyerTypeAllowed(buyerType, industry)) mandatoryRejections.push(`${industry.name} is not open to ${buyerTypeLabel(buyerType).toLocaleLowerCase("en-GB")} requests`);
     if (purpose === "SERVICE" && configuration?.serviceMatchingEnabled === false) mandatoryRejections.push("Automatic service matching is disabled by an administrator");
     if (purpose === "DELIVERY" && configuration?.deliveryMatchingEnabled === false) mandatoryRejections.push("Automatic delivery matching is disabled by an administrator");
+    if (!subscriptionActive) mandatoryRejections.push("An active supplier subscription is required");
     if (!plan || !planLimits) mandatoryRejections.push("No active configured membership tier");
     if (planLimits?.tier === "HYPERLOCAL" && !industry?.hyperlocalEnabled) mandatoryRejections.push("Hyperlocal membership is not enabled for this request industry");
     if (!categoryEligible) mandatoryRejections.push("Supplier has not selected this product category");
@@ -367,12 +608,34 @@ export async function evaluateSupplierMatches(
     if (planLimits && purposeRadius !== null && companyDistance !== null && companyDistance > purposeRadius + 0.01) {
       mandatoryRejections.push(`${plan?.name ?? planLimits.tier} is limited to ${purposeRadius} miles from the registered company base`);
     }
-    if (planLimits && supplier._count.assignments >= planLimits.maximumActiveOpportunities) mandatoryRejections.push(`${plan?.name ?? planLimits.tier} active opportunity limit of ${planLimits.maximumActiveOpportunities} has been reached`);
+    const missingVerification = hyperlocal ? missingVerificationRequirements({
+      requirements: hyperlocal.service.verification,
+      status: supplier.status,
+      companyNumber: supplier.companyNumber,
+      addressLine1: supplier.addressLine1,
+      postcode: supplier.postcode,
+      accreditations: supplier.accreditations,
+    }) : [];
+    if (missingVerification.length) {
+      mandatoryRejections.push(`Required supplier verification is missing: ${missingVerification.join(", ").replaceAll("_", " ")}`);
+    }
     if (!capability) {
-      evaluations.push({ ...base, outcome: "REJECTED", score: 0, reasons: [...mandatoryRejections, "Supplier has not confirmed capability for this product"], capabilitySnapshot: { missing: true }, rankingSnapshot: { membershipTier: planLimits?.tier ?? null, activeOpportunities: supplier._count.assignments } });
+      const reasons = [...mandatoryRejections, "Supplier has not confirmed capability for this product"];
+      evaluations.push({
+        ...base,
+        outcome: "REJECTED",
+        mandatoryEligible: false,
+        score: 0,
+        reasons,
+        rejectionReason: reasons[0] ?? "Supplier capability is incomplete",
+        capabilitySnapshot: { missing: true },
+        rankingSnapshot: { membershipTier: planLimits?.tier ?? null, activeOpportunities: supplier._count.assignments, exposure },
+      });
       continue;
     }
-    const result = evaluateCapability(request, capability, coverage ?? fallbackCoverage, now, {
+    const capacityOverride = options.capacityOverrideSupplierIds?.includes(supplier.id) ?? false;
+    const capabilityForEvaluation = capacityOverride ? { ...capability, capacityStatus: "AVAILABLE" as const } : capability;
+    const result = evaluateCapability(request, capabilityForEvaluation, coverage ?? fallbackCoverage, now, {
       capacityStaleDays: configuration?.capacityStaleDays,
       leadTimeStaleDays: configuration?.leadTimeStaleDays,
     });
@@ -393,13 +656,17 @@ export async function evaluateSupplierMatches(
     const geographyReason = companyDistance !== null && purposeRadius !== null
       ? `${companyDistance.toFixed(1)} miles from registered company base, within the ${purposeRadius}-mile ${plan?.name ?? planLimits?.tier} limit`
       : null;
-    const reasons = mandatoryRejections.length ? mandatoryRejections : [...result.reasons, ...(geographyReason ? [geographyReason] : []), responseRate > 0 ? `${Math.round(responseRate * 100)}% recent opportunity response rate` : "No response history yet"];
+    const reasons = mandatoryRejections.length ? mandatoryRejections : [...result.reasons, ...(capacityOverride ? ["Operational capacity override authorised by an administrator"] : []), ...(geographyReason ? [geographyReason] : []), responseRate > 0 ? `${Math.round(responseRate * 100)}% recent opportunity response rate` : "No response history yet"];
     const outcome = mandatoryRejections.length ? "REJECTED" as const : result.outcome;
+    const mandatoryEligible = outcome === "MATCHED";
     evaluations.push({
       ...base,
       outcome,
+      mandatoryEligible,
       score: outcome === "REJECTED" ? Math.min(score, result.score) : score,
+      baseScore: outcome === "REJECTED" ? Math.min(score, result.score) : score,
       reasons,
+      rejectionReason: outcome === "REJECTED" ? reasons[0] ?? "Mandatory eligibility requirements were not met" : null,
       capabilitySnapshot: {
         capabilityId: capability.id,
         buyerType,
@@ -414,9 +681,16 @@ export async function evaluateSupplierMatches(
         urgentLeadTimeDays: capability.urgentLeadTimeDays,
         currentLeadTimeDays: capability.currentLeadTimeDays,
         capacityStatus: capability.capacityStatus,
+        liveAvailability: capability.liveAvailability,
+        nextAvailableAt: capability.nextAvailableAt?.toISOString() ?? null,
+        availabilityLastConfirmedAt: capability.availabilityLastConfirmedAt?.toISOString() ?? null,
         capacityLastConfirmedAt: capability.capacityLastConfirmedAt.toISOString(),
         leadTimeLastConfirmedAt: capability.leadTimeLastConfirmedAt.toISOString(),
         lastConfirmedAt: capability.lastConfirmedAt.toISOString(),
+        declaredMonthlyCapacity: capability.declaredMonthlyCapacity,
+        capacityOverride,
+        verificationRequirements: hyperlocal?.service.verification ?? [],
+        verificationRequirementsMet: missingVerification.length === 0,
       },
       rankingSnapshot: {
         membershipTier: planLimits?.tier ?? null,
@@ -435,19 +709,99 @@ export async function evaluateSupplierMatches(
         coverageType: coverage?.type ?? null,
         distanceMilesFromCompanyBase: companyDistance,
         effectiveRadiusMiles: purposeRadius,
+        exposure,
+        declaredMonthlyCapacity: capability.declaredMonthlyCapacity,
+        capacityOverride,
       },
     });
   }
-  return evaluations.sort((left, right) => right.score - left.score || left.name.localeCompare(right.name));
+  const adaptive = adaptiveConfiguration(configuration);
+  const mandatoryEligible = evaluations.filter((evaluation) => evaluation.mandatoryEligible);
+  const density = marketDensityMode(mandatoryEligible.length, adaptive);
+  const bestBaseScore = mandatoryEligible.reduce((best, evaluation) => Math.max(best, evaluation.baseScore), 0);
+  const maximumInvitations30Days = mandatoryEligible.reduce((maximum, evaluation) => Math.max(maximum, evaluation.exposure.invitations30Days), 0);
+  const adjusted = evaluations.map((evaluation): SupplierEvaluation => {
+    if (!evaluation.mandatoryEligible) return { ...evaluation, marketDensityMode: density };
+    const maximumActive = Number((evaluation.rankingSnapshot as Record<string, unknown> | null)?.maximumActiveOpportunities ?? 0);
+    const currentActive = evaluation.exposure.currentActiveOpportunities;
+    const access = adaptiveOpportunityAccess({
+      density,
+      currentActiveOpportunities: currentActive,
+      maximumActiveOpportunities: maximumActive,
+      configuration: adaptive,
+    });
+    const softCapOverride = access.softCapOverride;
+    if (!access.allowed) {
+      const rejectionReason = `${evaluation.membershipTier ?? "Membership"} active opportunity limit reached for this ${density.toLowerCase()} market`;
+      return {
+        ...evaluation,
+        outcome: "REJECTED",
+        marketDensityMode: density,
+        rejectionReason,
+        reasons: [rejectionReason],
+      };
+    }
+    const fairnessAdjustment = exposureFairnessAdjustment({
+      density,
+      baseScore: evaluation.baseScore,
+      bestBaseScore,
+      invitations30Days: evaluation.exposure.invitations30Days,
+      maximumInvitations30Days,
+      configuration: adaptive,
+    });
+    const snapshot = (evaluation.rankingSnapshot && typeof evaluation.rankingSnapshot === "object" && !Array.isArray(evaluation.rankingSnapshot)
+      ? evaluation.rankingSnapshot
+      : {}) as Record<string, Prisma.JsonValue>;
+    const declaredMonthlyCapacity = Number(snapshot.declaredMonthlyCapacity ?? 0);
+    const capacityUsePercent = declaredMonthlyCapacity > 0
+      ? Math.round(evaluation.exposure.invitations30Days / declaredMonthlyCapacity * 100)
+      : null;
+    const capacityAdjustment = adaptive.respectDeclaredMonthlyCapacity && capacityUsePercent !== null && capacityUsePercent >= adaptive.declaredCapacityWarningPercent
+      ? Math.min(density === "DENSE" ? 6 : density === "HEALTHY" ? 3 : 1, Math.max(1, Math.floor(capacityUsePercent / 50)))
+      : 0;
+    const score = Math.round(Math.min(100, Math.max(0, evaluation.baseScore + fairnessAdjustment - capacityAdjustment)));
+    const fairnessText = fairnessAdjustment > 0 ? `Exposure fairness added ${fairnessAdjustment.toFixed(1)} points among similarly qualified suppliers` : null;
+    const capacityText = capacityAdjustment > 0 ? `Declared monthly capacity is ${capacityUsePercent}% allocated, so ranking was reduced without blocking eligibility` : null;
+    const invitationReason = [
+      `${density.toLowerCase()} market with ${mandatoryEligible.length} eligible supplier${mandatoryEligible.length === 1 ? "" : "s"}`,
+      softCapOverride ? "buyer-fulfilment sparse-market override applied" : null,
+      fairnessText,
+      capacityText,
+    ].filter(Boolean).join("; ");
+    return {
+      ...evaluation,
+      outcome: "MATCHED",
+      score,
+      fairnessAdjustment,
+      marketDensityMode: density,
+      invitationReason,
+      softCapOverride,
+      reasons: [...evaluation.reasons, ...(fairnessText ? [fairnessText] : []), ...(capacityText ? [capacityText] : [])],
+      rankingSnapshot: {
+        ...snapshot,
+        marketDensityMode: density,
+        eligibleSupplierCount: mandatoryEligible.length,
+        baseScore: evaluation.baseScore,
+        fairnessAdjustment,
+        capacityAdjustment,
+        capacityUsePercent,
+        softCapOverride,
+      },
+    };
+  });
+  const selectedSet = options.supplierIds ? new Set(options.supplierIds) : null;
+  return adjusted
+    .filter((evaluation) => !selectedSet || selectedSet.has(evaluation.id))
+    .sort((left, right) => right.score - left.score || right.baseScore - left.baseScore || left.name.localeCompare(right.name));
 }
 
 export async function findSupplierMatches(
   db: MatchingClient,
   request: RequestForMatching,
   location: DeliveryLocation,
-  options: { supplierIds?: string[]; excludeAssigned?: boolean; limit?: number } = {},
+  options: { supplierIds?: string[]; excludeAssigned?: boolean; limit?: number; capacityOverrideSupplierIds?: string[] } = {},
 ): Promise<SupplierMatch[]> {
   const evaluations = await evaluateSupplierMatches(db, request, location, options);
-  const matches = evaluations.filter((item): item is SupplierEvaluation & { outcome: "MATCHED" } => item.outcome === "MATCHED");
-  return options.limit ? matches.slice(0, options.limit) : matches;
+  const matches = selectAdaptiveSupplierMatches(evaluations, options.limit ?? 5);
+  return options.limit ? matches : evaluations.filter((item): item is SupplierEvaluation & { outcome: "MATCHED" } => item.outcome === "MATCHED");
 }

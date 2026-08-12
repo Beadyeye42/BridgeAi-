@@ -1,3 +1,5 @@
+import { HYPERLOCAL_INDUSTRIES } from "@/lib/categories/hyperlocal-industries";
+
 export type IndustryExperience = {
   supplierExperience: string;
   whatsappExperience: string;
@@ -31,6 +33,14 @@ const industryExperiences: Record<string, IndustryExperience> = {
     launchReady: false,
   },
 };
+
+for (const industry of HYPERLOCAL_INDUSTRIES) {
+  industryExperiences[industry.slug] = {
+    supplierExperience: `${industry.name} service, availability, audience and verification controls`,
+    whatsappExperience: "Automatic service recognition with progressive, service-specific qualification",
+    launchReady: true,
+  };
+}
 
 export function industryExperience(slug: string): IndustryExperience {
   return industryExperiences[slug] ?? {

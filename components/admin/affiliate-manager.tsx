@@ -2,6 +2,87 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { CheckCircle2, LoaderCircle, Save } from "lucide-react";
+
+type AffiliateProgrammeValues = {
+  maximumActive: number;
+  commissionRateBps: number;
+  qualificationPayments: number;
+  commissionPayments: number;
+  validationDays: number;
+};
+
+async function saveAffiliateControl(url: string, body: unknown) {
+  const response = await fetch(url, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error ?? "The affiliate controls could not be saved.");
+  return result;
+}
+
+export function AffiliateProgrammeControl({ programme }: { programme: AffiliateProgrammeValues }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setMessage(""); setError("");
+    const form = new FormData(event.currentTarget);
+    try {
+      await saveAffiliateControl("/api/admin/affiliates/programme", {
+        maximumActive: Number(form.get("maximumActive")),
+        commissionRateBps: Math.round(Number(form.get("commissionRate")) * 100),
+        qualificationPayments: Number(form.get("qualificationPayments")),
+        commissionPayments: Number(form.get("commissionPayments")),
+        validationDays: Number(form.get("validationDays")),
+      });
+      setMessage("Affiliate programme controls saved."); router.refresh();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Save failed."); }
+    finally { setBusy(false); }
+  }
+  return <form className="panel form-section affiliate-control-panel" onSubmit={submit}>
+    <div className="section-heading"><div><p className="eyebrow">Programme control</p><h2>Affiliate rules</h2><p className="body-copy">Control the limited-place programme and the invoice-ledger commission rules. Existing ledger entries never change retrospectively.</p></div></div>
+    <div className="form-grid">
+      <label className="form-control"><span>Maximum active affiliates</span><input name="maximumActive" type="number" min="1" max="100" defaultValue={programme.maximumActive} required/><small>Cannot be set below the number already active.</small></label>
+      <label className="form-control"><span>Default commission rate (%)</span><input name="commissionRate" type="number" min="0" max="100" step="0.01" defaultValue={(programme.commissionRateBps / 100).toFixed(2)} required/><small>Applied to future eligible invoice ledger entries.</small></label>
+      <label className="form-control"><span>Qualification payments</span><input name="qualificationPayments" type="number" min="0" max="24" defaultValue={programme.qualificationPayments} required/><small>Successful invoices required before commission begins.</small></label>
+      <label className="form-control"><span>Commissionable payments</span><input name="commissionPayments" type="number" min="1" max="60" defaultValue={programme.commissionPayments} required/><small>Maximum eligible paid billing periods per referral.</small></label>
+      <label className="form-control"><span>Validation period (days)</span><input name="validationDays" type="number" min="0" max="180" defaultValue={programme.validationDays} required/><small>Commission remains pending during the refund and dispute window.</small></label>
+    </div>
+    {(message || error) && <p className={`form-result ${error ? "error" : "success"}`} role="status" aria-live="polite">{!error && <CheckCircle2 size={14}/>} {error || message}</p>}
+    <button className="button button-dark" disabled={busy}>{busy ? <LoaderCircle className="spin" size={15}/> : <Save size={15}/>} Save affiliate rules</button>
+  </form>;
+}
+
+export function AffiliateProfileControl({ affiliate, defaultCommissionRateBps }: { affiliate: { id: string; displayName: string; code: string; commissionRateBps: number | null }; defaultCommissionRateBps: number }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setMessage(""); setError("");
+    const form = new FormData(event.currentTarget);
+    const override = String(form.get("commissionRate") ?? "").trim();
+    try {
+      await saveAffiliateControl(`/api/admin/affiliates/${affiliate.id}`, {
+        displayName: form.get("displayName"),
+        code: form.get("code"),
+        commissionRateBps: override ? Math.round(Number(override) * 100) : null,
+      });
+      setMessage("Affiliate controls saved."); router.refresh();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Save failed."); }
+    finally { setBusy(false); }
+  }
+  return <form className="panel form-section affiliate-control-panel" onSubmit={submit}>
+    <div className="section-heading"><div><p className="eyebrow">Administrator control</p><h2>Identity and commission</h2><p className="body-copy">Changing the referral code only affects future shared links. Existing referrals and invoice ledger entries remain permanently attributed.</p></div></div>
+    <div className="form-grid">
+      <label className="form-control"><span>Affiliate or business name</span><input name="displayName" defaultValue={affiliate.displayName} minLength={2} maxLength={120} required/></label>
+      <label className="form-control"><span>Referral code</span><input name="code" defaultValue={affiliate.code} minLength={4} maxLength={24} pattern="[A-Za-z0-9]+" required/><small>Use 4–24 letters or numbers.</small></label>
+      <label className="form-control span-2"><span>Commission override (%)</span><input name="commissionRate" type="number" min="0" max="100" step="0.01" defaultValue={affiliate.commissionRateBps === null ? "" : (affiliate.commissionRateBps / 100).toFixed(2)} placeholder={`Use programme default (${(defaultCommissionRateBps / 100).toFixed(2)}%)`}/><small>Leave blank to use the programme default. Changes apply only to future eligible invoice ledger entries.</small></label>
+    </div>
+    {(message || error) && <p className={`form-result ${error ? "error" : "success"}`} role="status" aria-live="polite">{!error && <CheckCircle2 size={14}/>} {error || message}</p>}
+    <button className="button button-dark" disabled={busy}>{busy ? <LoaderCircle className="spin" size={15}/> : <Save size={15}/>} Save affiliate controls</button>
+  </form>;
+}
 
 export function AffiliateCreateForm() {
   const router = useRouter();

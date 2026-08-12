@@ -79,7 +79,7 @@ export default async function SystemPage() {
         <div className="entity-list">
           {failedWebhooks.length ? failedWebhooks.map((event) => <article className="entity-row" key={event.id}>
             <span className="severity warning">{event.provider}</span>
-            <div><b>{event.eventType}</b><small>{event.failureReason ?? "Processing failed"} · {event.retryCount} retries</small><time>{event.failedAt?.toLocaleString("en-GB")}</time><small>Redeliver this verified event from the {event.provider === "STRIPE" ? "Stripe" : "Meta"} dashboard. Bridge AI deliberately does not retain the original signed payload.</small></div>
+            <div><b>{event.eventType}</b><small>{event.failureReason ?? "Processing failed"} · {event.retryCount} retries</small><time>{event.failedAt?.toLocaleString("en-GB")}</time><small>Redeliver this verified event from the {event.provider === "STRIPE" ? "Stripe" : "Meta"} dashboard. Bridge-iT deliberately does not retain the original signed payload.</small></div>
           </article>) : <div className="empty-state">No failed webhooks awaiting provider redelivery.</div>}
         </div>
       </section>

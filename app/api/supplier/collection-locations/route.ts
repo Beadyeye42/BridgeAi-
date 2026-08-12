@@ -11,6 +11,16 @@ export async function POST(request: Request) {
   const parsed = collectionLocationSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: validationError(parsed.error) }, { status: 400 });
 
+  const company = await prisma.supplierCompany.findUnique({
+    where: { id: auth.companyId },
+    select: { postcode: true, geographicOriginLatitude: true, geographicOriginLongitude: true },
+  });
+  if (!company?.postcode || company.geographicOriginLatitude === null || company.geographicOriginLongitude === null) {
+    return NextResponse.json({
+      error: "Add and save a valid registered company postcode before adding collection locations.",
+    }, { status: 422 });
+  }
+
   try {
     const location = await lookupPostcode(parsed.data.postcode);
     const saved = await prisma.$transaction(async (tx) => {

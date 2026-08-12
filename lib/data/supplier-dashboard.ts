@@ -1,4 +1,6 @@
 import { prisma, runWithDatabaseIdentity } from "@/lib/db";
+import { effectiveMembershipLimits } from "@/lib/billing/membership-plans";
+import { canReadSupplierAssignment } from "@/lib/billing/opportunity-access";
 
 // Every supplier query accepts a company id sourced from a validated membership.
 // Never accept this id directly from an untrusted request body.
@@ -18,9 +20,10 @@ export async function getSupplierDashboard(supplierCompanyId: string, userId: st
         coverageAreas: true,
         memberships: true,
         accreditations: { include: { attachment: true } },
+        capabilities: { where: { active: true }, select: { capacityStatus: true, declaredMonthlyCapacity: true } },
       },
     });
-    const assignments = await tx.supplierAssignment.findMany({
+    const assignmentCandidates = await tx.supplierAssignment.findMany({
       where: {
         supplierCompanyId,
         status: { in: ["PENDING", "VIEWED", "ACCEPTED"] },
@@ -31,31 +34,27 @@ export async function getSupplierDashboard(supplierCompanyId: string, userId: st
         quoteRequest: {
           include: { category: true, items: true, attachments: true },
         },
+        quotation: { select: { id: true } },
       },
       orderBy: { assignedAt: "desc" },
-      take: 8,
+      take: 500,
     });
-    const openAssignmentCount = await tx.supplierAssignment.count({
-      where: {
-        supplierCompanyId,
-        status: { in: ["PENDING", "VIEWED", "ACCEPTED"] },
-        expiresAt: { gt: now },
-        quoteRequest: { status: { in: ["OPEN", "MATCHING", "QUOTED"] }, responseDueAt: { gt: now } },
-      },
-    });
+    const entitledAssignments = assignmentCandidates.filter((assignment) => canReadSupplierAssignment(company, assignment, now));
+    const assignments = entitledAssignments.slice(0, 8);
+    const openAssignmentCount = entitledAssignments.length;
     const recentQuotations = await tx.supplierQuotation.findMany({
       where: {
         supplierCompanyId,
         submittedAt: { gte: last30Days },
         status: { in: ["SUBMITTED", "SELECTED_PENDING_PAYMENT", "ACCEPTED", "REJECTED"] },
       },
-      include: { quoteRequest: { select: { reference: true, title: true } } },
+      include: { quoteRequest: { select: { reference: true, title: true, status: true } } },
       orderBy: { submittedAt: "desc" },
       take: 100,
     });
-    const latestWonQuotation = await tx.supplierQuotation.findFirst({
+    const latestSelectedQuotation = await tx.supplierQuotation.findFirst({
       where: { supplierCompanyId, status: "ACCEPTED" },
-      include: { quoteRequest: { select: { reference: true, title: true } } },
+      include: { quoteRequest: { select: { reference: true, title: true, status: true } } },
       orderBy: { decidedAt: "desc" },
     });
     const recentAssignments = await tx.supplierAssignment.findMany({
@@ -101,8 +100,15 @@ export async function getSupplierDashboard(supplierCompanyId: string, userId: st
       ? Math.round(answeredAssignments.reduce((total, item) => total + (item.respondedAt!.getTime() - item.assignedAt.getTime()), 0) / answeredAssignments.length)
       : null;
     const decided = recentQuotations.filter((item) => ["ACCEPTED", "REJECTED"].includes(item.status));
-    const wonThisMonth = recentQuotations.filter((item) => item.status === "ACCEPTED" && item.decidedAt && item.decidedAt >= monthStart);
-    const monthValuePence = wonThisMonth.reduce((total, item) => total + Math.round(Number(item.price) * 100), 0);
+    const selectedThisMonth = recentQuotations.filter((item) => item.status === "ACCEPTED" && item.decidedAt && item.decidedAt >= monthStart);
+    const confirmedThisMonth = selectedThisMonth.filter((item) => ["CONFIRMED", "COMPLETED"].includes(item.quoteRequest.status));
+    const monthValuePence = confirmedThisMonth.reduce((total, item) => total + Math.round(Number(item.price) * 100), 0);
+    const membershipLimits = company.subscription?.membershipPlan
+      ? effectiveMembershipLimits(company.subscription.membershipPlan, company)
+      : null;
+    const declaredMonthlyCapacity = company.capabilities.reduce((total, capability) => total + (capability.declaredMonthlyCapacity ?? 0), 0) || null;
+    const operationallyPaused = company.capabilities.length > 0
+      && company.capabilities.every((capability) => ["FULL", "PAUSED", "HOLIDAY", "NOT_ACCEPTING"].includes(capability.capacityStatus));
 
     return {
       company,
@@ -112,19 +118,28 @@ export async function getSupplierDashboard(supplierCompanyId: string, userId: st
       generatedAt: now,
       metrics: {
         openQuotes: recentQuotations.filter((item) => ["SUBMITTED", "SELECTED_PENDING_PAYMENT"].includes(item.status)).length,
-        wonThisMonth: wonThisMonth.length,
+        selectedThisMonth: selectedThisMonth.length,
+        confirmedThisMonth: confirmedThisMonth.length,
         responseRate,
         averageResponseMs,
-        winRate: decided.length ? Math.round((decided.filter((item) => item.status === "ACCEPTED").length / decided.length) * 100) : null,
+        selectionRate: decided.length ? Math.round((decided.filter((item) => item.status === "ACCEPTED").length / decided.length) * 100) : null,
+        confirmationRate: selectedThisMonth.length ? Math.round((confirmedThisMonth.length / selectedThisMonth.length) * 100) : null,
         monthValuePence,
       },
-      latestWonQuotation,
+      latestSelectedQuotation,
       recentQuotations: recentQuotations.slice(0, 5),
       upgradeInsight: {
         geographicMisses: geographicMisses.length,
         nextPlanBandMisses,
         nextPlanBandLabel: upgradeBand?.label ?? null,
         tier,
+      },
+      opportunityAccess: {
+        currentActive: openAssignmentCount,
+        normalActiveLimit: membershipLimits?.maximumActiveOpportunities ?? 0,
+        invitations30Days: recentAssignments.length,
+        declaredMonthlyCapacity,
+        operationalStatus: operationallyPaused ? "Paused" : company.capabilities.some((capability) => capability.capacityStatus === "LIMITED") ? "Limited" : "Available",
       },
     };
   }));
@@ -134,7 +149,12 @@ export async function getSupplierRequest(
   supplierCompanyId: string,
   reference: string,
 ) {
-  return prisma.supplierAssignment.findFirst({
+  const company = await prisma.supplierCompany.findUnique({
+    where: { id: supplierCompanyId },
+    include: { subscription: { include: { membershipPlan: true } } },
+  });
+  if (!company) return null;
+  const assignment = await prisma.supplierAssignment.findFirst({
     where: {
       supplierCompanyId,
       quoteRequest: { reference },
@@ -147,4 +167,5 @@ export async function getSupplierRequest(
       quotation: { include: { attachments: true, contactAccess: true } },
     },
   });
+  return assignment && canReadSupplierAssignment(company, assignment) ? assignment : null;
 }

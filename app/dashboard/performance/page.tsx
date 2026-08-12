@@ -18,8 +18,11 @@ export default async function PerformancePage() {
       status: { in: ["SUBMITTED", "ACCEPTED", "REJECTED"] },
     },
   });
-  const won = await prisma.supplierQuotation.count({
+  const selected = await prisma.supplierQuotation.count({
     where: { supplierCompanyId: companyId, status: "ACCEPTED" },
+  });
+  const confirmed = await prisma.supplierQuotation.count({
+    where: { supplierCompanyId: companyId, status: "ACCEPTED", quoteRequest: { status: { in: ["CONFIRMED", "COMPLETED"] } } },
   });
   const avg = assignments.length
     ? assignments.reduce(
@@ -38,10 +41,11 @@ export default async function PerformancePage() {
     ],
     ["Quotations submitted", String(submitted), TrendingUp],
     [
-      "Win rate",
-      submitted ? `${Math.round((won / submitted) * 100)}%` : "—",
+      "Selection rate",
+      submitted ? `${Math.round((selected / submitted) * 100)}%` : "—",
       Target,
     ],
+    ["Selected → confirmed", selected ? `${Math.round((confirmed / selected) * 100)}%` : "—", Target],
   ] as const;
   return (
     <PortalPage

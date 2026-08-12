@@ -33,14 +33,14 @@ export function firstContactConsentReply(input: FirstContactReplyInput) {
       ? "I’ve securely received what you sent. I’ll keep it safe, but I won’t analyse it until you choose to continue."
       : null;
   return [
-    "Hi 👋 I’m Bridge AI, your quotation assistant from Ironbridge Group Ltd.",
+    "Hi 👋 I’m Bridge-iT, your quotation assistant from Ironbridge Group Ltd.",
     "What do you need? Bridge it. Send me a message, photo, drawing or document, and tell me where and when you need it.",
     received,
     "I’ll identify the right specialist category behind the scenes, turn the useful details into a clear request for approved suppliers, then bring their prices and lead times back here.",
     "Clear photos, surveys, drawings, schedules and PDFs usually lead to faster, more confident supplier quotes.",
     "Your contact details stay private until you accept a quote and the selected supplier completes the secure contact unlock.",
     `Privacy: ${input.privacyUrl}`,
-    "Reply CONTINUE to let Bridge AI use automated processing for this enquiry, or STOP to end.",
+    "Reply CONTINUE to let Bridge-iT use automated processing for this enquiry, or STOP to end.",
   ].filter(Boolean).join("\n\n");
 }
 
@@ -157,9 +157,37 @@ export function isMenuRequest(value: string) {
   return /^(hi|hello|hey|menu|help|start)$/i.test(value.trim());
 }
 
+export function isConversationalHelpRequest(value: string) {
+  const normalised = value
+    .trim()
+    .replace(/[.!?]+$/g, "")
+    .replace(/\s+/g, " ");
+  return /^(?:(?:hi|hello|hey)(?: bridge(?: ai|-?it))?[, ]*)?(?:can|could|would) you help(?: me)?(?: (?:find|get)(?: me| us)?| with)?(?: a)? quote(?: please)?$/i.test(normalised)
+    || /^(?:(?:hi|hello|hey)(?: bridge(?: ai|-?it))?[, ]*)?i need help (?:finding|getting|with) (?:a )?quote(?: please)?$/i.test(normalised)
+    || /^(?:can you help me|please help me|i need some help)$/i.test(normalised);
+}
+
+export function conversationPivotContext<T extends { direction: "INBOUND" | "OUTBOUND"; text: string }>(
+  messages: T[],
+  latestText: string,
+) {
+  const latestInboundIndex = messages.findLastIndex(
+    (message) => message.direction === "INBOUND" && message.text === latestText,
+  );
+  if (latestInboundIndex < 0) return [{ direction: "INBOUND" as const, text: latestText }];
+  const recentStart = Math.max(0, latestInboundIndex - 8);
+  const helpIndex = messages.findLastIndex(
+    (message, index) => index >= recentStart
+      && index < latestInboundIndex
+      && message.direction === "INBOUND"
+      && isConversationalHelpRequest(message.text),
+  );
+  return messages.slice(helpIndex >= 0 ? helpIndex : latestInboundIndex);
+}
+
 export function quoteMenu(hasDraft = false) {
   return [
-    "Hi 👋 I’m Bridge AI — your industry partner for finding competitive prices and lead times from approved suppliers.",
+    "Hi 👋 I’m Bridge-iT — your industry partner for finding competitive prices and lead times from approved suppliers.",
     "What do you need? Bridge it.",
     "1 — BRIDGE A REQUEST\nStart a fresh job, including a separate job for another customer.",
     "2 — MY QUOTES\nCheck your recent requests.",

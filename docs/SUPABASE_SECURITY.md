@@ -10,7 +10,7 @@ The `20260802183212_security_foundation.sql` migration establishes the current s
 
 ## RLS and privileges
 
-- 28 of 28 Bridge AI tables have `ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY`.
+- 28 of 28 Bridge-iT tables have `ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY`.
 - The current schema adds a private `WhatsAppJob` queue and separate policies for verified webhook ingestion and AI processing, in addition to supplier, administrator, reference-data, notification, audit and file paths.
 - `anon` has no application-table privileges. The application role is subject to policies as `authenticated` and has no `BYPASSRLS` attribute.
 - Policy helper functions live in the non-exposed `bridge_private` schema, set a fixed search path and are not generally executable.

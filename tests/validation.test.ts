@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assignmentDecisionSchema, registerSchema } from "../lib/auth/validation";
+import { affiliateProfileAdminSchema, affiliateProgrammeAdminSchema, assignmentDecisionSchema, registerSchema } from "../lib/auth/validation";
 
 describe("supplier input validation", () => {
   it("normalises a valid supplier registration", () => {
@@ -19,5 +19,15 @@ describe("supplier input validation", () => {
   it("accepts only explicit assignment decisions", () => {
     expect(assignmentDecisionSchema.safeParse({ decision: "accept" }).success).toBe(true);
     expect(assignmentDecisionSchema.safeParse({ decision: "delete" }).success).toBe(false);
+  });
+
+  it("bounds administrator affiliate programme controls", () => {
+    expect(affiliateProgrammeAdminSchema.safeParse({ maximumActive: 10, commissionRateBps: 1600, qualificationPayments: 1, commissionPayments: 12, validationDays: 30 }).success).toBe(true);
+    expect(affiliateProgrammeAdminSchema.safeParse({ maximumActive: 0, commissionRateBps: 1600, qualificationPayments: 1, commissionPayments: 12, validationDays: 30 }).success).toBe(false);
+    expect(affiliateProgrammeAdminSchema.safeParse({ maximumActive: 10, commissionRateBps: 10_001, qualificationPayments: 1, commissionPayments: 12, validationDays: 30 }).success).toBe(false);
+  });
+
+  it("normalises affiliate identity controls and supports the programme default rate", () => {
+    expect(affiliateProfileAdminSchema.parse({ displayName: " Partner One ", code: "partner01", commissionRateBps: null })).toEqual({ displayName: "Partner One", code: "PARTNER01", commissionRateBps: null });
   });
 });

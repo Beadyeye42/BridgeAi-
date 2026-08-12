@@ -11,10 +11,10 @@ import {
 
 export async function sendTeamInvitationEmail(email: string, invitationUrl: string) {
   if (!process.env.RESEND_API_KEY || !process.env.EMAIL_FROM) {
-    if (process.env.NODE_ENV === "development") console.info(`[Bridge AI] Team invitation for ${email}: ${invitationUrl}`);
+    if (process.env.NODE_ENV === "development") console.info(`[Bridge-iT] Team invitation for ${email}: ${invitationUrl}`);
     return { delivered: false as const, reason: "provider_not_configured" as const };
   }
-  const response = await fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ from: process.env.EMAIL_FROM, to: [email], subject: "Join your supplier team on Bridge AI", text: `You have been invited to a Bridge AI supplier workspace. Accept the invitation: ${invitationUrl}\n\nThis link expires in seven days.` }), signal: AbortSignal.timeout(10_000) });
+  const response = await fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ from: process.env.EMAIL_FROM, to: [email], subject: "Join your supplier team on Bridge-iT", text: `You have been invited to a Bridge-iT supplier workspace. Accept the invitation: ${invitationUrl}\n\nThis link expires in seven days.` }), signal: AbortSignal.timeout(10_000) });
   if (!response.ok) throw new Error(`Team invitation email failed with status ${response.status}`);
   return { delivered: true as const };
 }
@@ -51,9 +51,9 @@ export async function sendOperationalAlertEmail(
   if (!config.configured) throw new Error(`MONITORING_EMAIL_NOT_CONFIGURED: ${config.reason}`);
   if (!alerts.length) throw new Error("MONITORING_ALERTS_EMPTY");
   const critical = alerts.some((alert) => alert.severity === "CRITICAL");
-  const subject = `${critical ? "[CRITICAL]" : "[Action required]"} Bridge AI production alert${alerts.length === 1 ? "" : "s"} (${alerts.length})`;
+  const subject = `${critical ? "[CRITICAL]" : "[Action required]"} Bridge-iT production alert${alerts.length === 1 ? "" : "s"} (${alerts.length})`;
   const text = [
-    "Bridge AI detected production issues that require administrator attention.",
+    "Bridge-iT detected production issues that require administrator attention.",
     "No customer contact details or message contents are included in this email.",
     "",
     ...alerts.flatMap((alert, index) => [
@@ -150,7 +150,7 @@ export async function sendAffiliateNotificationEmail(
 ) {
   const config = supplierEmailConfiguration();
   if (!config.configured) throw new Error(`AFFILIATE_EMAIL_NOT_CONFIGURED: ${config.reason}`);
-  const text = [`Hello ${input.firstName},`, "", input.body, "", `View your affiliate portal: ${input.portalUrl}`, "", "Bridge AI · Ironbridge Group Ltd"].join("\n");
+  const text = [`Hello ${input.firstName},`, "", input.body, "", `View your affiliate portal: ${input.portalUrl}`, "", "Bridge-iT · Ironbridge Group Ltd"].join("\n");
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     signal: AbortSignal.timeout(10_000),

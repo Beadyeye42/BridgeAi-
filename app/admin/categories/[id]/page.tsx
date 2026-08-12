@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireAdminPage } from "@/lib/auth/guards";
 import { AdminHeading } from "@/components/admin/admin-shell";
-import { CategoryStatusButton, ProductCreateForm } from "@/components/admin/admin-actions";
+import { CategoryStatusButton, IndustryDeadlineControl, ProductCreateForm } from "@/components/admin/admin-actions";
 import { industryExperience, industryLaunchBlocker } from "@/lib/categories/industry-registry";
 
 export default async function IndustryPage({ params }: { params: Promise<{ id: string }> }) {
@@ -67,6 +67,7 @@ export default async function IndustryPage({ params }: { params: Promise<{ id: s
             <small>{experience.whatsappExperience}</small>
           </div>
           <CategoryStatusButton id={industry.id} active={industry.active} isGroup lockedReason={launchBlocker}/>
+          <IndustryDeadlineControl id={industry.id} acknowledgementHours={industry.acknowledgementDeadlineHours} quotationHours={industry.quotationDeadlineHours}/>
         </section>
         <ProductCreateForm parentId={industry.id} industryName={industry.name}/>
       </aside>

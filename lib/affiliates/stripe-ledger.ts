@@ -99,6 +99,10 @@ export async function syncAffiliateSubscriptionLifecycle(subscription: Stripe.Su
   const companyId = subscription.metadata.supplierCompanyId;
   if (!companyId) return;
   await runAsDatabaseWorker("stripe_billing", async (tx) => {
+    const programme = await tx.affiliateProgramme.findUniqueOrThrow({
+      where: { id: "default" },
+      select: { qualificationPayments: true, commissionPayments: true },
+    });
     const referral = await tx.affiliateReferral.findUnique({
       where: { supplierCompanyId: companyId },
       include: { supplierCompany: { select: { legalName: true } } },
@@ -109,11 +113,11 @@ export async function syncAffiliateSubscriptionLifecycle(subscription: Stripe.Su
     const priorStatus = referral.status;
     const nextStatus = ended ? "CANCELLED" : referralLifecycle(subscription.status, subscription.cancel_at_period_end);
     const preserveCommissionProgress = !ended && !scheduled && !["PAST_DUE", "CANCELLATION_SCHEDULED"].includes(nextStatus);
-    const progressStatus = referral.eligibleCommissionPeriodsCompleted >= 12
+    const progressStatus = referral.eligibleCommissionPeriodsCompleted >= programme.commissionPayments
       ? "COMMISSION_COMPLETED"
-      : referral.successfulPaidPeriods === 1
+      : referral.successfulPaidPeriods > 0 && referral.successfulPaidPeriods <= programme.qualificationPayments
         ? "QUALIFICATION_MONTH"
-        : referral.successfulPaidPeriods > 1
+        : referral.successfulPaidPeriods > programme.qualificationPayments
           ? "COMMISSION_ACTIVE"
           : nextStatus;
     await tx.affiliateReferral.update({
@@ -135,17 +139,17 @@ export async function syncAffiliateSubscriptionLifecycle(subscription: Stripe.Su
     if (scheduled && priorStatus !== "CANCELLATION_SCHEDULED") administratorAlerts.push({
       fingerprint: `affiliate-cancellation-scheduled:${subscription.id}:${subscription.cancel_at ?? subscription.items.data[0]?.current_period_end ?? "period-end"}`,
       title: "Affiliate referral cancellation scheduled",
-      body: `${referral.supplierCompany.legalName}, attributed to a Bridge AI affiliate, has scheduled membership cancellation. Review the affiliate and subscriber position before access ends.`,
+      body: `${referral.supplierCompany.legalName}, attributed to a Bridge-iT affiliate, has scheduled membership cancellation. Review the affiliate and subscriber position before access ends.`,
     });
     if (ended && priorStatus !== "CANCELLED") notifications.push({
       type: "CANCELLATION_COMPLETED",
       title: "Referred supplier membership ended",
-      body: `${referral.supplierCompany.legalName} has cancelled their Bridge AI membership. Future affiliate commission from this referral has ended.`,
+      body: `${referral.supplierCompany.legalName} has cancelled their Bridge-iT membership. Future affiliate commission from this referral has ended.`,
     });
     if (ended && priorStatus !== "CANCELLED") administratorAlerts.push({
       fingerprint: `affiliate-cancellation-completed:${subscription.id}`,
       title: "Affiliate referral membership ended",
-      body: `${referral.supplierCompany.legalName}, attributed to a Bridge AI affiliate, has ended membership. Future commission has stopped and the cancellation is recorded in the affiliate ledger history.`,
+      body: `${referral.supplierCompany.legalName}, attributed to a Bridge-iT affiliate, has ended membership. Future commission has stopped and the cancellation is recorded in the affiliate ledger history.`,
     });
     if (nextStatus === "PAST_DUE" && priorStatus !== "PAST_DUE") notifications.push({
       type: "PAYMENT_FAILED",
@@ -185,6 +189,10 @@ export async function syncAffiliateSubscriptionLifecycle(subscription: Stripe.Su
 export async function recordAffiliatePlanChange(companyId: string, previousPlanCode: string | null, nextPlanCode: string) {
   if (!previousPlanCode || previousPlanCode === nextPlanCode) return;
   await runAsDatabaseWorker("stripe_billing", async (tx) => {
+    const programme = await tx.affiliateProgramme.findUniqueOrThrow({
+      where: { id: "default" },
+      select: { commissionPayments: true },
+    });
     const referral = await tx.affiliateReferral.findUnique({ where: { supplierCompanyId: companyId }, include: { supplierCompany: { select: { legalName: true } } } });
     if (!referral) return;
     const plans = await tx.membershipPlan.findMany({ where: { code: { in: [previousPlanCode, nextPlanCode] } }, select: { code: true, monthlyPricePence: true, name: true } });
@@ -194,7 +202,7 @@ export async function recordAffiliatePlanChange(companyId: string, previousPlanC
       affiliateId: referral.affiliateId,
       type: upgraded ? "PLAN_UPGRADED" : "PLAN_DOWNGRADED",
       title: upgraded ? "Referred supplier upgraded" : "Referred supplier changed plan",
-      body: `${referral.supplierCompany.legalName} moved from ${previous?.name ?? previousPlanCode} to ${next?.name ?? nextPlanCode}. Commission will follow the actual net amount of the next paid invoice; the 12-payment clock does not reset.`,
+      body: `${referral.supplierCompany.legalName} moved from ${previous?.name ?? previousPlanCode} to ${next?.name ?? nextPlanCode}. Commission will follow the actual net amount of the next paid invoice; the ${programme.commissionPayments}-payment clock does not reset.`,
       actionUrl: "/affiliate/referrals",
     } });
     await tx.affiliateAuditLog.create({ data: { affiliateId: referral.affiliateId, action: "AFFILIATE.REFERRAL_PLAN_CHANGED", entityType: "AffiliateReferral", entityId: referral.id, summary: "Referred supplier membership plan changed", metadata: { previousPlanCode, nextPlanCode, upgraded } } });
