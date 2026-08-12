@@ -1785,6 +1785,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
         currentDraft: initialDraft,
         categories,
         safetyIdentifier: refreshed.conversation.customerContact.phoneHash,
+        referenceDate: inbound.occurredAt,
       });
     } catch (error) {
       if (!productRecognition) throw error;
@@ -1957,6 +1958,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     currentDraft: draft,
     categories: intakeCategories,
     safetyIdentifier: refreshed.conversation.customerContact.phoneHash,
+    referenceDate: inbound.occurredAt,
   });
   if (result.intent === "QUESTION") {
     if (!beganWithoutDraft || !initialExtraction) {

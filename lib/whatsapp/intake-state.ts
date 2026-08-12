@@ -30,6 +30,63 @@ export type TradeClarification = {
 
 const deadlineWeekdays = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
 
+function londonLocalDateTimeToIso(year: number, month: number, day: number, hour: number, minute: number) {
+  const desiredWallClock = Date.UTC(year, month - 1, day, hour, minute);
+  let utcGuess = desiredWallClock;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Europe/London",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(new Date(utcGuess));
+    const value = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((item) => item.type === type)?.value);
+    const renderedWallClock = Date.UTC(value("year"), value("month") - 1, value("day"), value("hour"), value("minute"));
+    utcGuess += desiredWallClock - renderedWallClock;
+  }
+
+  return new Date(utcGuess).toISOString();
+}
+
+function requestedTime(value: string) {
+  if (/\b(?:midday|noon)\b/i.test(value)) return { hour: 12, minute: 0 };
+  if (/\bmorning\b/i.test(value)) return { hour: 9, minute: 0 };
+  if (/\bafternoon\b/i.test(value)) return { hour: 13, minute: 0 };
+  if (/\bevening\b/i.test(value)) return { hour: 18, minute: 0 };
+  const match = /\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i.exec(value)
+    ?? /\b(?:at\s+)(\d{1,2})(?::(\d{2}))\b/i.exec(value);
+  if (!match) return { hour: 12, minute: 0 };
+  let hour = Number(match[1]);
+  const minute = Number(match[2] ?? 0);
+  const meridiem = match[3]?.toLocaleLowerCase("en-GB");
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || minute > 59) return null;
+  if (meridiem) {
+    if (hour < 1 || hour > 12) return null;
+    if (meridiem === "am" && hour === 12) hour = 0;
+    if (meridiem === "pm" && hour !== 12) hour += 12;
+  } else if (hour > 23) return null;
+  return { hour, minute };
+}
+
+function explicitUkDate(value: string, currentYear: number, localTodayAtNoonUtc: number) {
+  const numeric = /\b(\d{1,2})[\/-](\d{1,2})(?:[\/-](\d{2}|\d{4}))?\b/.exec(value);
+  if (!numeric) return null;
+  const day = Number(numeric[1]);
+  const month = Number(numeric[2]);
+  let year = numeric[3] ? Number(numeric[3]) : currentYear;
+  if (year < 100) year += 2000;
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  let date = Date.UTC(year, month - 1, day, 12);
+  const parsed = new Date(date);
+  if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() !== month - 1 || parsed.getUTCDate() !== day) return null;
+  if (!numeric[3] && date < localTodayAtNoonUtc) date = Date.UTC(year + 1, month - 1, day, 12);
+  return new Date(date);
+}
+
 /**
  * Resolves the short deadline answers customers commonly send after Bridge-iT asks
  * "When do you need it?". The result is midday in Europe/London so it remains on
@@ -51,15 +108,30 @@ export function resolveCustomerDeadline(value: string, now = new Date()) {
   const day = part("day");
   if (!year || !month || !day) return null;
   const localTodayAtNoonUtc = Date.UTC(year, month - 1, day, 12);
+  const time = requestedTime(normalised);
+  if (!time) return null;
+  const explicitDate = explicitUkDate(normalised, year, localTodayAtNoonUtc);
+  if (explicitDate) {
+    return londonLocalDateTimeToIso(
+      explicitDate.getUTCFullYear(),
+      explicitDate.getUTCMonth() + 1,
+      explicitDate.getUTCDate(),
+      time.hour,
+      time.minute,
+    );
+  }
   let daysToAdd: number | null = null;
 
-  if (normalised === "today") daysToAdd = 0;
-  else if (normalised === "tomorrow") daysToAdd = 1;
+  if (/\btoday\b/.test(normalised)) daysToAdd = 0;
+  else if (/\btomorrow\b/.test(normalised)) daysToAdd = 1;
   else {
-    const withinDays = /^within\s+(\d{1,3})\s+days?$/.exec(normalised);
+    const withinDays = /\bwithin\s+(\d{1,3})\s+days?\b/.exec(normalised);
     if (withinDays) daysToAdd = Number(withinDays[1]);
     else {
-      const requestedWeekday = deadlineWeekdays.indexOf(normalised as (typeof deadlineWeekdays)[number]);
+      const weekdayMatch = new RegExp(`\\b(?:(?:next|this)\\s+)?(${deadlineWeekdays.join("|")})\\b`, "i").exec(normalised);
+      const requestedWeekday = weekdayMatch
+        ? deadlineWeekdays.indexOf(weekdayMatch[1].toLocaleLowerCase("en-GB") as (typeof deadlineWeekdays)[number])
+        : -1;
       if (requestedWeekday >= 0) {
         const currentWeekday = new Date(localTodayAtNoonUtc).getUTCDay();
         daysToAdd = (requestedWeekday - currentWeekday + 7) % 7 || 7;
@@ -68,7 +140,14 @@ export function resolveCustomerDeadline(value: string, now = new Date()) {
   }
 
   if (daysToAdd === null || daysToAdd < 0 || daysToAdd > 366) return null;
-  return new Date(localTodayAtNoonUtc + daysToAdd * 86_400_000).toISOString();
+  const requestedDate = new Date(localTodayAtNoonUtc + daysToAdd * 86_400_000);
+  return londonLocalDateTimeToIso(
+    requestedDate.getUTCFullYear(),
+    requestedDate.getUTCMonth() + 1,
+    requestedDate.getUTCDate(),
+    time.hour,
+    time.minute,
+  );
 }
 
 type TradeDraft = {
