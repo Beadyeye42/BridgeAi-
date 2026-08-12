@@ -73,6 +73,10 @@ describe("Hyperlocal service network", () => {
     ["There is water coming through my ceiling", "emergency-plumbing"],
     ["Can someone clear our office?", "property-clearance"],
     ["I need garden clearance and the waste taken away", "garden-clearance"],
+    ["Waste removal from my garden", "garden-clearance"],
+    ["Garden rubbish removal", "garden-clearance"],
+    ["Please remove rubbish from the garden", "garden-clearance"],
+    ["I need rubbish clearance from my garage", "property-clearance"],
     ["My Bosch washing machine is showing an error", "washing-laundry-appliance-repair"],
     ["I need CCTV installed around my shop", "cctv-alarms-intercom"],
   ])("recognises a natural request without an industry menu: %s", (message, slug) => {
@@ -101,7 +105,8 @@ describe("Hyperlocal service network", () => {
     ["mobile-tyre-fitting", "I have a flat tyre on car AB12 CDE", "tyre_size", "tyre size"],
     ["emergency-plumbing", "A pipe has burst in my house", "water_isolated", "water off"],
     ["domestic-cleaning", "I need a cleaner for my three bedroom house", "bathrooms", "bathrooms"],
-    ["garden-clearance", "Please clear my large overgrown garden", "waste_removal", "garden waste"],
+    ["garden-clearance", "Please clear my large overgrown garden", "waste_volume", "how much"],
+    ["garden-clearance", "Waste removal from my garden", "waste_volume", "how much"],
     ["dishwasher-repair", "My Bosch dishwasher shows E15 and is leaking", "model", "brand and model"],
     ["emergency-locksmith", "I am locked out of my front door", "authority_to_access", "authorised to access"],
   ])("collects the next price-critical detail for %s", (slug, message, expectedField, expectedWords) => {

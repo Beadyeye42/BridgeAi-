@@ -204,7 +204,7 @@ function fieldIsKnown(field: string, evidence: string) {
     site_type: /\b(?:domestic|residential|commercial|industrial|office|shop|warehouse|school|hotel|restaurant|short[- ]let|airbnb)\b/i,
     area_or_length: /\b\d+(?:\.\d+)?\s*(?:m2|m²|square metres?|sq\.?\s*(?:m|ft)|metres?|feet|ft)\b/i,
     quantity_or_area: /\b\d+\s*(?:rooms?|windows?|ovens?|carpets?|sofas?|chairs?|items?)\b|\b\d+(?:\.\d+)?\s*(?:m2|m²|sq\.?\s*(?:m|ft))\b/i,
-    waste_type: /\b(?:household|garden|green|builders?|construction|wood|timber|soil|rubble|furniture|office|mixed)\s+waste\b/i,
+    waste_type: /\b(?:household|garden|green|builders?|construction|wood|timber|soil|rubble|furniture|office|mixed)\s+waste\b|\b(?:garden|green)\s+(?:rubbish|cuttings?|clippings?)\b|\b(?:waste|rubbish|cuttings?|clippings?)\b[^\n]{0,30}\b(?:garden|yard)\b|\bovergrown\s+garden\b/i,
     waste_volume: /\b(?:\d+\s*(?:bags?|items?|rooms?)|car load|van load|skip load|room contents?|house contents?)\b/i,
     waste_removal: /\b(?:take|remove|clear|dispose|leave)\s+(?:the\s+)?(?:waste|rubbish|cuttings)|\bwaste removal\b/i,
     tree_count: /\b\d+\s*(?:trees?|hedges?)\b/i,

@@ -107,7 +107,26 @@ export const HYPERLOCAL_INDUSTRIES: readonly HyperlocalIndustryDefinition[] = [
     hyperlocal: true,
     services: [
       service("garden-maintenance", "Garden maintenance, lawns & hedges", ["gardener", "garden maintenance", "lawn mowing", "hedge cutting", "garden tidy", "regular gardener"], [...locationWhen, "garden_size", "recurrence", "waste_removal", "access"], ["garden_maintenance", "lawn_care", "hedge_work", "recurring_capacity"], { photoPrompt: "Please send a few photos showing the garden and access." }),
-      service("garden-clearance", "Garden clearance", ["clear garden", "garden clearance", "garden waste clearance", "overgrown garden"], [...locationWhen, "garden_size", "photos", "waste_removal", "access"], ["clearance", "waste_removal", "machinery"], { photoPrompt: "Please send wide photos of the garden and the route to the road.", verification: ["waste_carrier_evidence"] }),
+      service(
+        "garden-clearance",
+        "Garden clearance",
+        [
+          "clear garden",
+          "garden clearance",
+          "garden waste clearance",
+          "garden waste removal",
+          "garden rubbish removal",
+          "garden rubbish clearance",
+          "waste removal from my garden",
+          "rubbish removal from my garden",
+          "remove garden waste",
+          "remove rubbish from my garden",
+          "overgrown garden",
+        ],
+        [...locationWhen, "waste_type", "waste_volume", "garden_size", "waste_removal", "photos", "access"],
+        ["clearance", "waste_removal", "machinery"],
+        { photoPrompt: "Please send wide photos of the garden and the route to the road.", verification: ["waste_carrier_evidence"] },
+      ),
       service("trees-stumps", "Tree work & stump grinding", ["tree pruning", "tree removal", "stump grinding", "cut tree"], [...locationWhen, "tree_count", "approximate_height", "photos", "access"], ["trees", "stump_grinding", "machinery"], { verification: ["specialist_tree_evidence", "insurance"], matchingWeights: specialist }),
       service("fencing-decking", "Fencing & decking", ["fence repair", "new fence", "fencing", "decking"], [...locationWhen, "dimensions", "materials_by", "photos", "access"], ["fencing", "decking"], { photoPrompt: "Please send photos and the approximate length or dimensions." }),
       service("patios-landscaping", "Patios, landscaping & groundworks", ["patio installation", "patio repair", "landscaping", "small groundworks", "garden drainage"], [...locationWhen, "dimensions", "scope", "materials_by", "photos", "access"], ["patios", "landscaping", "machinery"], { matchingWeights: specialist }),
@@ -163,7 +182,7 @@ export function hyperlocalIndustryForService(slug: string | null | undefined) {
 export function hyperlocalRecognitionRules() {
   return HYPERLOCAL_INDUSTRIES.flatMap((industry) => industry.services.flatMap((entry) => (
     entry.aliases.map((alias) => ({ industrySlug: industry.slug, serviceSlug: entry.slug, label: entry.name, alias }))
-  )));
+  ))).sort((left, right) => right.alias.length - left.alias.length);
 }
 
 export function inferUrgency(text: string, requiredBy: Date | null, now = new Date()): RequestUrgency {

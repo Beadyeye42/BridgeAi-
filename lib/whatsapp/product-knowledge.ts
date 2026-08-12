@@ -24,6 +24,11 @@ function literalPattern(value: string) {
 }
 
 const productRules: ProductRule[] = [
+  {
+    slug: "garden-clearance",
+    pattern: /\b(?:garden|yard)\b[^.!?\n]{0,60}\b(?:waste|rubbish|clearance|clear(?:ing|ed)?|remove|removal)\b|\b(?:waste|rubbish|clearance|clear(?:ing|ed)?|remove|removal)\b[^.!?\n]{0,60}\b(?:garden|yard)\b/i,
+    answer: "Bridge-iT can match garden rubbish and waste-clearance work with suitable approved local businesses. Send the postcode, when it needs clearing and roughly how much there is; a few wide photos will help suppliers price it accurately.",
+  },
   ...hyperlocalRecognitionRules().map(({ serviceSlug, label, alias }) => ({
     slug: serviceSlug,
     pattern: literalPattern(alias),
