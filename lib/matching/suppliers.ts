@@ -11,6 +11,7 @@ import {
 import { effectiveMembershipLimits } from "../billing/membership-plans";
 import { buyerTypeAllowed, buyerTypeLabel, type BuyerTypeValue } from "../whatsapp/buyer-classification";
 import { hyperlocalService, type RequestUrgency } from "../categories/hyperlocal-industries";
+import { matchingCoveragePurpose } from "../categories/transport";
 
 type MatchingClient = Pick<Prisma.TransactionClient, "supplierCompany"> & Partial<Pick<Prisma.TransactionClient, "matchingConfiguration" | "productCategory">>;
 
@@ -21,6 +22,10 @@ type RequestForMatching = {
   deliveryPostcode: string;
   deliveryLatitude: Prisma.Decimal | number | null;
   deliveryLongitude: Prisma.Decimal | number | null;
+  matchingPostcode?: string | null;
+  matchingLatitude?: Prisma.Decimal | number | null;
+  matchingLongitude?: Prisma.Decimal | number | null;
+  matchingCoveragePurpose?: "SERVICE" | "DELIVERY" | null;
   customerBudget?: Prisma.Decimal | number | null;
   requiredManufacturer?: string | null;
   requiredSystem?: string | null;
@@ -234,20 +239,23 @@ const supportsColour = (values: string[], required: string) => {
   return false;
 };
 
-export async function resolveDeliveryLocation(request: Pick<RequestForMatching, "deliveryPostcode" | "deliveryLatitude" | "deliveryLongitude">): Promise<LocationResolution> {
-  const latitude = request.deliveryLatitude === null ? null : Number(request.deliveryLatitude);
-  const longitude = request.deliveryLongitude === null ? null : Number(request.deliveryLongitude);
+export async function resolveDeliveryLocation(request: Pick<RequestForMatching, "deliveryPostcode" | "deliveryLatitude" | "deliveryLongitude" | "matchingPostcode" | "matchingLatitude" | "matchingLongitude">): Promise<LocationResolution> {
+  const postcode = request.matchingPostcode ?? request.deliveryPostcode;
+  const rawLatitude = request.matchingLatitude ?? request.deliveryLatitude;
+  const rawLongitude = request.matchingLongitude ?? request.deliveryLongitude;
+  const latitude = rawLatitude === null ? null : Number(rawLatitude);
+  const longitude = rawLongitude === null ? null : Number(rawLongitude);
   if (latitude !== null && longitude !== null && Number.isFinite(latitude) && Number.isFinite(longitude)) {
-    return { location: { postcode: normalizePostcode(request.deliveryPostcode), latitude, longitude }, warning: null };
+    return { location: { postcode: normalizePostcode(postcode), latitude, longitude }, warning: null };
   }
   try {
-    const result = await lookupPostcode(request.deliveryPostcode);
+    const result = await lookupPostcode(postcode);
     return { location: { postcode: normalizePostcode(result.postcode), latitude: result.latitude, longitude: result.longitude }, warning: null };
   } catch (error) {
     const warning = error instanceof PostcodeLookupError
       ? `${error.message} Distance-radius suppliers cannot be matched until the delivery postcode is resolved.`
       : "Distance matching is temporarily unavailable.";
-    return { location: { postcode: normalizePostcode(request.deliveryPostcode), latitude: null, longitude: null }, warning };
+    return { location: { postcode: normalizePostcode(postcode), latitude: null, longitude: null }, warning };
   }
 }
 
@@ -476,7 +484,10 @@ export async function evaluateSupplierMatches(
   }
   const industry = requestCategory?.parent ?? requestCategory;
   const buyerType = request.buyerType ?? "TRADE";
-  const purposeForRequest = ["SERVICE", "INSTALLATION"].includes(request.fulfilmentMode ?? "DELIVERY") ? "SERVICE" as const : "DELIVERY" as const;
+  const purposeForRequest = request.matchingCoveragePurpose ?? matchingCoveragePurpose({
+    categorySlug: requestCategory?.slug,
+    fulfilmentMode: request.fulfilmentMode,
+  });
   const candidates = await db.supplierCompany.findMany({
     where: {
       status: "APPROVED",

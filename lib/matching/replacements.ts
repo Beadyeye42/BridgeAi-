@@ -13,7 +13,10 @@ const VALID_QUOTATION_STATUSES = ["SUBMITTED", "SELECTED_PENDING_PAYMENT", "ACCE
 export async function inviteNextEligibleSupplier(quoteRequestId: string, replacementForId?: string) {
   const requestLocation = await runAsDatabaseWorker("whatsapp_ai", (tx) => tx.quoteRequest.findUnique({
     where: { id: quoteRequestId },
-    select: { deliveryPostcode: true, deliveryLatitude: true, deliveryLongitude: true },
+    select: {
+      deliveryPostcode: true, deliveryLatitude: true, deliveryLongitude: true,
+      matchingPostcode: true, matchingLatitude: true, matchingLongitude: true,
+    },
   }));
   if (!requestLocation) return { invited: false, reason: "request_missing" };
   const resolution = await resolveDeliveryLocation(requestLocation);
@@ -24,11 +27,15 @@ export async function inviteNextEligibleSupplier(quoteRequestId: string, replace
     const configuration = await tx.matchingConfiguration.findUnique({ where: { id: "default" } });
     const now = new Date();
     if (!quote || !["OPEN", "MATCHING", "QUOTED"].includes(quote.status) || quote.responseDueAt <= now) return { invited: false, reason: "request_closed" };
-    if ((quote.deliveryLatitude === null || quote.deliveryLongitude === null)
+    if ((quote.matchingLatitude === null || quote.matchingLongitude === null)
       && resolution.location.latitude !== null && resolution.location.longitude !== null) {
       quote = await tx.quoteRequest.update({
         where: { id: quote.id },
-        data: { deliveryLatitude: resolution.location.latitude, deliveryLongitude: resolution.location.longitude },
+        data: {
+          matchingPostcode: resolution.location.postcode,
+          matchingLatitude: resolution.location.latitude,
+          matchingLongitude: resolution.location.longitude,
+        },
         include: { items: { select: { quantity: true } } },
       });
     }
@@ -46,6 +53,7 @@ export async function inviteNextEligibleSupplier(quoteRequestId: string, replace
       quoteRequestId,
       categoryId: quote.categoryId,
       deliveryPostcode: quote.deliveryPostcode,
+      matchingPostcode: quote.matchingPostcode ?? quote.deliveryPostcode,
       evaluations,
       selectedSupplierIds: next ? [next.id] : [],
       invitedSupplierCount: activeAssignments + (next ? 1 : 0),

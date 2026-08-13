@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { hyperlocalService } from "@/lib/categories/hyperlocal-industries";
+import { extractUkPostcodes, isTransportCategorySlug, resolveTransportCollectionPostcode } from "@/lib/categories/transport";
 
 export const intakeQuestionKeys = [
   "BUYER_TYPE",
@@ -152,6 +153,8 @@ export function resolveCustomerDeadline(value: string, now = new Date()) {
 
 type TradeDraft = {
   categorySlug: string | null;
+  collectionPostcode?: string | null;
+  deliveryPostcode?: string | null;
   title: string | null;
   summary: string | null;
   items: Array<{ description: string; specification?: string | null }>;
@@ -234,19 +237,6 @@ const industryRootCategorySlugs = new Set([
   "transport-delivery-removals",
 ]);
 
-const transportCategorySlugs = new Set([
-  "transport-delivery-removals",
-  "man-with-a-van",
-  "trade-collection-delivery",
-  "same-day-courier",
-  "furniture-small-removals",
-  "bulky-item-transport",
-  "building-material-deliveries",
-  "multi-drop-delivery",
-]);
-
-const ukPostcodePattern = /\b(?:GIR\s?0AA|[A-PR-UWYZ][A-HK-Y]?\d[A-Z\d]?\s?\d[ABD-HJLNP-UW-Z]{2})\b/gi;
-
 export type TransportIntakeDecision = {
   isTransport: boolean;
   itemKnown: boolean;
@@ -277,9 +267,7 @@ const genericHyperlocalFields = new Set([
 
 function fieldIsKnown(field: string, evidence: string) {
   if (["recovery_destination", "collection_postcode", "delivery_postcode"].includes(field)) {
-    const postcodes = new Set(Array.from(evidence.matchAll(ukPostcodePattern), (match) => (
-      match[0].replace(/\s+/g, "").toUpperCase()
-    )));
+    const postcodes = new Set(extractUkPostcodes(evidence));
     return postcodes.size >= 2;
   }
   const patterns: Record<string, RegExp> = {
@@ -496,10 +484,10 @@ function hasAnswerAfterPrompt(messages: IntakeConversationMessage[], promptPatte
 }
 
 export function transportIntakeDecision(
-  draft: TradeDraft & { deliveryPostcode?: string | null },
+  draft: TradeDraft,
   messages: IntakeConversationMessage[],
 ): TransportIntakeDecision {
-  const isTransport = Boolean(draft.categorySlug && transportCategorySlugs.has(draft.categorySlug));
+  const isTransport = isTransportCategorySlug(draft.categorySlug);
   if (!isTransport) {
     return {
       isTransport: false,
@@ -522,10 +510,14 @@ export function transportIntakeDecision(
     draft.summary,
     ...draft.items.flatMap((item) => [item.description, item.specification]),
   ].filter((value): value is string => Boolean(value)).join("\n");
-  const postcodes = new Set(Array.from(evidence.matchAll(ukPostcodePattern), (match) => match[0].replace(/\s+/g, "").toUpperCase()));
+  const postcodes = new Set(extractUkPostcodes(evidence));
   const itemKnown = draft.items.length > 0
     && draft.items.some((item) => item.description.trim().length > 1);
-  const collectionPostcodeKnown = postcodes.size >= 2
+  const collectionPostcodeKnown = Boolean(resolveTransportCollectionPostcode({
+    collectionPostcode: draft.collectionPostcode,
+    deliveryPostcode: draft.deliveryPostcode,
+    evidence,
+  })) || postcodes.size >= 2
     || /\b(?:collection|collect(?:ion)?\s+from|pick[- ]?up)\b[^\n]{0,80}\b(?:GIR\s?0AA|[A-PR-UWYZ][A-HK-Y]?\d[A-Z\d]?\s?\d[ABD-HJLNP-UW-Z]{2})\b/i.test(evidence);
   const deliveryPostcodeKnown = Boolean(draft.deliveryPostcode) || postcodes.size >= 2;
   const accessKnown = /\b(?:ground[- ]?floor|first[- ]?floor|second[- ]?floor|upper[- ]?floor|stairs?|steps?|lift|elevator|level access|no stairs|access at both|access restrictions?)\b/i.test(inbound)
@@ -733,7 +725,7 @@ export function enforceTradeClarification(
   proposed: TradeClarification,
   customerMessages: string[],
 ): TradeClarification {
-  if (draft.categorySlug && (pheCategorySlugs.has(draft.categorySlug) || transportCategorySlugs.has(draft.categorySlug) || hyperlocalService(draft.categorySlug))) {
+  if (draft.categorySlug && (pheCategorySlugs.has(draft.categorySlug) || isTransportCategorySlug(draft.categorySlug) || hyperlocalService(draft.categorySlug))) {
     return { materialNeeded: false, colourNeeded: false, colourTerm: null };
   }
   const evidence = [

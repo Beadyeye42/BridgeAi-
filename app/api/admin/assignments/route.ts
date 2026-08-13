@@ -29,11 +29,15 @@ export async function POST(request: Request) {
       if (quote.deliveryPostcode !== preflight.deliveryPostcode) throw new Error("REQUEST_CHANGED");
       if (!["OPEN", "MATCHING"].includes(quote.status)) throw new Error("REQUEST_NOT_OPEN");
       if (quote.responseDueAt <= new Date()) throw new Error("RESPONSE_WINDOW_CLOSED");
-      if ((quote.deliveryLatitude === null || quote.deliveryLongitude === null)
+      if ((quote.matchingLatitude === null || quote.matchingLongitude === null)
         && resolution.location.latitude !== null && resolution.location.longitude !== null) {
         quote = await tx.quoteRequest.update({
           where: { id: quote.id },
-          data: { deliveryLatitude: resolution.location.latitude, deliveryLongitude: resolution.location.longitude },
+          data: {
+            matchingPostcode: resolution.location.postcode,
+            matchingLatitude: resolution.location.latitude,
+            matchingLongitude: resolution.location.longitude,
+          },
           include: { items: true },
         });
       }
@@ -59,6 +63,7 @@ export async function POST(request: Request) {
         quoteRequestId: quote.id,
         categoryId: quote.categoryId,
         deliveryPostcode: quote.deliveryPostcode,
+        matchingPostcode: quote.matchingPostcode ?? quote.deliveryPostcode,
         evaluations,
         selectedSupplierIds: unique,
         invitedSupplierCount: current + unique.length,
