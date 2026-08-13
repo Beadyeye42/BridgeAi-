@@ -3,6 +3,10 @@
   "regions": ["lhr1"],
   "crons": [
     {
+      "path": "/api/cron/process-whatsapp",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/cron/monitor-production",
       "schedule": "0 9 * * *"
     }
