@@ -4,7 +4,7 @@ import { Prisma } from "@prisma/client";
 import { getCurrentSession, getPrimarySupplierCompanyId } from "@/lib/auth/session";
 import { quoteMessageReplySchema, validationError } from "@/lib/auth/validation";
 import { writeAuditLog } from "@/lib/audit";
-import { prisma, runAsDatabaseWorker } from "@/lib/db";
+import { prisma } from "@/lib/db";
 import { queueBuyerAnswer } from "@/lib/quotes/conversations";
 import { moderatePreSelectionQuoteMessage } from "@/lib/quotes/message-moderation";
 import { encryptPrivateValue } from "@/lib/security/encryption";
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Contact details, addresses, links and social handles stay protected until the buyer selects a quote. Remove them and try again." }, { status: 422 });
   }
 
-  let saved: { id: string; quoteRequestId: string; whatsappConversationId: string };
+  let saved: { id: string };
   try {
     saved = await prisma.$transaction(async (tx) => {
       const conversation = await tx.quoteConversation.findFirst({
@@ -80,6 +80,11 @@ export async function POST(request: Request) {
           idempotencyKey: `supplier-answer:${question.id}:${randomUUID()}`,
         },
       });
+      await queueBuyerAnswer(tx, {
+        quoteMessageId: message.id,
+        quoteRequestId: conversation.quoteRequest.id,
+        whatsappConversationId: conversation.quoteRequest.conversationId,
+      });
       await tx.quoteConversation.update({ where: { id: conversation.id }, data: { lastMessageAt: new Date() } });
       await writeAuditLog({
         actorUserId: session.userId,
@@ -91,7 +96,7 @@ export async function POST(request: Request) {
         metadata: { quoteConversationId: conversation.id, replyToId: question.id },
         request,
       }, tx);
-      return { id: message.id, quoteRequestId: conversation.quoteRequest.id, whatsappConversationId: conversation.quoteRequest.conversationId };
+      return { id: message.id };
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
@@ -104,10 +109,6 @@ export async function POST(request: Request) {
     throw error;
   }
 
-  await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
-    await tx.quoteMessage.update({ where: { id: parsed.data.replyToId }, data: { answeredAt: new Date() } });
-    await queueBuyerAnswer(tx, { quoteMessageId: saved.id, quoteRequestId: saved.quoteRequestId, whatsappConversationId: saved.whatsappConversationId });
-  });
   after(() => processWhatsAppJobs({ limit: 5 }));
   return NextResponse.json({ ok: true, messageId: saved.id }, { status: 201 });
 }

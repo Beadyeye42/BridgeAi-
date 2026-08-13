@@ -13,11 +13,35 @@ DECLARE
   founding_a integer;
   founding_b integer;
 BEGIN
-  SELECT id INTO user_a FROM auth.users ORDER BY created_at LIMIT 1;
-  SELECT id INTO user_b FROM auth.users ORDER BY created_at OFFSET 1 LIMIT 1;
+  SELECT u.id INTO user_a
+  FROM auth.users u
+  WHERE NOT EXISTS (
+    SELECT 1 FROM bridge_ai.company_memberships membership
+    WHERE membership."userId" = u.id
+  )
+    AND NOT EXISTS (SELECT 1 FROM bridge_ai.affiliates affiliate WHERE affiliate."userId" = u.id)
+  ORDER BY u.created_at
+  LIMIT 1;
+  SELECT u.id INTO user_b
+  FROM auth.users u
+  WHERE u.id <> user_a
+    AND NOT EXISTS (
+      SELECT 1 FROM bridge_ai.company_memberships membership
+      WHERE membership."userId" = u.id
+    )
+    AND NOT EXISTS (SELECT 1 FROM bridge_ai.affiliates affiliate WHERE affiliate."userId" = u.id)
+  ORDER BY u.created_at
+  LIMIT 1;
   IF user_a IS NULL OR user_b IS NULL THEN
     RAISE EXCEPTION 'security integration test requires two auth users';
   END IF;
+
+  -- Production test projects may already use one of the disposable identities as
+  -- an administrator. Remove that bypass only inside this rollback transaction
+  -- so the supplier isolation assertions exercise the normal tenant policies.
+  UPDATE bridge_ai.platform_administrators
+  SET active = false
+  WHERE "userId" IN (user_a, user_b);
 
   SELECT candidate INTO founding_a
   FROM generate_series(1, 100) AS candidate
@@ -42,7 +66,8 @@ BEGIN
 
   INSERT INTO bridge_ai.portal_profiles (id,email,"firstName","lastName",status,"createdAt","updatedAt") VALUES
     (user_a,'rls-a@bridge.test','Supplier','A','ACTIVE',now(),now()),
-    (user_b,'rls-b@bridge.test','Supplier','B','ACTIVE',now(),now());
+    (user_b,'rls-b@bridge.test','Supplier','B','ACTIVE',now(),now())
+  ON CONFLICT (id) DO NOTHING;
   INSERT INTO bridge_ai.supplier_companies (
     id,"legalName","contactEmail","contactPhone",postcode,"geographicOriginPostcode",
     "geographicOriginLatitude","geographicOriginLongitude",status,"foundingMemberNumber","createdAt","updatedAt"
@@ -688,6 +713,12 @@ BEGIN
     'security_supplier_answer','security_quote_conversation','SUPPLIER',user_a,decode(repeat('cd',40),'hex'),'PENDING',
     'security-supplier-answer','security_buyer_question',now()
   );
+  INSERT INTO bridge_ai."WhatsAppJob" (
+    id,type,status,"idempotencyKey","conversationId","quoteRequestId","quoteMessageId","createdAt","updatedAt"
+  ) VALUES (
+    'security_supplier_answer_job','SEND_QUOTE_MESSAGE','PENDING','quote-message:security_supplier_answer',
+    'security_conversation','security_request','security_supplier_answer',now(),now()
+  );
   UPDATE bridge_ai."QuoteConversation" SET "lastMessageAt"=now() WHERE id='security_quote_conversation';
   GET DIAGNOSTICS affected_count = ROW_COUNT;
   IF affected_count <> 1 THEN RAISE EXCEPTION 'Supplier A could not update its conversation activity timestamp'; END IF;
@@ -723,6 +754,16 @@ BEGIN
       'forbidden-cross-company-answer','security_buyer_question',now()
     );
     RAISE EXCEPTION 'Supplier B answered Supplier A buyer question';
+  EXCEPTION WHEN insufficient_privilege OR unique_violation THEN NULL;
+  END;
+  BEGIN
+    INSERT INTO bridge_ai."WhatsAppJob" (
+      id,type,status,"idempotencyKey","conversationId","quoteRequestId","quoteMessageId","createdAt","updatedAt"
+    ) VALUES (
+      'forbidden_cross_company_answer_job','SEND_QUOTE_MESSAGE','PENDING','quote-message:forbidden-cross-company',
+      'security_conversation','security_request','security_supplier_answer',now(),now()
+    );
+    RAISE EXCEPTION 'Supplier B queued Supplier A answer for WhatsApp delivery';
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   END;
   EXECUTE 'RESET ROLE';
@@ -827,6 +868,13 @@ BEGIN
     AND coalesce(with_check, qual) LIKE '%is_trusted_worker%';
   IF visible_count <> 9 THEN
     RAISE EXCEPTION 'supplier email worker policies are incomplete';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM bridge_ai."AuditLog"
+    WHERE action='SYSTEM.SUPPLIER_ANSWER_DELIVERY_FIXED'
+      AND "entityType"='SecurityConfiguration'
+  ) THEN
+    RAISE EXCEPTION 'supplier answer delivery security audit is missing';
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM bridge_ai."AuditLog"
@@ -989,7 +1037,7 @@ BEGIN
         'production_monitoring_select_failed_whatsapp_jobs',
         'production_monitoring_select_failed_stripe_webhooks',
         'production_monitoring_select_problem_attachments',
-        'production_monitoring_select_storage_events',
+        'production_monitoring_select_operational_events',
         'production_monitoring_select_alerts',
         'production_monitoring_insert_alerts',
         'production_monitoring_update_alerts'

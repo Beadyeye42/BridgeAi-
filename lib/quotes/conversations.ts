@@ -48,16 +48,15 @@ export async function createBuyerQuestion(tx: Tx, input: {
 }
 
 export async function queueBuyerAnswer(tx: Tx, input: { quoteMessageId: string; quoteRequestId: string; whatsappConversationId: string }) {
-  return tx.whatsAppJob.upsert({
-    where: { idempotencyKey: `quote-message:${input.quoteMessageId}` },
-    create: {
+  return tx.whatsAppJob.createMany({
+    data: [{
       type: "SEND_QUOTE_MESSAGE",
       idempotencyKey: `quote-message:${input.quoteMessageId}`,
       conversationId: input.whatsappConversationId,
       quoteRequestId: input.quoteRequestId,
       quoteMessageId: input.quoteMessageId,
-    },
-    update: {},
+    }],
+    skipDuplicates: true,
   });
 }
 

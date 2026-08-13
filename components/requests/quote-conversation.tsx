@@ -46,7 +46,7 @@ export function QuoteConversationPanel({
       });
       const result = await json(response);
       if (!response.ok) throw new Error(result.error ?? "The reply could not be sent.");
-      setFeedback((current) => ({ ...current, [questionId]: "Reply sent securely to the buyer on WhatsApp." }));
+      setFeedback((current) => ({ ...current, [questionId]: "Reply queued securely for delivery to the buyer on WhatsApp." }));
       router.refresh();
     } catch (error) {
       setFeedback((current) => ({ ...current, [questionId]: error instanceof Error ? error.message : "The reply could not be sent." }));

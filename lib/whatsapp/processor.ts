@@ -2356,6 +2356,12 @@ async function processQuoteMessage(job: WhatsAppJob, loaded: LoadedJob) {
   await sendReply(job, loaded.conversation, `Quote ${label} replied:\n\n${body}\n\nSupplier identity and contact details remain private until you select a quote.`);
   await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
     await tx.quoteMessage.update({ where: { id: loaded.quoteMessage!.id }, data: { status: "DELIVERED", deliveredAt: new Date() } });
+    if (loaded.quoteMessage!.replyToId) {
+      await tx.quoteMessage.updateMany({
+        where: { id: loaded.quoteMessage!.replyToId, sender: "BUYER", answeredAt: null },
+        data: { answeredAt: new Date() },
+      });
+    }
     await writeWhatsAppAudit(tx, { action: "WHATSAPP.QUOTE_MESSAGE_DELIVERED", entityType: "QuoteMessage", entityId: loaded.quoteMessage!.id, summary: "Private supplier response delivered to the correct customer", metadata: { quoteRequestId: loaded.quoteRequest!.id, anonymousLabel: label } });
   });
   return undefined;

@@ -161,6 +161,21 @@ describe("security foundation static controls", () => {
     expect(api).toContain('sender: "BUYER"');
     expect(api).toContain('status: "DELIVERED"');
     expect(api).toContain('action: "QUOTE_MESSAGE.SUPPLIER_REPLIED"');
+    expect(api).toContain("await queueBuyerAnswer(tx");
+    expect(api).not.toContain('runAsDatabaseWorker("whatsapp_ai"');
+  });
+
+  it("queues supplier answers atomically with tenant-isolated WhatsApp delivery", () => {
+    const migration = read("supabase/migrations/20260813083547_fix_supplier_answer_delivery.sql");
+    const api = read("app/api/quote-conversations/messages/route.ts");
+    const processor = read("lib/whatsapp/processor.ts");
+    expect(migration).toContain("type = 'SEND_QUOTE_MESSAGE'");
+    expect(migration).toContain("whatsapp_supplier_quote_message_job_insert");
+    expect(migration).toContain('message."senderUserId" = (SELECT bridge_private.current_user_id())');
+    expect(migration).toContain("SYSTEM.SUPPLIER_ANSWER_DELIVERY_FIXED");
+    expect(migration).toContain("'quote-message:' || message.id");
+    expect(api.indexOf("await queueBuyerAnswer(tx")).toBeLessThan(api.indexOf("return { id: message.id }"));
+    expect(processor).toContain("answeredAt: new Date()");
   });
 
   it("keeps quote-message inserts non-recursive while enforcing supplier reply scope", () => {
