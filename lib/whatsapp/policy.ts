@@ -143,6 +143,35 @@ export function quoteQuestionIntent(value: string): QuoteQuestionIntent | null {
   return null;
 }
 
+export function intakeFailureRecovery(stage: string) {
+  if (stage === "AWAITING_SELECTION") {
+    return {
+      preserveStage: true,
+      body: "I couldn’t complete that quote action just now. Your quote list is still safe and open, and nothing has been selected. Please try your ASK or SELECT message again in a moment.",
+      summary: "Terminal WhatsApp failure preserved the customer's open quote-selection state",
+    };
+  }
+  if (stage === "AWAITING_CONFIRMATION") {
+    return {
+      preserveStage: true,
+      body: "I couldn’t confirm that just now, but your draft is still safe. Please reply YES again in a moment and I’ll continue.",
+      summary: "Terminal WhatsApp failure preserved the customer's pending quote confirmation",
+    };
+  }
+  if (stage === "QUOTE_CREATED") {
+    return {
+      preserveStage: true,
+      body: "Your live request is still safe. I couldn’t complete that update just now, so please reply QUOTES again in a moment.",
+      summary: "Terminal WhatsApp failure preserved the customer's live quote request",
+    };
+  }
+  return {
+    preserveStage: false,
+    body: "I’ve received your message securely, but I had a temporary problem reading it. Your draft is still safe. Please send the question or product again in a short message, or attach a photo, drawing or PDF, and I’ll continue automatically.",
+    summary: "Terminal WhatsApp intake failure returned the conversation to automatic collection",
+  };
+}
+
 export function isConversationOptOut(value: string) {
   return /^(stop|end|unsubscribe|close conversation)$/i.test(value.trim());
 }

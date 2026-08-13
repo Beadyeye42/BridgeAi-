@@ -163,6 +163,23 @@ describe("security foundation static controls", () => {
     expect(api).toContain('action: "QUOTE_MESSAGE.SUPPLIER_REPLIED"');
   });
 
+  it("keeps quote-message inserts non-recursive while enforcing supplier reply scope", () => {
+    const fix = read("supabase/migrations/20260813075641_fix_quote_message_rls_recursion.sql");
+    const workerPolicy = fix.slice(
+      fix.indexOf("CREATE POLICY quote_message_admin_worker_insert"),
+      fix.indexOf("CREATE POLICY quote_message_supplier_insert"),
+    );
+    const supplierPolicy = fix.slice(fix.indexOf("CREATE POLICY quote_message_supplier_insert"));
+    expect(workerPolicy).toContain("is_trusted_worker('whatsapp_ai')");
+    expect(workerPolicy).toContain("sender IN ('BUYER', 'SYSTEM')");
+    expect(supplierPolicy).toContain("has_company_membership(conversation.\"supplierCompanyId\")");
+    expect(supplierPolicy).not.toContain('FROM bridge_ai."QuoteMessage"');
+    expect(fix).toContain("QUOTE_MESSAGE_QUESTION_NOT_OPEN");
+    expect(fix).toContain("QUOTE_MESSAGE_ALREADY_ANSWERED");
+    expect(fix).toContain("REVOKE ALL ON FUNCTION bridge_private.enforce_quote_message_reply_scope()");
+    expect(fix).toContain("SYSTEM.QUOTE_MESSAGE_RLS_RECURSION_FIXED");
+  });
+
   it("does not retain a parallel Prisma migration history", () => {
     expect(globSync("prisma/migrations/**/*.sql")).toHaveLength(0);
     expect(globSync("supabase/migrations/*.sql").length).toBeGreaterThanOrEqual(

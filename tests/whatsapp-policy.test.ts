@@ -5,6 +5,7 @@ import {
   earliestInboundAt,
   firstContactConsentReply,
   industryQuoteOfferReply,
+  intakeFailureRecovery,
   isCancelAllDraftsRequest,
   isCancelDraftRequest,
   isConversationOptOut,
@@ -91,6 +92,22 @@ describe("WhatsApp messaging policy", () => {
     expect(quoteQuestionIntent("ask all can you collect the old unit?"))
       .toEqual({ kind: "ALL", question: "can you collect the old unit?" });
     expect(quoteQuestionIntent("ask all")).toBeNull();
+  });
+
+  it("keeps quote-control stages intact after a terminal processing failure", () => {
+    expect(intakeFailureRecovery("AWAITING_SELECTION")).toMatchObject({
+      preserveStage: true,
+      body: expect.stringContaining("quote list is still safe and open"),
+    });
+    expect(intakeFailureRecovery("AWAITING_CONFIRMATION")).toMatchObject({
+      preserveStage: true,
+      body: expect.stringContaining("draft is still safe"),
+    });
+    expect(intakeFailureRecovery("QUOTE_CREATED")).toMatchObject({
+      preserveStage: true,
+      body: expect.stringContaining("live request is still safe"),
+    });
+    expect(intakeFailureRecovery("COLLECTING").preserveStage).toBe(false);
   });
 
   it("separates menu, new quote and quote history commands", () => {

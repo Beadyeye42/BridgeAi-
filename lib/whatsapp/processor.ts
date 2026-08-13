@@ -50,6 +50,7 @@ import {
   earliestInboundAt,
   firstContactConsentReply,
   industryQuoteOfferReply,
+  intakeFailureRecovery,
   isCancelAllDraftsRequest,
   isCancelDraftRequest,
   isConversationOptOut,
@@ -1611,15 +1612,19 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
       }
       const broadcastKey = questionIntent.kind === "ALL" ? newBroadcastKey() : undefined;
       const result = await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
-        const created: Array<{ label: string; dueAt: Date }> = [];
+        const created: Array<{ label: string; dueAt: Date; isNew: boolean }> = [];
         for (const quotation of targets) {
           const quoteConversation = quotation.conversation!;
-          const message = await createBuyerQuestion(tx, {
+          const { message, created: questionCreated } = await createBuyerQuestion(tx, {
             conversationId: quoteConversation.id,
             body: questionIntent.question.slice(0, 2000),
             idempotencyKey: `buyer-question:${inbound.externalMessageId}:${quoteConversation.id}`,
             broadcastKey,
           });
+          if (!questionCreated) {
+            created.push({ label: quoteConversation.anonymousLabel, dueAt: message.questionDueAt!, isNew: false });
+            continue;
+          }
           const members = await tx.supplierTeamMembership.findMany({
             where: { supplierCompanyId: quotation.supplierCompanyId, status: "ACTIVE" },
             select: { userId: true },
@@ -1664,15 +1669,17 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
               await tx.notification.createMany({ data: notificationRows });
             }
           }
-          created.push({ label: quoteConversation.anonymousLabel, dueAt: message.questionDueAt! });
+          created.push({ label: quoteConversation.anonymousLabel, dueAt: message.questionDueAt!, isNew: true });
         }
-        await writeWhatsAppAudit(tx, {
-          action: questionIntent.kind === "ALL" ? "WHATSAPP.BUYER_QUESTION_BROADCAST" : "WHATSAPP.BUYER_QUESTION_SENT",
-          entityType: "QuoteRequest",
-          entityId: request.id,
-          summary: questionIntent.kind === "ALL" ? "Buyer question sent privately to all available quoted suppliers" : "Buyer question sent to one anonymous quoted supplier",
-          metadata: { messageId: inbound.id, labels: created.map(({ label }) => label), broadcastKey },
-        });
+        if (created.some(({ isNew }) => isNew)) {
+          await writeWhatsAppAudit(tx, {
+            action: questionIntent.kind === "ALL" ? "WHATSAPP.BUYER_QUESTION_BROADCAST" : "WHATSAPP.BUYER_QUESTION_SENT",
+            entityType: "QuoteRequest",
+            entityId: request.id,
+            summary: questionIntent.kind === "ALL" ? "Buyer question sent privately to all available quoted suppliers" : "Buyer question sent to one anonymous quoted supplier",
+            metadata: { messageId: inbound.id, labels: created.map(({ label }) => label), broadcastKey },
+          });
+        }
         return created;
       });
       await processSupplierEmailsSafely({ limit: 20 });
@@ -2356,13 +2363,13 @@ async function processQuoteMessage(job: WhatsAppJob, loaded: LoadedJob) {
 
 async function processIntakeFallback(job: WhatsAppJob, loaded: LoadedJob) {
   if (!loaded.conversation) throw new Error("INTAKE_FALLBACK_INVALID");
+  const recovery = intakeFailureRecovery(loaded.conversation.aiStage);
   await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
     await tx.conversation.update({
       where: { id: loaded.conversation!.id },
-      data: {
-        aiStage: "COLLECTING",
-        aiUnproductiveTurns: 0,
-      },
+      data: recovery.preserveStage
+        ? { aiUnproductiveTurns: 0 }
+        : { aiStage: "COLLECTING", aiUnproductiveTurns: 0 },
     });
     await writeWhatsAppSystemEvent(tx, "whatsapp_ai", {
       severity: "ERROR",
@@ -2374,15 +2381,11 @@ async function processIntakeFallback(job: WhatsAppJob, loaded: LoadedJob) {
       action: "WHATSAPP.INTAKE_FALLBACK_QUEUED",
       entityType: "Conversation",
       entityId: loaded.conversation!.id,
-      summary: "Terminal WhatsApp intake failure returned the conversation to automatic collection",
-      metadata: { jobId: job.id },
+      summary: recovery.summary,
+      metadata: { jobId: job.id, previousStage: loaded.conversation!.aiStage, stagePreserved: recovery.preserveStage },
     });
   });
-  await sendReply(
-    job,
-    loaded.conversation,
-    "I’ve received your message securely, but I had a temporary problem reading it. Your draft is still safe. Please send the question or product again in a short message, or attach a photo, drawing or PDF, and I’ll continue automatically.",
-  );
+  await sendReply(job, loaded.conversation, recovery.body);
   return undefined;
 }
 

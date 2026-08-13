@@ -23,6 +23,13 @@ export async function createBuyerQuestion(tx: Tx, input: {
   idempotencyKey: string;
   broadcastKey?: string;
 }) {
+  const existing = await tx.quoteMessage.findUnique({
+    where: { idempotencyKey: input.idempotencyKey },
+  });
+  if (existing) {
+    return { message: existing, created: false } as const;
+  }
+
   const dueAt = addSupplierResponseHours(new Date(), 4);
   const message = await tx.quoteMessage.create({
     data: {
@@ -37,7 +44,7 @@ export async function createBuyerQuestion(tx: Tx, input: {
     },
   });
   await tx.quoteConversation.update({ where: { id: input.conversationId }, data: { lastMessageAt: new Date(), questionResponseDueAt: dueAt } });
-  return message;
+  return { message, created: true } as const;
 }
 
 export async function queueBuyerAnswer(tx: Tx, input: { quoteMessageId: string; quoteRequestId: string; whatsappConversationId: string }) {
