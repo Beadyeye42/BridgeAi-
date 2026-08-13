@@ -898,6 +898,10 @@ model QuoteRequest {
   deliveryPostcode               String
   deliveryLatitude               Decimal?                @db.Decimal(9, 6)
   deliveryLongitude              Decimal?                @db.Decimal(9, 6)
+  matchingPostcode               String?
+  matchingLatitude               Decimal?                @db.Decimal(9, 6)
+  matchingLongitude              Decimal?                @db.Decimal(9, 6)
+  matchingCoveragePurpose        CoveragePurpose?
   customerBudget                 Decimal?                @db.Decimal(12, 2)
   requiredManufacturer           String?
   requiredSystem                 String?
@@ -952,6 +956,7 @@ model QuoteRequest {
   @@index([status, responseDueAt])
   @@index([status, selectedAt])
   @@index([categoryId, deliveryPostcode])
+  @@index([categoryId, matchingPostcode])
   @@index([urgency, status, responseDueAt])
   @@index([previousQuoteRequestId])
   @@index([customerContactId])

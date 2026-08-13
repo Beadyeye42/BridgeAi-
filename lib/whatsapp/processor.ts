@@ -9,6 +9,7 @@ import {
   unavailableCatalogueForConversation,
 } from "@/lib/categories/catalogue";
 import { hyperlocalService, inferUrgency, recurrenceCadence } from "@/lib/categories/hyperlocal-industries";
+import { isTransportCategorySlug, matchingCoveragePurpose, resolveTransportCollectionPostcode } from "@/lib/categories/transport";
 import { runAsDatabaseWorker } from "@/lib/db";
 import { analyzeQuoteAttachment, quoteAttachmentAnalysisSchema, type QuoteAttachmentAnalysis } from "@/lib/ai/attachment-intake";
 import { extractQuoteIntake, quoteDraftSchema, type QuoteDraft } from "@/lib/ai/quote-intake";
@@ -127,6 +128,7 @@ function emptyQuoteDraft(categorySlug: string | null = null): QuoteDraft {
     customerName: null,
     buyerType: null,
     intentQuality: "QUALIFIED",
+    collectionPostcode: null,
     deliveryPostcode: null,
     categorySlug,
     title: null,
@@ -846,6 +848,18 @@ async function resolvePreferredFirstName(
 }
 
 export function draftIsComplete(draft: QuoteDraft) {
+  const evidence = [
+    draft.title,
+    draft.summary,
+    ...draft.items.flatMap((item) => [item.description, item.specification]),
+  ].filter((value): value is string => Boolean(value)).join("\n");
+  const transportCollectionPostcode = isTransportCategorySlug(draft.categorySlug)
+    ? resolveTransportCollectionPostcode({
+      collectionPostcode: draft.collectionPostcode,
+      deliveryPostcode: draft.deliveryPostcode,
+      evidence,
+    })
+    : true;
   return Boolean(
     draft.deliveryPostcode
     && draft.buyerType
@@ -854,7 +868,8 @@ export function draftIsComplete(draft: QuoteDraft) {
     && draft.summary
     && draft.requiredBy
     && draft.fulfilmentMode
-    && draft.items.length > 0,
+    && draft.items.length > 0
+    && transportCollectionPostcode,
   );
 }
 
@@ -865,7 +880,7 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
   const category = await runAsDatabaseWorker("whatsapp_ai", (tx) => tx.productCategory.findUnique({
     where: { slug: draft.categorySlug ?? "" },
     select: {
-      id: true, name: true, active: true,
+      id: true, name: true, slug: true, active: true,
       acknowledgementDeadlineHours: true, quotationDeadlineHours: true,
       servesConsumer: true, servesTrade: true, servesBusiness: true,
       parent: { select: { active: true, servesConsumer: true, servesTrade: true, servesBusiness: true, acknowledgementDeadlineHours: true, quotationDeadlineHours: true } },
@@ -880,6 +895,21 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
     draft.summary,
     ...draft.items.flatMap((item) => [item.description, item.specification]),
   ].filter((value): value is string => Boolean(value)).join("\n");
+  const collectionPostcode = isTransportCategorySlug(category.slug)
+    ? resolveTransportCollectionPostcode({
+      collectionPostcode: draft.collectionPostcode,
+      deliveryPostcode: delivery.postcode,
+      evidence: requestEvidence,
+    })
+    : null;
+  if (isTransportCategorySlug(category.slug) && !collectionPostcode) {
+    throw new PostcodeLookupError("INVALID_POSTCODE", "A full collection postcode is required for transport matching");
+  }
+  const matchingLocation = collectionPostcode ? await lookupPostcode(collectionPostcode) : delivery;
+  const coveragePurpose = matchingCoveragePurpose({
+    categorySlug: category.slug,
+    fulfilmentMode: draft.fulfilmentMode,
+  });
   const urgency = inferUrgency(requestEvidence, draft.requiredBy ? new Date(draft.requiredBy) : null, now);
   const recurrence = recurrenceCadence(requestEvidence);
   const hyperlocal = hyperlocalService(draft.categorySlug);
@@ -937,6 +967,10 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
         deliveryPostcode: delivery.postcode,
         deliveryLatitude: delivery.latitude,
         deliveryLongitude: delivery.longitude,
+        matchingPostcode: matchingLocation.postcode,
+        matchingLatitude: matchingLocation.latitude,
+        matchingLongitude: matchingLocation.longitude,
+        matchingCoveragePurpose: coveragePurpose,
         customerBudget: draft.customerBudget,
         requiredManufacturer: draft.requiredManufacturer,
         requiredSystem: draft.requiredSystem,
@@ -967,9 +1001,9 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
       tx,
       { ...request, items: draft.items },
       {
-        postcode: delivery.postcode,
-        latitude: delivery.latitude,
-        longitude: delivery.longitude,
+        postcode: matchingLocation.postcode,
+        latitude: matchingLocation.latitude,
+        longitude: matchingLocation.longitude,
       },
     );
     const matches = selectAdaptiveSupplierMatches(
@@ -981,6 +1015,7 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
       quoteRequestId: request.id,
       categoryId: request.categoryId,
       deliveryPostcode: request.deliveryPostcode,
+      matchingPostcode: request.matchingPostcode ?? request.deliveryPostcode,
       evaluations,
       selectedSupplierIds,
       invitedSupplierCount: matches.length,

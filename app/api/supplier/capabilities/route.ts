@@ -27,7 +27,20 @@ export async function PATCH(request: Request) {
       id: parsed.data.productCategoryId,
       suppliers: { some: { supplierCompanyId: auth.companyId } },
     },
-    select: { name: true, parent: { select: { slug: true } } },
+    select: {
+      name: true,
+      servesConsumer: true,
+      servesTrade: true,
+      servesBusiness: true,
+      parent: {
+        select: {
+          slug: true,
+          servesConsumer: true,
+          servesTrade: true,
+          servesBusiness: true,
+        },
+      },
+    },
   });
   if (!selectedCategory) {
     return NextResponse.json({ error: "Select this product in Company profile before activating it" }, { status: 400 });
@@ -36,6 +49,9 @@ export async function PATCH(request: Request) {
   const confirmedAt = new Date();
   const isTransport = selectedCategory.parent?.slug === transportDeliveryRootSlug;
   const isHyperlocal = Boolean(hyperlocalIndustry(selectedCategory.parent?.slug));
+  const servesConsumerByDefault = selectedCategory.servesConsumer || selectedCategory.parent?.servesConsumer === true;
+  const servesTradeByDefault = selectedCategory.servesTrade || selectedCategory.parent?.servesTrade === true;
+  const servesBusinessByDefault = selectedCategory.servesBusiness || selectedCategory.parent?.servesBusiness === true;
   const capability = await prisma.$transaction(async (tx) => {
     const saved = await tx.supplierCapability.upsert({
       where: {
@@ -51,12 +67,17 @@ export async function PATCH(request: Request) {
         capacityStatus: "AVAILABLE",
         liveAvailability: isHyperlocal ? "AVAILABLE_TODAY" : "AVAILABLE_TOMORROW",
         standardLeadTimeDays: isTransport ? 1 : 14,
+        currentLeadTimeDays: isTransport ? 1 : 14,
+        urgentLeadTimeDays: isTransport ? 1 : null,
+        servesConsumer: servesConsumerByDefault,
+        servesTrade: servesTradeByDefault,
+        servesBusiness: servesBusinessByDefault,
         supportsService: isTransport || isHyperlocal,
+        supportsDelivery: true,
         deliveryDays: [1, 2, 3, 4, 5],
         lastConfirmedAt: confirmedAt,
         capacityLastConfirmedAt: confirmedAt,
         leadTimeLastConfirmedAt: confirmedAt,
-        currentLeadTimeDays: isTransport ? 1 : 14,
       },
       update: {
         active: true,
@@ -65,7 +86,16 @@ export async function PATCH(request: Request) {
         availabilityLastConfirmedAt: confirmedAt,
         shortageNote: null,
         shortageUntil: null,
-        ...(isTransport || isHyperlocal ? { supportsService: true } : {}),
+        ...(isTransport ? {
+          standardLeadTimeDays: 1,
+          currentLeadTimeDays: 1,
+          urgentLeadTimeDays: 1,
+          servesConsumer: servesConsumerByDefault,
+          servesTrade: servesTradeByDefault,
+          servesBusiness: servesBusinessByDefault,
+          supportsDelivery: true,
+          supportsService: true,
+        } : isHyperlocal ? { supportsService: true } : {}),
         lastConfirmedAt: confirmedAt,
         capacityLastConfirmedAt: confirmedAt,
         leadTimeLastConfirmedAt: confirmedAt,

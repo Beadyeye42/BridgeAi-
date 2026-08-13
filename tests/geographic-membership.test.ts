@@ -167,10 +167,12 @@ describe("geographic memberships and controlled distribution", () => {
 
   it("uses separate service, delivery and collection geography", () => {
     const matching = read("lib/matching/suppliers.ts");
-    expect(matching).toContain('"SERVICE", "INSTALLATION"');
+    const transport = read("lib/categories/transport.ts");
+    expect(matching).toContain("matchingCoveragePurpose");
     expect(matching).toContain('purpose === "SERVICE"');
     expect(matching).toContain('purpose === "DELIVERY"');
     expect(matching).toContain('request.fulfilmentMode === "COLLECTION"');
     expect(matching).toContain("supplier.collectionLocations");
+    expect(transport).toContain('return "DELIVERY" as const');
   });
 });

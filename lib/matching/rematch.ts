@@ -52,6 +52,9 @@ export async function rematchOpenRequestsForSupplier({
       deliveryPostcode: true,
       deliveryLatitude: true,
       deliveryLongitude: true,
+      matchingPostcode: true,
+      matchingLatitude: true,
+      matchingLongitude: true,
     },
     orderBy: [{ publishedAt: "asc" }, { createdAt: "asc" }],
     take: MAX_REQUESTS_PER_RECHECK,
@@ -72,11 +75,15 @@ export async function rematchOpenRequestsForSupplier({
       if (!quote || !["OPEN", "MATCHING"].includes(quote.status) || quote.responseDueAt <= new Date()) {
         return { outcome: "SKIPPED" as const, reasons: [] as string[] };
       }
-      if ((quote.deliveryLatitude === null || quote.deliveryLongitude === null)
+      if ((quote.matchingLatitude === null || quote.matchingLongitude === null)
         && resolution.location.latitude !== null && resolution.location.longitude !== null) {
         quote = await tx.quoteRequest.update({
           where: { id: quote.id },
-          data: { deliveryLatitude: resolution.location.latitude, deliveryLongitude: resolution.location.longitude },
+          data: {
+            matchingPostcode: resolution.location.postcode,
+            matchingLatitude: resolution.location.latitude,
+            matchingLongitude: resolution.location.longitude,
+          },
           include: { items: { select: { quantity: true } } },
         });
       }
@@ -104,6 +111,7 @@ export async function rematchOpenRequestsForSupplier({
         quoteRequestId: quote.id,
         categoryId: quote.categoryId,
         deliveryPostcode: quote.deliveryPostcode,
+        matchingPostcode: quote.matchingPostcode ?? quote.deliveryPostcode,
         evaluations,
         selectedSupplierIds: selected ? [supplierCompanyId] : [],
         invitedSupplierCount: assignmentCount + (selected ? 1 : 0),

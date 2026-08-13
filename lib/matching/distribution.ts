@@ -30,6 +30,7 @@ export async function recordMatchingEvaluation(
     quoteRequestId: string;
     categoryId: string;
     deliveryPostcode: string;
+    matchingPostcode?: string;
     evaluations: SupplierEvaluation[];
     selectedSupplierIds: Iterable<string>;
     invitedSupplierCount?: number;
@@ -37,6 +38,7 @@ export async function recordMatchingEvaluation(
     preserveExistingSelections?: boolean;
   },
 ) {
+  const gapPostcode = input.matchingPostcode ?? input.deliveryPostcode;
   const selected = new Set(input.selectedSupplierIds);
   const consideredSupplierCount = input.evaluations.length;
   const eligibleSupplierCount = input.evaluations.filter((evaluation) => evaluation.mandatoryEligible).length;
@@ -116,14 +118,14 @@ export async function recordMatchingEvaluation(
       create: {
         quoteRequestId: input.quoteRequestId,
         categoryId: input.categoryId,
-        deliveryOutwardCode: postcodeOutwardCode(input.deliveryPostcode),
+        deliveryOutwardCode: postcodeOutwardCode(gapPostcode),
         eligibleSupplierCount,
         marketDensityMode: density,
       },
       update: {
         eligibleSupplierCount,
         marketDensityMode: density,
-        deliveryOutwardCode: postcodeOutwardCode(input.deliveryPostcode),
+        deliveryOutwardCode: postcodeOutwardCode(gapPostcode),
         status: "OPEN",
         lastDetectedAt: new Date(),
         resolvedAt: null,
@@ -137,7 +139,7 @@ export async function recordMatchingEvaluation(
         context: {
           quoteRequestId: input.quoteRequestId,
           categoryId: input.categoryId,
-          deliveryOutwardCode: postcodeOutwardCode(input.deliveryPostcode),
+          deliveryOutwardCode: postcodeOutwardCode(gapPostcode),
         },
       });
     }
