@@ -1,4 +1,5 @@
 import "server-only";
+import { randomBytes } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma, runAsDatabaseWorker, runWithDatabaseIdentity } from "@/lib/db";
 import { supplierSelectionNextStep } from "@/lib/quotes/lifecycle";
@@ -15,9 +16,16 @@ async function writeSelectionAudit(
   `;
 }
 
+function buyerOrderReference() {
+  return `BO-${randomBytes(6).toString("hex").toUpperCase()}`;
+}
+
 export async function selectQuotationForCustomer(input: {
   quotationId: string;
   actorUserId?: string;
+  buyerAuthUserId?: string;
+  buyerCustomerContactId?: string;
+  source?: "WHATSAPP" | "BUYER_PORTAL";
   evidence: string;
 }) {
   const selectedAt = new Date();
@@ -34,6 +42,11 @@ export async function selectQuotationForCustomer(input: {
       include: { quoteRequest: { include: { category: { include: { parent: { select: { slug: true } } } } } } },
     });
     if (!quotation) throw new Error("QUOTATION_NOT_FOUND");
+    if (input.source === "BUYER_PORTAL" && (
+      !input.buyerAuthUserId
+      || !input.buyerCustomerContactId
+      || quotation.quoteRequest.customerContactId !== input.buyerCustomerContactId
+    )) throw new Error("BUYER_SELECTION_SCOPE_MISMATCH");
     if (quotation.status !== "SUBMITTED") throw new Error("QUOTATION_NOT_SELECTABLE");
     if (quotation.validUntil && quotation.validUntil <= selectedAt) throw new Error("QUOTATION_EXPIRED");
     if (!["OPEN", "MATCHING", "QUOTED"].includes(quotation.quoteRequest.status)) throw new Error("REQUEST_NOT_SELECTABLE");
@@ -88,6 +101,40 @@ export async function selectQuotationForCustomer(input: {
       },
     });
     const nextStep = supplierSelectionNextStep(quotation.quoteRequest.category.slug, quotation.quoteRequest.category.parent?.slug);
+    const buyerOrder = await tx.buyerOrder.create({
+      data: {
+        reference: buyerOrderReference(),
+        customerContactId: quotation.quoteRequest.customerContactId,
+        quoteRequestId: quotation.quoteRequestId,
+        quotationId: quotation.id,
+        supplierCompanyId: quotation.supplierCompanyId,
+        status: "PENDING_CONFIRMATION",
+        nextAction: nextStep,
+        events: {
+          create: {
+            status: "PENDING_CONFIRMATION",
+            title: "Quote selected",
+            detail: nextStep,
+            source: input.actorUserId ? "ADMIN" : input.source ?? "WHATSAPP",
+            actorAuthUserId: input.actorUserId ?? input.buyerAuthUserId,
+          },
+        },
+      },
+    });
+
+    if (quotation.quoteRequest.conversationId) {
+      await tx.whatsAppJob.upsert({
+        where: { idempotencyKey: `contact-unlock:${grant.id}` },
+        create: {
+          type: "SEND_CONTACT_UNLOCK",
+          idempotencyKey: `contact-unlock:${grant.id}`,
+          conversationId: quotation.quoteRequest.conversationId,
+          quoteRequestId: quotation.quoteRequestId,
+          quotationId: quotation.id,
+        },
+        update: {},
+      });
+    }
 
     const members = await tx.supplierTeamMembership.findMany({
       where: { supplierCompanyId: quotation.supplierCompanyId, status: "ACTIVE" },
@@ -134,7 +181,7 @@ export async function selectQuotationForCustomer(input: {
           entityType: "SupplierQuotation",
           entityId: quotation.id,
           summary: "Customer selection recorded and contact access granted without a winning fee",
-          metadata: { evidence: input.evidence.slice(0, 250), contactAccessGrantId: grant.id },
+          metadata: { evidence: input.evidence.slice(0, 250), contactAccessGrantId: grant.id, buyerOrderId: buyerOrder.id },
         }, {
           actorUserId: input.actorUserId,
           supplierCompanyId: quotation.supplierCompanyId,
@@ -145,20 +192,29 @@ export async function selectQuotationForCustomer(input: {
           metadata: { quotationId: quotation.id, quoteRequestId: quotation.quoteRequestId },
         }],
       });
+    } else if (input.source === "BUYER_PORTAL") {
+      await tx.buyerSecurityEvent.create({
+        data: {
+          customerContactId: quotation.quoteRequest.customerContactId,
+          authUserId: input.buyerAuthUserId,
+          eventType: "BUYER_PORTAL_QUOTATION_SELECTED",
+          metadata: { quotationId: quotation.id, quoteRequestId: quotation.quoteRequestId, buyerOrderId: buyerOrder.id },
+        },
+      });
     } else {
       await writeSelectionAudit(tx, {
         action: "WHATSAPP.CUSTOMER_SELECTION_RECORDED",
         entityType: "SupplierQuotation",
         entityId: quotation.id,
         summary: "Customer selection recorded and contact access granted without a winning fee",
-        metadata: { evidence: input.evidence.slice(0, 250), contactAccessGrantId: grant.id, quoteRequestId: quotation.quoteRequestId },
+        metadata: { evidence: input.evidence.slice(0, 250), contactAccessGrantId: grant.id, quoteRequestId: quotation.quoteRequestId, buyerOrderId: buyerOrder.id },
       });
     }
     return grant;
   };
 
   if (!input.actorUserId) {
-    return runAsDatabaseWorker("whatsapp_ai", selectInTransaction);
+    return runAsDatabaseWorker(input.source === "BUYER_PORTAL" ? "buyer_auth" : "whatsapp_ai", selectInTransaction);
   }
   return runWithDatabaseIdentity(input.actorUserId, () => prisma.$transaction(
     selectInTransaction,

@@ -64,6 +64,15 @@ export function metaContactTemplate() {
   return { name, language };
 }
 
+export function metaBuyerLoginTemplate() {
+  const name = process.env.META_WHATSAPP_BUYER_LOGIN_TEMPLATE_NAME?.trim();
+  if (!name) return null;
+  if (!/^[a-z0-9_]{1,512}$/.test(name)) throw new Error("META_WHATSAPP_BUYER_LOGIN_TEMPLATE_NAME is invalid");
+  const language = process.env.META_WHATSAPP_TEMPLATE_LANGUAGE?.trim() || "en_GB";
+  if (!/^[a-z]{2}(?:_[A-Z]{2})?$/.test(language)) throw new Error("META_WHATSAPP_TEMPLATE_LANGUAGE is invalid");
+  return { name, language };
+}
+
 export function whatsappMessagingPolicy() {
   const raw = process.env.WHATSAPP_ALLOW_PAID_TEMPLATES?.trim().toLowerCase();
   if (raw && raw !== "true" && raw !== "false") {
@@ -92,5 +101,11 @@ export function whatsappConciergeConfig() {
   return {
     quoteResponseHours: boundedInteger("QUOTE_RESPONSE_HOURS", 48, 1, 336),
     distributionLimit: boundedInteger("DEFAULT_QUOTE_DISTRIBUTION_LIMIT", 5, 1, 5),
+  };
+}
+
+export function buyerRewardsConfig() {
+  return {
+    completionPoints: boundedInteger("BUYER_REWARD_COMPLETION_POINTS", 100, 1, 1000),
   };
 }

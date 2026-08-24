@@ -303,6 +303,46 @@ enum BuyerType {
   @@schema("bridge_ai")
 }
 
+enum BuyerPortalStatus {
+  ACTIVE
+  SUSPENDED
+
+  @@schema("bridge_ai")
+}
+
+enum BuyerOrderStatus {
+  PENDING_CONFIRMATION
+  CONFIRMED
+  IN_PRODUCTION
+  READY
+  DISPATCHED
+  OUT_FOR_DELIVERY
+  READY_FOR_COLLECTION
+  DELIVERED
+  COMPLETED
+  CANCELLED
+  ISSUE_REPORTED
+
+  @@schema("bridge_ai")
+}
+
+enum BuyerRewardTier {
+  BRONZE
+  SILVER
+  GOLD
+  PLATINUM
+
+  @@schema("bridge_ai")
+}
+
+enum BuyerRewardEntryType {
+  ORDER_COMPLETED
+  ADMIN_ADJUSTMENT
+  REVERSAL
+
+  @@schema("bridge_ai")
+}
+
 enum IntentQuality {
   BROWSING
   QUALIFIED
@@ -613,6 +653,7 @@ model SupplierCompany {
   affiliateReferral                  AffiliateReferral?
   affiliateCommissions               AffiliateCommission[]
   quoteConversations                 QuoteConversation[]
+  buyerOrders                        BuyerOrder[]
 
   @@index([status])
   @@index([postcode])
@@ -658,23 +699,39 @@ model SupplierInvite {
 }
 
 model CustomerContact {
-  id                          String               @id @default(cuid())
+  id                          String                @id @default(cuid())
   displayNameEncrypted        Bytes?
   preferredFirstNameEncrypted Bytes?
   preferredNameAskedAt        DateTime?
   phoneEncrypted              Bytes
-  phoneHash                   String               @unique
+  phoneHash                   String                @unique
   emailEncrypted              Bytes?
   emailHash                   String?
   consentRecordedAt           DateTime?
   marketingConsentAt          DateTime?
-  createdAt                   DateTime             @default(now())
-  updatedAt                   DateTime             @updatedAt
+  buyerAuthUserId             String?               @unique @db.Uuid
+  buyerPortalStatus           BuyerPortalStatus     @default(ACTIVE)
+  companyNameEncrypted        Bytes?
+  defaultPostcodeEncrypted    Bytes?
+  buyerTypePreference         BuyerType?
+  verifiedEmailAt             DateTime?
+  buyerWhatsAppUpdates        Boolean               @default(true)
+  buyerEmailUpdates           Boolean               @default(false)
+  buyerLastLoginAt            DateTime?
+  createdAt                   DateTime              @default(now())
+  updatedAt                   DateTime              @updatedAt
   conversations               Conversation[]
   quoteRequests               QuoteRequest[]
   contactAccess               ContactAccessGrant[]
+  buyerLoginChallenges        BuyerLoginChallenge[]
+  buyerTrustedSessions        BuyerTrustedSession[]
+  buyerSecurityEvents         BuyerSecurityEvent[]
+  buyerOrders                 BuyerOrder[]
+  buyerRewardAccount          BuyerRewardAccount?
+  buyerRewardLedger           BuyerRewardLedger[]
 
   @@index([emailHash])
+  @@index([buyerPortalStatus, buyerLastLoginAt])
   @@schema("bridge_ai")
 }
 
@@ -952,6 +1009,7 @@ model QuoteRequest {
   coverageGap                    CoverageGapSignal?
   quoteConversations             QuoteConversation[]
   selectionEvents                QuoteSelectionEvent[]
+  buyerOrder                     BuyerOrder?
 
   @@index([status, responseDueAt])
   @@index([status, selectedAt])
@@ -1095,9 +1153,138 @@ model SupplierQuotation {
   versions             QuotationVersion[]
   conversation         QuoteConversation?
   selectionEvents      QuoteSelectionEvent[]
+  buyerOrder           BuyerOrder?
 
   @@unique([quoteRequestId, supplierCompanyId])
   @@index([supplierCompanyId, status, submittedAt])
+  @@schema("bridge_ai")
+}
+
+model BuyerLoginChallenge {
+  id                String          @id @default(cuid())
+  customerContactId String
+  authUserId        String          @db.Uuid
+  tokenDigest       String          @unique @db.VarChar(64)
+  requestedPath     String          @default("/buyer") @db.VarChar(512)
+  requestIpHash     String?         @db.VarChar(64)
+  userAgentHash     String?         @db.VarChar(64)
+  expiresAt         DateTime
+  consumedAt        DateTime?
+  revokedAt         DateTime?
+  createdAt         DateTime        @default(now())
+  customerContact   CustomerContact @relation(fields: [customerContactId], references: [id], onDelete: Cascade)
+
+  @@index([customerContactId, createdAt])
+  @@index([authUserId])
+  @@index([requestIpHash, createdAt])
+  @@index([expiresAt, consumedAt])
+  @@schema("bridge_ai")
+}
+
+model BuyerTrustedSession {
+  id                String          @id @default(cuid())
+  customerContactId String
+  authUserId        String          @db.Uuid
+  sessionId         String          @unique @db.Uuid
+  userAgentHash     String?         @db.VarChar(64)
+  expiresAt         DateTime
+  lastSeenAt        DateTime        @default(now())
+  revokedAt         DateTime?
+  createdAt         DateTime        @default(now())
+  customerContact   CustomerContact @relation(fields: [customerContactId], references: [id], onDelete: Cascade)
+
+  @@index([customerContactId, expiresAt])
+  @@index([authUserId, revokedAt, expiresAt])
+  @@schema("bridge_ai")
+}
+
+model BuyerSecurityEvent {
+  id                String           @id @default(cuid())
+  customerContactId String?
+  authUserId        String?          @db.Uuid
+  eventType         String           @db.VarChar(64)
+  metadata          Json?
+  createdAt         DateTime         @default(now())
+  customerContact   CustomerContact? @relation(fields: [customerContactId], references: [id], onDelete: SetNull)
+
+  @@index([customerContactId, createdAt])
+  @@index([authUserId, createdAt])
+  @@index([eventType, createdAt])
+  @@schema("bridge_ai")
+}
+
+model BuyerOrder {
+  id                String              @id @default(cuid())
+  reference         String              @unique @db.VarChar(32)
+  customerContactId String
+  quoteRequestId    String              @unique
+  quotationId       String              @unique
+  supplierCompanyId String
+  status            BuyerOrderStatus    @default(PENDING_CONFIRMATION)
+  nextAction        String?
+  confirmedAt       DateTime?
+  dispatchedAt      DateTime?
+  deliveredAt       DateTime?
+  completedAt       DateTime?
+  cancelledAt       DateTime?
+  issueReportedAt   DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  customerContact   CustomerContact     @relation(fields: [customerContactId], references: [id], onDelete: Restrict)
+  quoteRequest      QuoteRequest        @relation(fields: [quoteRequestId], references: [id], onDelete: Restrict)
+  quotation         SupplierQuotation   @relation(fields: [quotationId], references: [id], onDelete: Restrict)
+  supplierCompany   SupplierCompany     @relation(fields: [supplierCompanyId], references: [id], onDelete: Restrict)
+  events            BuyerOrderEvent[]
+  rewardEntries     BuyerRewardLedger[]
+
+  @@index([customerContactId, status, createdAt])
+  @@index([supplierCompanyId, status, createdAt])
+  @@schema("bridge_ai")
+}
+
+model BuyerOrderEvent {
+  id              String           @id @default(cuid())
+  buyerOrderId    String
+  status          BuyerOrderStatus
+  title           String
+  detail          String?
+  source          String           @db.VarChar(32)
+  actorAuthUserId String?          @db.Uuid
+  createdAt       DateTime         @default(now())
+  buyerOrder      BuyerOrder       @relation(fields: [buyerOrderId], references: [id], onDelete: Cascade)
+
+  @@index([buyerOrderId, createdAt])
+  @@index([actorAuthUserId])
+  @@schema("bridge_ai")
+}
+
+model BuyerRewardAccount {
+  customerContactId String          @id
+  balance           Int             @default(0)
+  lifetimeEarned    Int             @default(0)
+  tier              BuyerRewardTier @default(BRONZE)
+  updatedAt         DateTime        @updatedAt
+  customerContact   CustomerContact @relation(fields: [customerContactId], references: [id], onDelete: Cascade)
+
+  @@index([tier, lifetimeEarned])
+  @@schema("bridge_ai")
+}
+
+model BuyerRewardLedger {
+  id                String               @id @default(cuid())
+  customerContactId String
+  buyerOrderId      String?
+  entryType         BuyerRewardEntryType
+  points            Int
+  description       String
+  actorUserId       String?              @db.Uuid
+  createdAt         DateTime             @default(now())
+  customerContact   CustomerContact      @relation(fields: [customerContactId], references: [id], onDelete: Restrict)
+  buyerOrder        BuyerOrder?          @relation(fields: [buyerOrderId], references: [id], onDelete: Restrict)
+
+  @@unique([buyerOrderId, entryType])
+  @@index([customerContactId, createdAt])
+  @@index([actorUserId, createdAt])
   @@schema("bridge_ai")
 }
 

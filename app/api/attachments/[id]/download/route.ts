@@ -5,11 +5,17 @@ import { PRIVATE_BUCKET } from "@/lib/storage";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { runProductionMonitoringSafely } from "@/lib/monitoring/operational-alerts";
 import { canReadSupplierAssignment } from "@/lib/billing/opportunity-access";
+import { getBuyerSession } from "@/lib/buyer/session";
+import { runAsDatabaseWorker } from "@/lib/db";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await getCurrentSession(); if (!session) return NextResponse.json({ error: "Sign in required" }, { status: 401 });
-  const companyId = getPrimarySupplierCompanyId(session);
+  const session = await getCurrentSession();
+  const buyerSession = session ? null : await getBuyerSession();
+  if (!session && !buyerSession) return NextResponse.json({ error: "Sign in required" }, { status: 401 });
   const { id } = await params;
+  if (buyerSession) return downloadBuyerAttachment(request, id, buyerSession);
+  if (!session) return NextResponse.json({ error: "Sign in required" }, { status: 401 });
+  const companyId = getPrimarySupplierCompanyId(session);
   const attachment = await prisma.attachment.findUnique({
     where: { id },
     include: {
@@ -56,6 +62,38 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     after(runProductionMonitoringSafely);
     return NextResponse.json({ error: "File is temporarily unavailable" }, { status: 503 });
   }
+  const response = NextResponse.redirect(signed.data.signedUrl);
+  response.headers.set("Cache-Control", "private, no-store");
+  response.headers.set("Referrer-Policy", "no-referrer");
+  return response;
+}
+
+async function downloadBuyerAttachment(
+  request: Request,
+  id: string,
+  buyerSession: NonNullable<Awaited<ReturnType<typeof getBuyerSession>>>,
+) {
+  const attachment = await runAsDatabaseWorker("buyer_auth", (tx) => tx.attachment.findFirst({
+    where: { id, scanStatus: "CLEAN", quoteRequest: { customerContactId: buyerSession.buyer.id } },
+    select: { id: true, storageKey: true, fileName: true, mimeType: true },
+  }));
+  if (!attachment) return NextResponse.json({ error: "File not found" }, { status: 404 });
+  const previewRequested = new URL(request.url).searchParams.get("preview") === "1";
+  const inlinePreview = previewRequested && ["image/jpeg", "image/png", "image/webp", "application/pdf"].includes(attachment.mimeType);
+  const signed = await getSupabaseAdmin().storage.from(PRIVATE_BUCKET).createSignedUrl(
+    attachment.storageKey,
+    300,
+    inlinePreview ? undefined : { download: attachment.fileName },
+  );
+  if (signed.error) {
+    await runAsDatabaseWorker("buyer_auth", (tx) => tx.buyerSecurityEvent.create({
+      data: { customerContactId: buyerSession.buyer.id, authUserId: buyerSession.user.id, eventType: "BUYER_ATTACHMENT_SIGN_FAILED", metadata: { attachmentId: attachment.id } },
+    })).catch(() => undefined);
+    return NextResponse.json({ error: "File is temporarily unavailable" }, { status: 503 });
+  }
+  await runAsDatabaseWorker("buyer_auth", (tx) => tx.buyerSecurityEvent.create({
+    data: { customerContactId: buyerSession.buyer.id, authUserId: buyerSession.user.id, eventType: "BUYER_ATTACHMENT_READ", metadata: { attachmentId: attachment.id, mode: inlinePreview ? "preview" : "download" } },
+  })).catch(() => undefined);
   const response = NextResponse.redirect(signed.data.signedUrl);
   response.headers.set("Cache-Control", "private, no-store");
   response.headers.set("Referrer-Policy", "no-referrer");

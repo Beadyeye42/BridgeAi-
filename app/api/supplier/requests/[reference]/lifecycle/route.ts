@@ -4,6 +4,7 @@ import { requireSupplierApi } from "@/lib/auth/api";
 import { jobLifecycleSchema, validationError } from "@/lib/auth/validation";
 import { prisma } from "@/lib/db";
 import { writeAuditLog } from "@/lib/audit";
+import { buyerRewardsConfig } from "@/lib/config";
 
 export const runtime = "nodejs";
 
@@ -15,6 +16,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ ref
   const { reference } = await params;
   const now = new Date();
   const nextStatus = parsed.data.action === "confirm" ? "CONFIRMED" : parsed.data.action === "complete" ? "COMPLETED" : "CANCELLED_AFTER_SELECTION";
+  const cancellationReason = parsed.data.action === "cancel" ? parsed.data.reason : undefined;
 
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -43,6 +45,29 @@ export async function POST(request: Request, { params }: { params: Promise<{ ref
           closedAt: ["COMPLETED", "CANCELLED_AFTER_SELECTION"].includes(nextStatus) ? now : undefined,
         },
       });
+      const orderStatus = nextStatus === "CANCELLED_AFTER_SELECTION" ? "CANCELLED" : nextStatus;
+      const order = await tx.buyerOrder.update({
+        where: { quoteRequestId: current.id },
+        data: {
+          status: orderStatus,
+          confirmedAt: orderStatus === "CONFIRMED" ? now : undefined,
+          completedAt: orderStatus === "COMPLETED" ? now : undefined,
+          cancelledAt: orderStatus === "CANCELLED" ? now : undefined,
+          events: {
+            create: {
+              status: orderStatus,
+              title: orderStatus === "CONFIRMED" ? "Order confirmed" : orderStatus === "COMPLETED" ? "Order completed" : "Order cancelled",
+              detail: orderStatus === "CANCELLED" ? cancellationReason : undefined,
+              source: "SUPPLIER_PORTAL",
+              actorAuthUserId: auth.session.userId,
+            },
+          },
+        },
+        select: { id: true },
+      });
+      if (orderStatus === "COMPLETED") {
+        await tx.$executeRaw`SELECT bridge_private.credit_completed_buyer_order(${order.id}, ${buyerRewardsConfig().completionPoints})`;
+      }
       await writeAuditLog({
         actorUserId: auth.session.userId,
         supplierCompanyId: auth.companyId,
@@ -50,7 +75,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ ref
         entityType: "QuoteRequest",
         entityId: current.id,
         summary: nextStatus === "CANCELLED_AFTER_SELECTION" ? "Selected job recorded as not proceeding" : `Selected job marked ${nextStatus.toLowerCase()}`,
-        metadata: { previousStatus: current.status, nextStatus, quotationId: current.quotations[0].id, reason: parsed.data.action === "cancel" ? parsed.data.reason : null },
+        metadata: { previousStatus: current.status, nextStatus, quotationId: current.quotations[0].id, buyerOrderId: order.id, reason: cancellationReason ?? null },
         request,
       }, tx);
       return saved;

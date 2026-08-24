@@ -20,6 +20,7 @@ BEGIN
     WHERE membership."userId" = u.id
   )
     AND NOT EXISTS (SELECT 1 FROM bridge_ai.affiliates affiliate WHERE affiliate."userId" = u.id)
+    AND NOT EXISTS (SELECT 1 FROM bridge_ai."CustomerContact" customer WHERE customer."buyerAuthUserId" = u.id)
   ORDER BY u.created_at
   LIMIT 1;
   SELECT u.id INTO user_b
@@ -30,6 +31,7 @@ BEGIN
       WHERE membership."userId" = u.id
     )
     AND NOT EXISTS (SELECT 1 FROM bridge_ai.affiliates affiliate WHERE affiliate."userId" = u.id)
+    AND NOT EXISTS (SELECT 1 FROM bridge_ai."CustomerContact" customer WHERE customer."buyerAuthUserId" = u.id)
   ORDER BY u.created_at
   LIMIT 1;
   IF user_a IS NULL OR user_b IS NULL THEN
@@ -322,9 +324,22 @@ BEGIN
   END;
 
   INSERT INTO bridge_ai."CustomerContact" (
-    id,"displayNameEncrypted","preferredFirstNameEncrypted","preferredNameAskedAt","phoneEncrypted","phoneHash","createdAt","updatedAt"
+    id,"displayNameEncrypted","preferredFirstNameEncrypted","preferredNameAskedAt","phoneEncrypted","phoneHash","buyerAuthUserId","createdAt","updatedAt"
   ) VALUES (
-    'security_customer',decode('00','hex'),decode('01','hex'),now(),decode('00','hex'),'security-phone-hash',now(),now()
+    'security_customer',decode('00','hex'),decode('01','hex'),now(),decode('00','hex'),'security-phone-hash',user_a,now(),now()
+  );
+  INSERT INTO bridge_ai."CustomerContact" (
+    id,"displayNameEncrypted","preferredFirstNameEncrypted","phoneEncrypted","phoneHash","buyerAuthUserId","createdAt","updatedAt"
+  ) VALUES (
+    'security_customer_b',decode('02','hex'),decode('03','hex'),decode('02','hex'),'security-phone-hash-b',user_b,now(),now()
+  );
+  INSERT INTO bridge_ai."BuyerRewardAccount" ("customerContactId",balance,"lifetimeEarned",tier,"updatedAt") VALUES
+    ('security_customer',125,125,'BRONZE',now()),
+    ('security_customer_b',250,250,'SILVER',now());
+  INSERT INTO bridge_ai."BuyerLoginChallenge" (
+    id,"customerContactId","authUserId","tokenDigest","expiresAt","createdAt"
+  ) VALUES (
+    'security_buyer_challenge_a','security_customer',user_a,repeat('a',64),now()+interval '10 minutes',now()
   );
   INSERT INTO bridge_ai."Conversation" (id,"customerContactId",channel,"externalConversationId","createdAt","updatedAt")
   VALUES ('security_conversation','security_customer','WHATSAPP','wa:security-phone-hash',now(),now());
@@ -406,7 +421,7 @@ BEGIN
     id,reference,"conversationId","customerContactId","categoryId",title,summary,"deliveryPostcode",currency,status,
     "distributionLimit","responseDueAt","createdAt","updatedAt"
   ) VALUES (
-    'security_request_supplier_denied','SECURITY-SUPPLIER-DENIED','security_conversation','security_customer','security_category','Denied','Denied','B1','GBP','OPEN',
+    'security_request_supplier_denied','SECURITY-SUPPLIER-DENIED',NULL,'security_customer_b','security_category','Denied','Denied','B1','GBP','OPEN',
     1,request_deadline,now(),now()
   );
   UPDATE bridge_ai."QuoteRequest"
@@ -986,6 +1001,26 @@ BEGIN
   EXECUTE 'RESET ROLE';
   PERFORM set_config('request.jwt.claim.sub', '', true);
 
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  PERFORM set_config('request.jwt.claim.sub', user_a::text, true);
+  SELECT count(*) INTO visible_count FROM bridge_ai."BuyerRewardAccount";
+  IF visible_count <> 1 THEN RAISE EXCEPTION 'Buyer A reward account isolation failed'; END IF;
+  SELECT count(*) INTO visible_count FROM bridge_ai."BuyerRewardAccount" WHERE "customerContactId"='security_customer_b';
+  IF visible_count <> 0 THEN RAISE EXCEPTION 'Buyer A read Buyer B reward account'; END IF;
+  BEGIN
+    SELECT count(*) INTO visible_count FROM bridge_ai."BuyerLoginChallenge";
+    RAISE EXCEPTION 'Buyer could query raw passwordless login challenge state';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  BEGIN
+    UPDATE bridge_ai."BuyerRewardAccount" SET balance=999999 WHERE "customerContactId"='security_customer';
+    GET DIAGNOSTICS affected_count = ROW_COUNT;
+    IF affected_count <> 0 THEN RAISE EXCEPTION 'Buyer modified its reward balance'; END IF;
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  EXECUTE 'RESET ROLE';
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+
   BEGIN
     UPDATE bridge_ai.affiliate_commissions
     SET "commissionAmountPence" = 999999
@@ -1019,6 +1054,26 @@ BEGIN
       AND "entityType"='SecurityConfiguration'
   ) THEN
     RAISE EXCEPTION 'affiliate portal Data API grants audit is missing';
+  END IF;
+  SELECT count(*) INTO visible_count
+  FROM pg_class relation
+  JOIN pg_namespace namespace ON namespace.oid=relation.relnamespace
+  WHERE namespace.nspname='bridge_ai'
+    AND relation.relname IN (
+      'BuyerLoginChallenge','BuyerTrustedSession','BuyerSecurityEvent',
+      'BuyerOrder','BuyerOrderEvent','BuyerRewardAccount','BuyerRewardLedger'
+    )
+    AND relation.relrowsecurity
+    AND relation.relforcerowsecurity;
+  IF visible_count <> 7 THEN
+    RAISE EXCEPTION 'buyer security tables do not all enforce RLS';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM bridge_ai."AuditLog"
+    WHERE action='SYSTEM.BUYER_HUB_SECURITY_ENABLED'
+      AND "entityType"='SecurityConfiguration'
+  ) THEN
+    RAISE EXCEPTION 'Buyer Hub security configuration audit is missing';
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies

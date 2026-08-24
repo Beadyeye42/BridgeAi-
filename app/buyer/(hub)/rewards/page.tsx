@@ -1,0 +1,6 @@
+import { getBuyerRewards } from "@/lib/buyer/data";
+
+export default async function BuyerRewardsPage() {
+  const rewards = await getBuyerRewards();
+  return <><header className="buyer-page-head"><p className="eyebrow">Bridge rewards</p><h1>{rewards.account.balance} points</h1><p>Earned from recorded completed orders. Adjustments and reversals always appear in the permanent ledger.</p></header><section className="buyer-stats"><article><span>Current tier</span><b className="buyer-tier">{rewards.account.tier}</b></article><article><span>Lifetime earned</span><b>{rewards.account.lifetimeEarned}</b></article><article><span>Available</span><b>{rewards.account.balance}</b></article></section><section className="buyer-panel"><h2>Reward history</h2>{rewards.ledger.map((entry) => <div className="buyer-list-row" key={entry.id}><span><b>{entry.description}</b><small>{entry.buyerOrder?.reference ?? "Account adjustment"} · {entry.createdAt.toLocaleDateString("en-GB")}</small></span><strong className={entry.points < 0 ? "negative" : ""}>{entry.points > 0 ? "+" : ""}{entry.points}</strong></div>)}{!rewards.ledger.length ? <div className="buyer-empty"><h3>No reward activity yet</h3><p>Points are credited only after an order is genuinely completed.</p></div> : null}</section></>;
+}
