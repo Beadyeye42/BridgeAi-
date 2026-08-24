@@ -1310,6 +1310,7 @@ model QuotationVersion {
 
   @@unique([quotationId, versionNumber])
   @@index([quotationId, submittedAt])
+  @@index([submittedById])
   @@schema("bridge_ai")
 }
 
@@ -1360,6 +1361,7 @@ model QuoteMessage {
 
   @@index([quoteConversationId, createdAt])
   @@index([broadcastKey])
+  @@index([senderUserId])
   @@index([status, questionDueAt])
   @@schema("bridge_ai")
 }
@@ -1377,6 +1379,8 @@ model QuoteMessageModerationEvent {
   actorUser           User?             @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
 
   @@index([quoteConversationId, createdAt])
+  @@index([quoteMessageId])
+  @@index([actorUserId])
   @@index([outcome, createdAt])
   @@schema("bridge_ai")
 }

@@ -290,7 +290,12 @@ async function failJob(job: WhatsAppJob, cause: unknown) {
     || code === "OUTBOUND_DELIVERY_UNCERTAIN"
     || code === "META_PAID_TEMPLATE_DISABLED"
     || code === "META_QUOTE_TEMPLATE_REQUIRED"
-    || code === "META_CONTACT_TEMPLATE_REQUIRED";
+    || code === "META_CONTACT_TEMPLATE_REQUIRED"
+    || code === "OPENAI_AUTHENTICATION_FAILED"
+    || code === "OPENAI_PERMISSION_DENIED"
+    || code === "OPENAI_MODEL_NOT_FOUND"
+    || code === "OPENAI_MODEL_INVALID"
+    || code === "OPENAI_REQUEST_INVALID";
   await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
     await tx.whatsAppJob.update({
       where: { id: job.id },

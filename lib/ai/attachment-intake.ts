@@ -2,6 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { openAiCredentials } from "@/lib/config";
+import { requestOpenAiResponse } from "@/lib/ai/openai-client";
 
 export const quoteAttachmentAnalysisSchema = z.object({
   usefulForQuote: z.boolean(),
@@ -55,12 +56,10 @@ export async function analyzeQuoteAttachment(input: {
   const fileContent = input.mimeType === "application/pdf"
     ? { type: "input_file", filename: input.fileName, file_data: dataUrl, detail: "high" }
     : { type: "input_image", image_url: dataUrl, detail: "high" };
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-    signal: AbortSignal.timeout(45_000),
-    cache: "no-store",
-    body: JSON.stringify({
+  const parsedResponse = responseSchema.parse(await requestOpenAiResponse({
+    apiKey,
+    timeoutMs: 45_000,
+    body: {
       model,
       store: false,
       reasoning: { effort: "low" },
@@ -98,10 +97,8 @@ export async function analyzeQuoteAttachment(input: {
           schema: outputJsonSchema,
         },
       },
-    }),
-  });
-  if (!response.ok) throw new Error(`OPENAI_ATTACHMENT_HTTP_${response.status}`);
-  const parsedResponse = responseSchema.parse(await response.json());
+    },
+  }));
   if (parsedResponse.status !== "completed") throw new Error("OPENAI_ATTACHMENT_RESPONSE_INCOMPLETE");
   return {
     result: quoteAttachmentAnalysisSchema.parse(JSON.parse(outputText(parsedResponse))),

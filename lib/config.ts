@@ -84,7 +84,12 @@ export function whatsappMessagingPolicy() {
 export function openAiCredentials() {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) throw new Error("OpenAI API credentials are not configured");
-  return { apiKey, model: process.env.OPENAI_MODEL?.trim() || "gpt-5.6-terra" };
+  const model = process.env.OPENAI_MODEL?.trim() || "gpt-5.6";
+  if (!/^[a-z0-9][a-z0-9._:-]{0,127}$/i.test(model)
+      || /(?:^|[-_:])(terra|sol|codex)(?:$|[-_:])/i.test(model)) {
+    throw new Error("OPENAI_MODEL_INVALID");
+  }
+  return { apiKey, model };
 }
 
 function boundedInteger(name: string, fallback: number, minimum: number, maximum: number) {

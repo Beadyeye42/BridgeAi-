@@ -2,6 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { openAiCredentials } from "@/lib/config";
+import { requestOpenAiResponse } from "@/lib/ai/openai-client";
 import { normalizeLaunchCategorySlug } from "@/lib/categories/catalogue";
 import { HYPERLOCAL_INDUSTRIES } from "@/lib/categories/hyperlocal-industries";
 import { intakeQuestionKeys, resolveCustomerDeadline } from "@/lib/whatsapp/intake-state";
@@ -152,12 +153,10 @@ export async function extractQuoteIntake(input: {
   const referenceDate = input.referenceDate ?? new Date();
   const { apiKey, model } = openAiCredentials();
   const categorySlugs = new Set(input.categories.map((category) => category.slug));
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-    signal: AbortSignal.timeout(30_000),
-    cache: "no-store",
-    body: JSON.stringify({
+  const parsedResponse = responseSchema.parse(await requestOpenAiResponse({
+    apiKey,
+    timeoutMs: 30_000,
+    body: {
       model,
       store: false,
       reasoning: { effort: "medium" },
@@ -248,10 +247,8 @@ export async function extractQuoteIntake(input: {
           schema: outputJsonSchema,
         },
       },
-    }),
-  });
-  if (!response.ok) throw new Error(`OPENAI_HTTP_${response.status}`);
-  const parsedResponse = responseSchema.parse(await response.json());
+    },
+  }));
   if (parsedResponse.status !== "completed") throw new Error("OPENAI_RESPONSE_INCOMPLETE");
   const untrustedResult = JSON.parse(outputText(parsedResponse)) as Record<string, unknown>;
   if (untrustedResult.draft && typeof untrustedResult.draft === "object") {
