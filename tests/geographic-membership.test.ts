@@ -99,7 +99,7 @@ describe("geographic memberships and controlled distribution", () => {
   it("enforces server and database controls instead of trusting browser radius values", () => {
     const api = read("app/api/supplier/coverage/route.ts");
     const migration = read("supabase/migrations/20260810195356_enforce_live_geographic_membership_boundaries.sql");
-    expect(api).toContain("offsetFromCompanyBase + parsed.data.radiusMiles > purposeRadius");
+    expect(api).toContain("isCoverageBoundaryWithinGeographicRadius");
     expect(api).toContain("!limits.nationwideAllowed || purposeRadius !== null");
     expect(api).toContain("Postcode-area rules are no longer used");
     expect(migration).toContain("coverage boundary exceeds the membership or onboarding radius from the company base");
@@ -114,7 +114,7 @@ describe("geographic memberships and controlled distribution", () => {
 
   it("checks live requests from the registered company base as well as saved coverage", () => {
     const matching = read("lib/matching/suppliers.ts");
-    expect(matching).toContain("companyDistance > purposeRadius");
+    expect(matching).toContain("isWithinGeographicRadius(companyDistance, purposeRadius)");
     expect(matching).toContain("Registered company-base coordinates are required");
     expect(matching).toContain("effectiveRadiusMiles: purposeRadius");
   });

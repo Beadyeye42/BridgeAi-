@@ -6,6 +6,7 @@ import { coverageAreaSchema, validationError } from "@/lib/auth/validation";
 import { writeAuditLog } from "@/lib/audit";
 import { lookupPostcode, PostcodeLookupError } from "@/lib/location/postcodes";
 import { distanceMiles } from "@/lib/matching/coverage";
+import { isCoverageBoundaryWithinGeographicRadius } from "@/lib/matching/geographic-boundary";
 import { DEFAULT_PLAN_IDS, effectiveMembershipLimits } from "@/lib/billing/membership-plans";
 import { isMembershipActive } from "@/lib/billing/pricing";
 
@@ -56,7 +57,7 @@ export async function POST(request: Request) {
         : await lookupPostcode(company.geographicOriginPostcode ?? company.postcode);
       if (purposeRadius !== null) {
         const offsetFromCompanyBase = distanceMiles(geographicOrigin, location);
-        if (offsetFromCompanyBase + parsed.data.radiusMiles > purposeRadius + 0.01) {
+        if (!isCoverageBoundaryWithinGeographicRadius(offsetFromCompanyBase, parsed.data.radiusMiles, purposeRadius)) {
           return NextResponse.json({
             error: `${plan.name} coverage must stay within ${purposeRadius} miles of your company base (${geographicOrigin.postcode}).`,
           }, { status: 403 });

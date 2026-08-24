@@ -36,6 +36,16 @@ describe("UK postcode lookup", () => {
     await expect(lookupPostcode("B1 1AA")).rejects.toMatchObject({ code: "GEOCODING_UNAVAILABLE" } satisfies Partial<PostcodeLookupError>);
   });
 
+  it("fails closed on malformed geocoder data", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("not-json", { status: 200 })));
+    await expect(lookupPostcode("B1 1AA")).rejects.toMatchObject({ code: "GEOCODING_UNAVAILABLE" } satisfies Partial<PostcodeLookupError>);
+  });
+
+  it("maps a geocoder timeout to a retryable service error", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new DOMException("Timed out", "TimeoutError")));
+    await expect(lookupPostcode("B1 1AA")).rejects.toMatchObject({ code: "GEOCODING_UNAVAILABLE" } satisfies Partial<PostcodeLookupError>);
+  });
+
   it("finds the nearest postcode for a supplier-selected browser location", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
       status: 200,

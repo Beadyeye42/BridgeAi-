@@ -5,9 +5,6 @@ import { companyProfileSchema, validationError } from "@/lib/auth/validation";
 import { writeAuditLog } from "@/lib/audit";
 import { launchedSupplierCategoryWhere } from "@/lib/categories/catalogue";
 import { lookupPostcode, normalizePostcode, PostcodeLookupError } from "@/lib/location/postcodes";
-import { distanceMiles } from "@/lib/matching/coverage";
-import { DEFAULT_PLAN_IDS, effectiveMembershipLimits } from "@/lib/billing/membership-plans";
-import { isMembershipActive } from "@/lib/billing/pricing";
 
 export const runtime = "nodejs";
 
@@ -19,10 +16,6 @@ export async function PATCH(request: Request) {
   const { categoryIds, ...profile } = parsed.data;
   const current = await prisma.supplierCompany.findUnique({
     where: { id: auth.companyId },
-    include: {
-      coverageAreas: { where: { active: true } },
-      subscription: { include: { membershipPlan: true } },
-    },
   });
   if (!current) return NextResponse.json({ error: "Supplier company not found" }, { status: 404 });
 
@@ -47,29 +40,8 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "The company postcode could not be validated" }, { status: 503 });
   }
 
-  const activeSubscription = isMembershipActive(current.subscription) ? current.subscription : null;
-  const plan = activeSubscription?.membershipPlan
-    ?? await prisma.membershipPlan.findUnique({ where: { id: DEFAULT_PLAN_IDS.LOCAL } });
-  if (!plan) return NextResponse.json({ error: "Membership plans are not configured" }, { status: 503 });
-  const limits = effectiveMembershipLimits(plan, current);
-  for (const area of current.coverageAreas) {
-    const purposeRadius = area.purpose === "SERVICE"
-      ? limits.maximumServiceRadiusMiles
-      : limits.maximumDeliveryRadiusMiles;
-    if (area.type === "NATIONWIDE" && (!limits.nationwideAllowed || purposeRadius !== null)) {
-      return NextResponse.json({ error: "Remove the existing nationwide coverage rule before changing the company postcode." }, { status: 409 });
-    }
-    if (area.type !== "DISTANCE" || purposeRadius === null) continue;
-    if (area.latitude === null || area.longitude === null || area.radiusMiles === null) {
-      return NextResponse.json({ error: "An existing coverage area needs to be removed and saved again before changing the company postcode." }, { status: 409 });
-    }
-    const offset = distanceMiles(companyBase, { latitude: Number(area.latitude), longitude: Number(area.longitude) });
-    if (offset + area.radiusMiles > purposeRadius + 0.01) {
-      return NextResponse.json({
-        error: `Changing the company postcode would put ${area.label} outside your ${plan.name} boundary. Remove or reduce that coverage area first.`,
-      }, { status: 409 });
-    }
-  }
+  const geographicBaseChanged = normalizePostcode(current.geographicOriginPostcode ?? current.postcode ?? "")
+    !== normalizePostcode(companyBase.postcode);
 
   const selectableCategories = await prisma.productCategory.findMany({ where: launchedSupplierCategoryWhere(), select: { id: true } });
   const selectableIds = selectableCategories.map((category) => category.id);
@@ -109,8 +81,13 @@ export async function PATCH(request: Request) {
       })),
       skipDuplicates: true,
     });
-    await writeAuditLog({ actorUserId: auth.session.userId, supplierCompanyId: auth.companyId, action: "SUPPLIER.PROFILE_UPDATED", entityType: "SupplierCompany", entityId: auth.companyId, summary: "Supplier company profile updated", request }, tx);
+    await writeAuditLog({ actorUserId: auth.session.userId, supplierCompanyId: auth.companyId, action: "SUPPLIER.PROFILE_UPDATED", entityType: "SupplierCompany", entityId: auth.companyId, summary: "Supplier company profile updated", metadata: { geographicBaseChanged }, request }, tx);
     return saved;
   });
-  return NextResponse.json({ ok: true, company: { id: company.id, updatedAt: company.updatedAt } });
+  return NextResponse.json({
+    ok: true,
+    company: { id: company.id, updatedAt: company.updatedAt },
+    geographicBaseChanged,
+    geographyReconciled: geographicBaseChanged,
+  });
 }

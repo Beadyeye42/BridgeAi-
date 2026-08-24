@@ -1,4 +1,5 @@
 import { normalizePostcode } from "../location/postcodes";
+import { isWithinGeographicRadius } from "./geographic-boundary";
 
 type Numeric = number | string | { toString(): string };
 
@@ -59,7 +60,7 @@ export function matchCoverageRule(rule: CoverageRule, delivery: DeliveryLocation
   const longitude = toNumber(rule.longitude);
   if (latitude === null || longitude === null || delivery.latitude === null || delivery.longitude === null || rule.radiusMiles === null) return null;
   const distance = distanceMiles({ latitude, longitude }, { latitude: delivery.latitude, longitude: delivery.longitude });
-  if (distance > rule.radiusMiles) return null;
+  if (!isWithinGeographicRadius(distance, rule.radiusMiles)) return null;
   return {
     type: rule.type,
     label: rule.label,

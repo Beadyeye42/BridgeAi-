@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { lookupPostcode, normalizePostcode, PostcodeLookupError } from "../location/postcodes";
 import { bestCoverageMatch, distanceMiles as calculateDistanceMiles, type CoverageMatch, type DeliveryLocation } from "./coverage";
+import { isWithinGeographicRadius } from "./geographic-boundary";
 import { supplierOnboardingReadiness } from "../suppliers/onboarding";
 import {
   isRalCode,
@@ -616,7 +617,7 @@ export async function evaluateSupplierMatches(
     if (!collection && !coverage) mandatoryRejections.push(`Delivery postcode is outside configured ${purpose.toLowerCase()} coverage`);
     if (coverage?.type === "NATIONWIDE" && !planLimits?.nationwideAllowed) mandatoryRejections.push("Membership tier does not allow nationwide coverage");
     if (planLimits && purposeRadius !== null && companyDistance === null) mandatoryRejections.push("Registered company-base coordinates are required for mileage-controlled matching");
-    if (planLimits && purposeRadius !== null && companyDistance !== null && companyDistance > purposeRadius + 0.01) {
+    if (planLimits && purposeRadius !== null && companyDistance !== null && !isWithinGeographicRadius(companyDistance, purposeRadius)) {
       mandatoryRejections.push(`${plan?.name ?? planLimits.tier} is limited to ${purposeRadius} miles from the registered company base`);
     }
     const missingVerification = hyperlocal ? missingVerificationRequirements({

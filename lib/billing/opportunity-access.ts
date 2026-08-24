@@ -2,6 +2,7 @@ import type { FulfilmentMode, MembershipPlan, Prisma, SupplierCompany, Subscript
 import { effectiveMembershipLimits } from "@/lib/billing/membership-plans";
 import { isMembershipActive } from "@/lib/billing/pricing";
 import { distanceMiles } from "@/lib/matching/coverage";
+import { isWithinGeographicRadius } from "@/lib/matching/geographic-boundary";
 
 type CompanyWithMembership = Pick<SupplierCompany,
   "membershipTierOverride" |
@@ -55,7 +56,7 @@ export function hasCurrentGeographicOpportunityAccess(
       longitude: Number(request.deliveryLongitude),
     },
   );
-  return miles <= purposeRadius + 0.01;
+  return isWithinGeographicRadius(miles, purposeRadius);
 }
 
 export function canReadSupplierAssignment(
