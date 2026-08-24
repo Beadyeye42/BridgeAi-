@@ -26,6 +26,17 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   turbopack: { root: process.cwd() },
+  // sharp is a native dependency. Vercel/Next output tracing can otherwise
+  // omit its platform-specific libvips runtime from serverless functions.
+  // These narrowly scoped includes keep the patched sharp release deployable
+  // without pulling unrelated node_modules files into every function.
+  outputFileTracingIncludes: {
+    "/*": [
+      "./node_modules/sharp/**/*",
+      "./node_modules/@img/sharp-linux-x64/**/*",
+      "./node_modules/@img/sharp-libvips-linux-x64/**/*",
+    ],
+  },
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },

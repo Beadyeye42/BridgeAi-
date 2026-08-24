@@ -23,7 +23,7 @@ describe("industry-agnostic Buyer Hub", () => {
 
   it("uses a generic outcome state plus a configurable stage key", () => {
     const schema = read("prisma/schema.prisma");
-    const migration = read("supabase/migrations/20260824184947_buyer_industry_agnostic_hub.sql");
+    const migration = read("supabase/migrations/20260824190755_buyer_industry_agnostic_hub.sql");
     expect(schema).toContain("enum BuyerOrderState");
     expect(schema).toContain('stageKey          String');
     expect(schema).toContain("buyerExperienceConfig");

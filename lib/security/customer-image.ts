@@ -1,5 +1,4 @@
 import "server-only";
-import sharp from "sharp";
 
 const MAX_INPUT_PIXELS = 40_000_000;
 const MAX_OUTPUT_BYTES = 5_000_000;
@@ -20,6 +19,13 @@ export async function sanitizeCustomerImage(
   bytes: Uint8Array,
   mimeType: CustomerImageMimeType,
 ): Promise<SanitizedCustomerImage> {
+  // Load the native image runtime only when an image is actually processed.
+  // This keeps unrelated API routes (webhook verification, text messages,
+  // quotations and cron authentication) available if the native runtime ever
+  // fails to initialise, while the deployment trace below still packages the
+  // required Linux binaries for real image uploads.
+  const { default: sharp } = await import("sharp");
+
   let pipeline = sharp(Buffer.from(bytes), {
     failOn: "warning",
     limitInputPixels: MAX_INPUT_PIXELS,
