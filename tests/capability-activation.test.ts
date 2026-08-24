@@ -37,6 +37,9 @@ describe("simple supplier product activation", () => {
     expect(rematcher).toContain("responseDueAt: { gt: now }");
     expect(rematcher).toContain("evaluateSupplierMatches(tx, quote");
     expect(rematcher).toContain("Math.min(quote.distributionLimit, MAX_AUTOMATIC_SUPPLIERS)");
+    expect(rematcher).toMatch(/expiresAt:\s*quote\.responseDueAt/);
+    expect(rematcher).toMatch(/responseDueAt:\s*quote\.responseDueAt/);
+    expect(rematcher).not.toContain("invitationExpiresAt");
     expect(rematcher).toContain("WHATSAPP.REQUEST_ASSIGNED_AFTER_CAPABILITY_UPDATE");
   });
 });

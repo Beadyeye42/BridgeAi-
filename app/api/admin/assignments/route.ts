@@ -49,7 +49,6 @@ export async function POST(request: Request) {
         quotationHours: matchingConfiguration?.quotationDeadlineHours ?? matchingConfiguration?.responseDeadlineHours ?? 24,
       });
       const acknowledgementDueAt = addSupplierResponseHours(new Date(), deadlines.acknowledgementHours);
-      const invitationExpiresAt = acknowledgementDueAt > quote.responseDueAt ? quote.responseDueAt : acknowledgementDueAt;
       const unique = [...new Set(parsed.data.supplierCompanyIds)];
       if (current + unique.length > quote.distributionLimit || current + unique.length > 5) throw new Error("DISTRIBUTION_LIMIT");
 
@@ -76,7 +75,7 @@ export async function POST(request: Request) {
           quoteRequestId: quote.id,
           supplierCompanyId,
           status: "PENDING",
-          expiresAt: invitationExpiresAt,
+          expiresAt: quote.responseDueAt,
           assignedById: auth.session.userId,
           marketDensityMode: matches.find((match) => match.id === supplierCompanyId)?.marketDensityMode,
           softCapOverride: matches.find((match) => match.id === supplierCompanyId)?.softCapOverride ?? false,
@@ -89,7 +88,7 @@ export async function POST(request: Request) {
         supplierCompanyIds: unique,
         reference: quote.reference,
         title: quote.title,
-        responseDueAt: invitationExpiresAt,
+        responseDueAt: quote.responseDueAt,
       });
       await writeAuditLog({
         actorUserId: auth.session.userId,
@@ -102,7 +101,7 @@ export async function POST(request: Request) {
           capabilityMatches: matches.map((match) => ({ supplierCompanyId: match.id, score: match.score, reasons: match.reasons })),
           distributionLimit: quote.distributionLimit,
           responseDueAt: quote.responseDueAt.toISOString(),
-          acknowledgementDueAt: invitationExpiresAt.toISOString(),
+          acknowledgementDueAt: acknowledgementDueAt.toISOString(),
         },
         request,
       }, tx);

@@ -1029,9 +1029,6 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
     });
     await lockSupplierAssignmentScope(tx, selectedSupplierIds);
     const acknowledgementDueAt = addSupplierResponseHours(now, configuredAcknowledgementHours);
-    const invitationExpiresAt = acknowledgementDueAt > request.responseDueAt
-      ? request.responseDueAt
-      : acknowledgementDueAt;
     const assignedSupplierIds: string[] = [];
     for (const [index, match] of matches.entries()) {
       const assignment = await tx.supplierAssignment.create({
@@ -1039,7 +1036,7 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
           quoteRequestId: request.id,
           supplierCompanyId: match.id,
           status: "PENDING",
-          expiresAt: invitationExpiresAt,
+          expiresAt: request.responseDueAt,
           assignedById: null,
           invitationRank: index + 1,
           marketDensityMode: match.marketDensityMode,
@@ -1060,7 +1057,7 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
           matchingScore: match.score,
           matchingReasons: match.reasons,
           capabilitySnapshot: match.capabilitySnapshot,
-          acknowledgementDueAt: assignment.expiresAt.toISOString(),
+          acknowledgementDueAt: acknowledgementDueAt.toISOString(),
           quotationDueAt: request.responseDueAt.toISOString(),
         },
       });
@@ -1070,7 +1067,7 @@ async function createQuoteRequest(job: WhatsAppJob, loaded: LoadedJob, draft: Qu
         supplierCompanyIds: assignedSupplierIds,
         reference: request.reference,
         title: request.title,
-        responseDueAt: invitationExpiresAt,
+        responseDueAt: request.responseDueAt,
       });
       await tx.quoteRequest.update({
         where: { id: request.id },

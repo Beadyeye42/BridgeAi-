@@ -4,8 +4,6 @@ import { runAsDatabaseWorker } from "@/lib/db";
 import { evaluateSupplierMatches, resolveDeliveryLocation } from "@/lib/matching/suppliers";
 import { recordMatchingEvaluation } from "@/lib/matching/distribution";
 import { queueSupplierAssignmentNotifications } from "@/lib/notifications/assignment-notifications";
-import { addSupplierResponseHours } from "@/lib/quotes/response-clock";
-import { resolveIndustryResponseDeadlines } from "@/lib/matching/deadlines";
 
 const ACTIVE_ASSIGNMENT_STATUSES = ["PENDING", "VIEWED", "ACCEPTED"] as const;
 const VALID_QUOTATION_STATUSES = ["SUBMITTED", "SELECTED_PENDING_PAYMENT", "ACCEPTED"] as const;
@@ -62,17 +60,12 @@ export async function inviteNextEligibleSupplier(quoteRequestId: string, replace
     });
     if (!next) return { invited: false, reason: "no_eligible_supplier" };
 
-    const deadlines = await resolveIndustryResponseDeadlines(tx, quote.categoryId, {
-      acknowledgementHours: configuration?.acknowledgementDeadlineHours ?? configuration?.responseDeadlineHours ?? 8,
-      quotationHours: configuration?.quotationDeadlineHours ?? configuration?.responseDeadlineHours ?? 24,
-    });
-    const acknowledgementDueAt = addSupplierResponseHours(now, deadlines.acknowledgementHours);
     const assignment = await tx.supplierAssignment.create({
       data: {
         quoteRequestId,
         supplierCompanyId: next.id,
         status: "PENDING",
-        expiresAt: acknowledgementDueAt > quote.responseDueAt ? quote.responseDueAt : acknowledgementDueAt,
+        expiresAt: quote.responseDueAt,
         assignedById: null,
         invitationRank: totalInvitations + 1,
         replacementForId: replacementForId ?? null,
@@ -84,7 +77,7 @@ export async function inviteNextEligibleSupplier(quoteRequestId: string, replace
       supplierCompanyIds: [next.id],
       reference: quote.reference,
       title: quote.title,
-      responseDueAt: assignment.expiresAt,
+      responseDueAt: quote.responseDueAt,
     });
     await tx.auditLog.create({ data: { supplierCompanyId: next.id, action: "MATCHING.REPLACEMENT_SUPPLIER_INVITED", entityType: "SupplierAssignment", entityId: assignment.id, summary: "Next-ranked eligible supplier invited automatically", metadata: { quoteRequestId, invitationRank: assignment.invitationRank, replacementForId: replacementForId ?? null, score: next.score, reasons: next.reasons } as Prisma.InputJsonValue } });
     return { invited: true, supplierCompanyId: next.id, assignmentId: assignment.id, invitationRank: assignment.invitationRank };
