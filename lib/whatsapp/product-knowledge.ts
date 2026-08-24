@@ -182,7 +182,19 @@ export function isClearCataloguePivot(input: {
 }) {
   if (productMessageIntent(input.text) === "QUESTION") return false;
   const recognisedIndustry = input.recognition.parentSlug ?? input.recognition.categorySlug;
-  if (recognisedIndustry !== input.currentIndustrySlug) return true;
+  if (recognisedIndustry !== input.currentIndustrySlug) {
+    // Short answers such as "delivery" are valid answers to an active
+    // fulfilment question as well as catalogue/industry names. Never discard
+    // an in-progress request merely because one of those answers also matches
+    // a different root industry. Explicit new-request commands are handled
+    // before catalogue recognition; an in-conversation pivot must therefore
+    // name a specific product/service and clearly signal the change.
+    if (input.expectedQuestionKey && input.expectedQuestionKey !== "PRODUCT") {
+      if (!input.recognition.parentSlug) return false;
+      return /\b(?:actually|instead|new|another|separate|different)\b/i.test(input.text);
+    }
+    return true;
+  }
   if (input.recognition.categorySlug === input.currentCategorySlug) return false;
   if (input.expectedQuestionKey && input.expectedQuestionKey !== "PRODUCT") return false;
   return input.text.trim().split(/\s+/).length <= 8;

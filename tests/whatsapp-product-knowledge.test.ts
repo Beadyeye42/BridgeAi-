@@ -115,7 +115,7 @@ describe("WhatsApp product knowledge safety net", () => {
       .toContain("collection and delivery postcodes");
   });
 
-  it("recognises a plain-language industry pivot and does not force it into an old draft", () => {
+  it("does not let a bare industry word replace an active draft answer", () => {
     const recognition = recogniseCatalogueProduct("Transport", categories);
     expect(recognition?.categorySlug).toBe("transport-delivery-removals");
     expect(isClearCataloguePivot({
@@ -124,6 +124,30 @@ describe("WhatsApp product knowledge safety net", () => {
       currentCategorySlug: "patio-sliding-doors",
       currentIndustrySlug: "windows",
       expectedQuestionKey: "REQUIRED_BY",
+    })).toBe(false);
+  });
+
+  it("keeps delivery as fulfilment for an active windows request", () => {
+    const recognition = recogniseCatalogueProduct("delivery", categories);
+    expect(recognition?.categorySlug).toBe("transport-delivery-removals");
+    expect(isClearCataloguePivot({
+      text: "delivery",
+      recognition: recognition!,
+      currentCategorySlug: "upvc-windows",
+      currentIndustrySlug: "windows",
+      expectedQuestionKey: "FULFILMENT",
+    })).toBe(false);
+  });
+
+  it("allows an explicit switch to a specific service during an active draft", () => {
+    const recognition = recogniseCatalogueProduct("Actually I need a man with a van instead", categories);
+    expect(recognition?.categorySlug).toBe("man-with-a-van");
+    expect(isClearCataloguePivot({
+      text: "Actually I need a man with a van instead",
+      recognition: recognition!,
+      currentCategorySlug: "upvc-windows",
+      currentIndustrySlug: "windows",
+      expectedQuestionKey: "FULFILMENT",
     })).toBe(true);
   });
 
