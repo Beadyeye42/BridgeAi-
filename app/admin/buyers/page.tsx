@@ -29,8 +29,8 @@ export default async function AdminBuyersPage() {
   // This server-rendered operational metric deliberately uses the request time.
   // eslint-disable-next-line react-hooks/purity
   const eventCounts = await prisma.buyerSecurityEvent.count({ where: { createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } } });
-  const activeOrders = await prisma.buyerOrder.count({ where: { status: { in: ["PENDING_CONFIRMATION", "CONFIRMED", "DISPATCHED"] } } });
-  const completedOrders = await prisma.buyerOrder.count({ where: { status: "COMPLETED" } });
+  const activeOrders = await prisma.buyerOrder.count({ where: { state: { in: ["SELECTED", "ACTIVE"] } } });
+  const completedOrders = await prisma.buyerOrder.count({ where: { state: "COMPLETED" } });
   const suspended = buyers.filter((buyer) => buyer.buyerPortalStatus === "SUSPENDED").length;
 
   return <>

@@ -7,10 +7,11 @@ describe("selected job lifecycle", () => {
   it("separates customer selection from a confirmed and completed job", () => {
     const list = read("app/dashboard/requests/page.tsx");
     const detail = read("app/dashboard/requests/[reference]/page.tsx");
-    expect(list).toContain('"selected", "confirmed", "completed"');
     expect(list).toContain("lifecycleDisplay");
     expect(detail).toContain("You’ve been selected");
-    expect(detail).toContain("Good news—the customer has selected your quote to move forward.");
+    expect(detail).toContain("Good news—the buyer has selected your quote to move forward.");
+    expect(detail).toContain("resolveBuyerExperience");
+    expect(detail).toContain("allowedLifecycleTransitions");
     expect(detail).toContain("JobLifecycleControl");
     expect(detail).toContain('quotation?.status === "ACCEPTED"');
   });

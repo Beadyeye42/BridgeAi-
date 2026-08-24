@@ -6,6 +6,8 @@ import { requireAdminPage } from "@/lib/auth/guards";
 import { AdminHeading } from "@/components/admin/admin-shell";
 import { CategoryStatusButton, IndustryDeadlineControl, ProductCreateForm } from "@/components/admin/admin-actions";
 import { industryExperience, industryLaunchBlocker } from "@/lib/categories/industry-registry";
+import { resolveBuyerExperience } from "@/lib/buyer/industry-experience";
+import { BuyerExperienceControl } from "@/components/admin/buyer-experience-control";
 
 export default async function IndustryPage({ params }: { params: Promise<{ id: string }> }) {
   await requireAdminPage();
@@ -23,6 +25,7 @@ export default async function IndustryPage({ params }: { params: Promise<{ id: s
   const experience = industryExperience(industry.slug);
   const activeProductCount = industry.children.filter((product) => product.active).length;
   const launchBlocker = industry.active ? undefined : industryLaunchBlocker(industry.slug, activeProductCount) ?? undefined;
+  const buyerExperience = resolveBuyerExperience(industry);
 
   return <>
     <AdminHeading
@@ -72,5 +75,6 @@ export default async function IndustryPage({ params }: { params: Promise<{ id: s
         <ProductCreateForm parentId={industry.id} industryName={industry.name}/>
       </aside>
     </div>
+    <BuyerExperienceControl id={industry.id} config={buyerExperience}/>
   </>;
 }

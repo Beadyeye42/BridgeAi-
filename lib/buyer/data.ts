@@ -26,7 +26,7 @@ export const getBuyerProfile = cache(async function getBuyerProfile() {
 });
 
 const buyerRequestInclude = {
-  category: { select: { name: true, slug: true } },
+  category: { select: { name: true, slug: true, buyerExperienceConfig: true, parent: { select: { buyerExperienceConfig: true } } } },
   items: { orderBy: { displayOrder: "asc" as const } },
   attachments: { where: { scanStatus: "CLEAN" as const }, select: { id: true, fileName: true, mimeType: true, byteSize: true } },
   quotations: {
@@ -46,12 +46,12 @@ const buyerRequestInclude = {
       },
     },
   },
-  buyerOrder: { select: { reference: true, status: true } },
+  buyerOrder: { select: { reference: true, state: true, stageKey: true } },
 } satisfies Prisma.QuoteRequestInclude;
 
 const buyerOrderInclude = {
   events: { orderBy: { createdAt: "asc" } },
-  quoteRequest: { include: { category: { select: { name: true } }, items: { orderBy: { displayOrder: "asc" } } } },
+  quoteRequest: { include: { category: { select: { name: true, buyerExperienceConfig: true, parent: { select: { buyerExperienceConfig: true } } } }, items: { orderBy: { displayOrder: "asc" } } } },
   quotation: { select: { price: true, currency: true, leadTimeDays: true, validUntil: true, notes: true, specification: true, deliveryCost: true, vatIncluded: true } },
   supplierCompany: { select: { legalName: true, tradingName: true, contactEmail: true, contactPhone: true } },
 } satisfies Prisma.BuyerOrderInclude;
@@ -62,9 +62,9 @@ export async function getBuyerRequests() {
     where: { customerContactId: buyer.id, status: { not: "DRAFT" } },
     orderBy: { createdAt: "desc" },
     select: {
-      reference: true, title: true, summary: true, status: true, deliveryPostcode: true,
+      reference: true, title: true, summary: true, status: true, deliveryPostcode: true, qualificationData: true,
       requiredBy: true, responseDueAt: true, publishedAt: true, createdAt: true,
-      category: { select: { name: true } },
+      category: { select: { name: true, buyerExperienceConfig: true, parent: { select: { buyerExperienceConfig: true } } } },
       _count: { select: { quotations: { where: { status: { in: ["SUBMITTED", "ACCEPTED"] } } }, attachments: true } },
     },
   }));
@@ -94,8 +94,8 @@ export async function getBuyerOrders() {
     where: { customerContactId: buyer.id },
     orderBy: { createdAt: "desc" },
     select: {
-      reference: true, status: true, nextAction: true, createdAt: true, updatedAt: true,
-      quoteRequest: { select: { reference: true, title: true, deliveryPostcode: true, category: { select: { name: true } } } },
+      reference: true, state: true, stageKey: true, nextAction: true, createdAt: true, updatedAt: true,
+      quoteRequest: { select: { reference: true, title: true, deliveryPostcode: true, category: { select: { name: true, buyerExperienceConfig: true, parent: { select: { buyerExperienceConfig: true } } } } } },
       quotation: { select: { price: true, currency: true, leadTimeDays: true } },
       supplierCompany: { select: { legalName: true, tradingName: true } },
     },

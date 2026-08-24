@@ -2,7 +2,7 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma, runAsDatabaseWorker, runWithDatabaseIdentity } from "@/lib/db";
-import { supplierSelectionNextStep } from "@/lib/quotes/lifecycle";
+import { initialLifecycleStage, resolveBuyerExperience } from "@/lib/buyer/industry-experience";
 
 async function writeSelectionAudit(
   tx: Prisma.TransactionClient,
@@ -39,7 +39,7 @@ export async function selectQuotationForCustomer(input: {
     await tx.$queryRaw`SELECT id FROM bridge_ai."SupplierQuotation" WHERE id = ${input.quotationId} FOR UPDATE`;
     const quotation = await tx.supplierQuotation.findUnique({
       where: { id: input.quotationId },
-      include: { quoteRequest: { include: { category: { include: { parent: { select: { slug: true } } } } } } },
+      include: { quoteRequest: { include: { category: { include: { parent: { select: { buyerExperienceConfig: true } } } } } } },
     });
     if (!quotation) throw new Error("QUOTATION_NOT_FOUND");
     if (input.source === "BUYER_PORTAL" && (
@@ -100,7 +100,9 @@ export async function selectQuotationForCustomer(input: {
         evidence: input.evidence.slice(0, 250),
       },
     });
-    const nextStep = supplierSelectionNextStep(quotation.quoteRequest.category.slug, quotation.quoteRequest.category.parent?.slug);
+    const experience = resolveBuyerExperience(quotation.quoteRequest.category);
+    const initialStage = initialLifecycleStage(experience);
+    const nextStep = initialStage.nextAction ?? "Contact the buyer and agree the final arrangements.";
     const buyerOrder = await tx.buyerOrder.create({
       data: {
         reference: buyerOrderReference(),
@@ -108,12 +110,14 @@ export async function selectQuotationForCustomer(input: {
         quoteRequestId: quotation.quoteRequestId,
         quotationId: quotation.id,
         supplierCompanyId: quotation.supplierCompanyId,
-        status: "PENDING_CONFIRMATION",
+        state: initialStage.state,
+        stageKey: initialStage.key,
         nextAction: nextStep,
         events: {
           create: {
-            status: "PENDING_CONFIRMATION",
-            title: "Quote selected",
+            state: initialStage.state,
+            stageKey: initialStage.key,
+            title: initialStage.label,
             detail: nextStep,
             source: input.actorUserId ? "ADMIN" : input.source ?? "WHATSAPP",
             actorAuthUserId: input.actorUserId ?? input.buyerAuthUserId,

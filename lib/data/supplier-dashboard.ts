@@ -162,7 +162,12 @@ export async function getSupplierRequest(
     },
     include: {
       quoteRequest: {
-        include: { category: { include: { parent: { select: { slug: true } } } }, items: true, attachments: true },
+        include: {
+          category: { include: { parent: { select: { slug: true, buyerExperienceConfig: true } } } },
+          items: true,
+          attachments: true,
+          buyerOrder: { select: { state: true, stageKey: true } },
+        },
       },
       quotation: {
         include: {

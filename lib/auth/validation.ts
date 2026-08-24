@@ -70,11 +70,10 @@ export const assignmentDecisionSchema = z.object({
   reason: z.string().trim().max(500).optional(),
 });
 
-export const jobLifecycleSchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("confirm") }),
-  z.object({ action: z.literal("complete") }),
-  z.object({ action: z.literal("cancel"), reason: z.string().trim().min(3, "Tell us why the job did not proceed").max(500) }),
-]);
+export const jobLifecycleSchema = z.object({
+  stageKey: z.string().trim().regex(/^[a-z][a-z0-9_]{1,63}$/, "Invalid lifecycle stage"),
+  reason: z.string().trim().min(3, "Add a short note").max(500).optional(),
+});
 
 const quotationValidUntil = z.union([
   z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid quotation date"),

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { lifecycleDisplay, supplierSelectionNextStep } from "@/lib/quotes/lifecycle";
+import { lifecycleDisplay } from "@/lib/quotes/lifecycle";
+import { allowedLifecycleTransitions, configuredRequestDetails, defaultBuyerExperience, lifecycleStage, resolveBuyerExperience } from "@/lib/buyer/industry-experience";
 
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -12,11 +13,22 @@ describe("quote request job lifecycle", () => {
     expect(lifecycleDisplay("CANCELLED_AFTER_SELECTION")).toBe("Did not proceed");
   });
 
-  it("provides industry-specific next steps", () => {
-    expect(supplierSelectionNextStep("composite-doors", "windows")).toContain("survey");
-    expect(supplierSelectionNextStep("man-with-a-van", "transport-delivery-removals")).toContain("collection");
-    expect(supplierSelectionNextStep("steel-frames", "bespoke-metal-fabrication")).toContain("drawings");
-    expect(supplierSelectionNextStep("plant-hire")).toContain("equipment availability");
+  it("loads stages from industry configuration rather than category slug checks", () => {
+    const configured = { ...defaultBuyerExperience, stages: [
+      { key: "chosen", label: "Chosen", state: "SELECTED" as const, allowedNext: ["site_visit"] },
+      { key: "site_visit", label: "Site visit", state: "ACTIVE" as const, allowedNext: ["complete"] },
+      { key: "complete", label: "Finished", state: "COMPLETED" as const, allowedNext: [] },
+    ] };
+    const resolved = resolveBuyerExperience({ buyerExperienceConfig: configured });
+    expect(lifecycleStage(resolved, "site_visit").label).toBe("Site visit");
+    expect(allowedLifecycleTransitions(resolved, "chosen").map((stage) => stage.key)).toEqual(["site_visit"]);
+  });
+
+  it("renders configurable request fields without knowing the industry", () => {
+    const configured = { ...defaultBuyerExperience, detailFields: [{ key: "special_requirement", label: "Special requirement", type: "text" as const, source: "qualification" as const }] };
+    expect(configuredRequestDetails(configured, { qualificationData: { special_requirement: "Customer supplied value" } })).toEqual([
+      { key: "special_requirement", label: "Special requirement", value: "Customer supplied value" },
+    ]);
   });
 
   it("records every supplier transition in the same transaction", () => {

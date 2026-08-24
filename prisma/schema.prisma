@@ -310,15 +310,9 @@ enum BuyerPortalStatus {
   @@schema("bridge_ai")
 }
 
-enum BuyerOrderStatus {
-  PENDING_CONFIRMATION
-  CONFIRMED
-  IN_PRODUCTION
-  READY
-  DISPATCHED
-  OUT_FOR_DELIVERY
-  READY_FOR_COLLECTION
-  DELIVERED
+enum BuyerOrderState {
+  SELECTED
+  ACTIVE
   COMPLETED
   CANCELLED
   ISSUE_REPORTED
@@ -864,6 +858,7 @@ model ProductCategory {
   servesBusiness               Boolean                   @default(true)
   acknowledgementDeadlineHours Int?
   quotationDeadlineHours       Int?
+  buyerExperienceConfig        Json?
   parentId                     String?
   displayOrder                 Int                       @default(0)
   createdAt                    DateTime                  @default(now())
@@ -1220,7 +1215,8 @@ model BuyerOrder {
   quoteRequestId    String              @unique
   quotationId       String              @unique
   supplierCompanyId String
-  status            BuyerOrderStatus    @default(PENDING_CONFIRMATION)
+  state             BuyerOrderState     @default(SELECTED)
+  stageKey          String              @default("selected") @db.VarChar(64)
   nextAction        String?
   confirmedAt       DateTime?
   dispatchedAt      DateTime?
@@ -1237,15 +1233,16 @@ model BuyerOrder {
   events            BuyerOrderEvent[]
   rewardEntries     BuyerRewardLedger[]
 
-  @@index([customerContactId, status, createdAt])
-  @@index([supplierCompanyId, status, createdAt])
+  @@index([customerContactId, state, createdAt])
+  @@index([supplierCompanyId, state, createdAt])
   @@schema("bridge_ai")
 }
 
 model BuyerOrderEvent {
   id              String           @id @default(cuid())
   buyerOrderId    String
-  status          BuyerOrderStatus
+  state           BuyerOrderState
+  stageKey        String           @db.VarChar(64)
   title           String
   detail          String?
   source          String           @db.VarChar(32)
