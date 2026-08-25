@@ -213,17 +213,10 @@ export async function requestBuyerLogin(input: {
     const phone = normalizeBuyerPhone(input.phone);
     if (!phone) throw new Error("BUYER_PHONE_INVALID");
 
-    const serviceWindowStartedAt = new Date(Date.now() - 24 * 60 * 60 * 1_000);
-    const activeConversation = await runAsDatabaseWorker("buyer_auth", (tx) => tx.whatsAppMessage.findFirst({
-      where: {
-        direction: "INBOUND",
-        occurredAt: { gt: serviceWindowStartedAt },
-        conversation: { customerContactId: link.customerContactId },
-      },
-      select: { id: true },
-    }));
-
-    if (activeConversation) {
+    try {
+      // Meta is the authority on whether the buyer's 24-hour service window
+      // is open. Trying the ordinary message first avoids granting the
+      // buyer-auth database worker access to private conversation history.
       await sendMetaText(phone, [
         "Open your private Bridge-iT Buyer Hub:",
         link.url,
@@ -231,6 +224,9 @@ export async function requestBuyerLogin(input: {
       ].join("\n\n"));
       await recordBuyerLoginLinkSent(link, "WHATSAPP_SESSION");
       return;
+    } catch {
+      // Outside the service window Meta requires an approved authentication
+      // template. Fall through without exposing this detail to the requester.
     }
 
     const template = metaBuyerLoginTemplate();

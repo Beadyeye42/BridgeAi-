@@ -60,11 +60,11 @@ describe("Buyer Hub security and ownership controls", () => {
     expect(migration).toContain('ALTER TABLE bridge_ai."BuyerTrustedSession" FORCE ROW LEVEL SECURITY');
   });
 
-  it("uses an open WhatsApp service window before requiring a paid login template", () => {
+  it("lets Meta determine the open WhatsApp service window before requiring a login template", () => {
     const auth = read("lib/buyer/auth.ts");
-    expect(auth).toContain('direction: "INBOUND"');
     expect(auth).toContain("sendMetaText(phone");
-    expect(auth.indexOf("if (activeConversation)")).toBeLessThan(auth.indexOf("metaBuyerLoginTemplate()"));
+    expect(auth.indexOf("sendMetaText(phone")).toBeLessThan(auth.indexOf("metaBuyerLoginTemplate()"));
+    expect(auth).not.toContain('direction: "INBOUND"');
   });
 
   it("revokes device grants on logout and buyer suspension", () => {
