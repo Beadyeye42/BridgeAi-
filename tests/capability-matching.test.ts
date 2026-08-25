@@ -79,6 +79,41 @@ describe("live supplier capability matching", () => {
     expect(result.reasons).toContain("Current 7-day lead time meets the required date");
   });
 
+  it("does not reject a supplier when AI duplicates a named colour into the finish field", () => {
+    const result = evaluateCapability(
+      {
+        ...request,
+        requiredManufacturer: null,
+        requiredSystem: null,
+        requiredColour: "white",
+        requiredFinish: "white",
+      },
+      capability({ colourNames: ["White"], finishNames: [] }),
+      coverage,
+      now,
+    );
+    expect(result.outcome).toBe("MATCHED");
+    expect(result.reasons).toContain("Offers colour white");
+    expect(result.reasons).not.toContain("Does not confirm finish white");
+  });
+
+  it("treats a standard colour extracted only as a finish as a colour requirement", () => {
+    const result = evaluateCapability(
+      {
+        ...request,
+        requiredManufacturer: null,
+        requiredSystem: null,
+        requiredColour: null,
+        requiredFinish: "White",
+      },
+      capability({ colourNames: ["White"], finishNames: [] }),
+      coverage,
+      now,
+    );
+    expect(result.outcome).toBe("MATCHED");
+    expect(result.reasons).toContain("Offers colour White");
+  });
+
   it.each([
     ["system", { systemNames: ["Residence 9"] }, "Does not confirm system Liniar 70"],
     ["colour", { colourNames: ["White"] }, "Does not confirm colour Anthracite grey"],

@@ -345,6 +345,19 @@ export function evaluateCapability(
   const reasons: string[] = [coverage.description];
   const rejected: string[] = [];
   let score = 25;
+  // AI extraction can occasionally describe a named colour as a "finish" (or
+  // return the same value in both fields). Treat recognised colours as colours
+  // and never make suppliers satisfy the same requirement twice.
+  const finishIsColour = Boolean(
+    request.requiredFinish
+      && (isStandardColour(request.requiredFinish) || isRalCode(request.requiredFinish)),
+  );
+  const requiredColour = request.requiredColour ?? (finishIsColour ? request.requiredFinish : null);
+  const requiredFinish = request.requiredFinish
+    && (!requiredColour
+      || normaliseCapabilityValue(request.requiredFinish) !== normaliseCapabilityValue(requiredColour))
+    ? request.requiredFinish
+    : null;
   const buyerType = request.buyerType ?? "TRADE";
   if (!buyerTypeAllowed(buyerType, capability)) rejected.push(`Supplier does not serve ${buyerTypeLabel(buyerType).toLocaleLowerCase("en-GB")} requests for this product`);
   else reasons.push(`Accepts ${buyerTypeLabel(buyerType).toLocaleLowerCase("en-GB")} requests for this product`);
@@ -367,13 +380,13 @@ export function evaluateCapability(
     if (supportsSystem(capability.systemNames, request.requiredSystem)) { score += 12; reasons.push(`Offers system ${request.requiredSystem}`); }
     else rejected.push(`Does not confirm system ${request.requiredSystem}`);
   }
-  if (request.requiredColour) {
-    if (supportsColour(capability.colourNames, request.requiredColour)) { score += 10; reasons.push(`Offers colour ${request.requiredColour}`); }
-    else rejected.push(`Does not confirm colour ${request.requiredColour}`);
+  if (requiredColour) {
+    if (supportsColour(capability.colourNames, requiredColour)) { score += 10; reasons.push(`Offers colour ${requiredColour}`); }
+    else rejected.push(`Does not confirm colour ${requiredColour}`);
   }
-  if (request.requiredFinish) {
-    if (supports(capability.finishNames, request.requiredFinish)) { score += 8; reasons.push(`Offers finish ${request.requiredFinish}`); }
-    else rejected.push(`Does not confirm finish ${request.requiredFinish}`);
+  if (requiredFinish) {
+    if (supports(capability.finishNames, requiredFinish)) { score += 8; reasons.push(`Offers finish ${requiredFinish}`); }
+    else rejected.push(`Does not confirm finish ${requiredFinish}`);
   }
   if (request.collectionRequired && fulfilmentMode !== "COLLECTION") {
     if (capability.collectionAvailable) { score += 5; reasons.push("Collection is available"); }
