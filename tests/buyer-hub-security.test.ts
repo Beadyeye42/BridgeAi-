@@ -49,13 +49,22 @@ describe("Buyer Hub security and ownership controls", () => {
     const migration = read("supabase/migrations/20260824170900_buyer_hub_passwordless_orders_rewards.sql");
     expect(verified).toContain("supabase.auth.getClaims()");
     expect(verified).toContain("claims?.session_id");
-    expect(verifyRoute).toContain("registerBuyerTrustedSession");
+    expect(verifyRoute).toContain("completeBuyerLogin");
     expect(verifyRoute).toContain("supabase.auth.verifyOtp");
+    expect(verifyRoute.indexOf("supabase.auth.getClaims")).toBeLessThan(verifyRoute.indexOf("const challenge = await completeBuyerLogin"));
+    expect(read("lib/buyer/auth.ts")).toContain("createdAt: now");
     expect(session).toContain("sessionId: auth.sessionId");
     expect(session).toContain("revokedAt: null");
     expect(session).toContain("expiresAt: { gt: now }");
     expect(migration).toContain('CREATE TABLE bridge_ai."BuyerTrustedSession"');
     expect(migration).toContain('ALTER TABLE bridge_ai."BuyerTrustedSession" FORCE ROW LEVEL SECURITY');
+  });
+
+  it("uses an open WhatsApp service window before requiring a paid login template", () => {
+    const auth = read("lib/buyer/auth.ts");
+    expect(auth).toContain('direction: "INBOUND"');
+    expect(auth).toContain("sendMetaText(phone");
+    expect(auth.indexOf("if (activeConversation)")).toBeLessThan(auth.indexOf("metaBuyerLoginTemplate()"));
   });
 
   it("revokes device grants on logout and buyer suspension", () => {

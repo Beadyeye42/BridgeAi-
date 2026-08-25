@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { consumeBuyerChallenge, registerBuyerTrustedSession } from "@/lib/buyer/auth";
+import { completeBuyerLogin, recordBuyerLoginVerificationFailure } from "@/lib/buyer/auth";
 import { createClient } from "@/lib/supabase/auth-server";
 
 const bodySchema = z.object({
@@ -22,6 +22,8 @@ export async function POST(request: Request) {
   if (!parsed.success) return invalidResponse();
 
   const supabase = await createClient();
+  let authUserId: string | undefined;
+  let stage = "SUPABASE_VERIFY";
   try {
     // Supabase is the credential authority. Only after it verifies the
     // one-time token do we consume our independently hashed scope challenge.
@@ -33,17 +35,9 @@ export async function POST(request: Request) {
       await supabase.auth.signOut();
       return invalidResponse();
     }
+    authUserId = verified.data.user.id;
 
-    const challenge = await consumeBuyerChallenge({
-      challengeId: parsed.data.challenge,
-      tokenHash: parsed.data.tokenHash,
-      userAgent: request.headers.get("user-agent"),
-    });
-    if (!challenge || verified.data.user.id !== challenge.authUserId) {
-      await supabase.auth.signOut();
-      return invalidResponse();
-    }
-
+    stage = "SESSION_CLAIMS";
     const claims = await supabase.auth.getClaims(verified.data.session.access_token);
     const sessionId = claims.data?.claims?.session_id;
     if (typeof sessionId !== "string") {
@@ -51,18 +45,29 @@ export async function POST(request: Request) {
       return invalidResponse();
     }
 
-    await registerBuyerTrustedSession({
-      customerContactId: challenge.customerContactId,
-      authUserId: challenge.authUserId,
+    stage = "TRUSTED_SESSION";
+    const challenge = await completeBuyerLogin({
+      challengeId: parsed.data.challenge,
+      tokenHash: parsed.data.tokenHash,
+      authUserId,
       sessionId,
       userAgent: request.headers.get("user-agent"),
     });
+    if (!challenge) {
+      await supabase.auth.signOut();
+      return invalidResponse();
+    }
 
     return NextResponse.json(
       { next: challenge.requestedPath },
       { headers: { "cache-control": "private, no-store" } },
     );
-  } catch {
+  } catch (error) {
+    const stableError = error instanceof Error && /^[A-Z0-9_]{3,64}$/.test(error.message)
+      ? error.message
+      : `BUYER_LOGIN_${stage}_FAILED`;
+    console.error("buyer_login_verification_failed", { stage, errorType: stableError });
+    await recordBuyerLoginVerificationFailure(authUserId, stableError);
     await supabase.auth.signOut().catch(() => undefined);
     return invalidResponse();
   }

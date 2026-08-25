@@ -5,7 +5,7 @@ import { applicationOrigin, metaBuyerLoginTemplate } from "@/lib/config";
 import { runAsDatabaseWorker } from "@/lib/db";
 import { blindIndex } from "@/lib/security/encryption";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
-import { sendMetaTemplate } from "@/lib/whatsapp/meta-client";
+import { sendMetaTemplate, sendMetaText } from "@/lib/whatsapp/meta-client";
 
 const CHALLENGE_MINUTES = 10;
 const CUSTOMER_LIMIT_PER_HOUR = 5;
@@ -210,10 +210,31 @@ export async function requestBuyerLogin(input: {
   if (!link) return;
 
   try {
-    const template = metaBuyerLoginTemplate();
-    if (!template) throw new Error("BUYER_LOGIN_TEMPLATE_NOT_CONFIGURED");
     const phone = normalizeBuyerPhone(input.phone);
     if (!phone) throw new Error("BUYER_PHONE_INVALID");
+
+    const serviceWindowStartedAt = new Date(Date.now() - 24 * 60 * 60 * 1_000);
+    const activeConversation = await runAsDatabaseWorker("buyer_auth", (tx) => tx.whatsAppMessage.findFirst({
+      where: {
+        direction: "INBOUND",
+        occurredAt: { gt: serviceWindowStartedAt },
+        conversation: { customerContactId: link.customerContactId },
+      },
+      select: { id: true },
+    }));
+
+    if (activeConversation) {
+      await sendMetaText(phone, [
+        "Open your private Bridge-iT Buyer Hub:",
+        link.url,
+        "This one-time link expires in 10 minutes. For your security, do not forward it.",
+      ].join("\n\n"));
+      await recordBuyerLoginLinkSent(link, "WHATSAPP_SESSION");
+      return;
+    }
+
+    const template = metaBuyerLoginTemplate();
+    if (!template) throw new Error("BUYER_LOGIN_TEMPLATE_NOT_CONFIGURED");
     await sendMetaTemplate({ to: phone, ...template, parameters: [link.url] });
     await recordBuyerLoginLinkSent(link, "WHATSAPP_TEMPLATE");
   } catch (error) {
@@ -221,21 +242,28 @@ export async function requestBuyerLogin(input: {
   }
 }
 
-export async function consumeBuyerChallenge(input: {
+export async function completeBuyerLogin(input: {
   challengeId: string;
   tokenHash: string;
+  authUserId: string;
+  sessionId: string;
   userAgent?: string | null;
 }) {
   if (!/^[a-zA-Z0-9_-]{8,128}$/.test(input.challengeId) || input.tokenHash.length < 20 || input.tokenHash.length > 512) {
     return null;
   }
+  if (!/^[0-9a-f-]{36}$/i.test(input.authUserId) || !/^[0-9a-f-]{36}$/i.test(input.sessionId)) {
+    return null;
+  }
   const tokenDigest = digest(input.tokenHash);
   const now = new Date();
+  const expiresAt = new Date(now.getTime() + TRUSTED_DEVICE_DAYS * 24 * 60 * 60 * 1_000);
   return runAsDatabaseWorker("buyer_auth", async (tx) => {
     const challenge = await tx.buyerLoginChallenge.findFirst({
       where: {
         id: input.challengeId,
         tokenDigest,
+        authUserId: input.authUserId,
         expiresAt: { gt: now },
         consumedAt: null,
         revokedAt: null,
@@ -243,52 +271,36 @@ export async function consumeBuyerChallenge(input: {
       select: { id: true, customerContactId: true, authUserId: true, requestedPath: true, userAgentHash: true },
     });
     if (!challenge) return null;
-    const consumed = await tx.buyerLoginChallenge.updateMany({
-      where: { id: challenge.id, tokenDigest, consumedAt: null, revokedAt: null, expiresAt: { gt: now } },
-      data: { consumedAt: now },
-    });
-    if (consumed.count !== 1) return null;
-    await tx.customerContact.update({ where: { id: challenge.customerContactId }, data: { buyerLastLoginAt: now } });
-    await tx.buyerSecurityEvent.create({
-      data: {
-        customerContactId: challenge.customerContactId,
-        authUserId: challenge.authUserId,
-        eventType: "BUYER_LOGIN_CHALLENGE_CONSUMED",
-        metadata: {
-          userAgentChanged: Boolean(challenge.userAgentHash && input.userAgent && challenge.userAgentHash !== digest(input.userAgent.slice(0, 1_000))),
-        },
-      },
-    });
-    return challenge;
-  });
-}
-
-export async function registerBuyerTrustedSession(input: {
-  customerContactId: string;
-  authUserId: string;
-  sessionId: string;
-  userAgent?: string | null;
-}) {
-  if (!/^[0-9a-f-]{36}$/i.test(input.sessionId)) throw new Error("BUYER_SESSION_ID_INVALID");
-  const now = new Date();
-  const expiresAt = new Date(now.getTime() + TRUSTED_DEVICE_DAYS * 24 * 60 * 60 * 1_000);
-  return runAsDatabaseWorker("buyer_auth", async (tx) => {
     const buyer = await tx.customerContact.findFirst({
       where: {
-        id: input.customerContactId,
+        id: challenge.customerContactId,
         buyerAuthUserId: input.authUserId,
         buyerPortalStatus: "ACTIVE",
       },
       select: { id: true },
     });
-    if (!buyer) throw new Error("BUYER_SESSION_SCOPE_MISMATCH");
+    if (!buyer) return null;
+
+    const consumed = await tx.buyerLoginChallenge.updateMany({
+      where: {
+        id: challenge.id,
+        tokenDigest,
+        authUserId: input.authUserId,
+        consumedAt: null,
+        revokedAt: null,
+        expiresAt: { gt: now },
+      },
+      data: { consumedAt: now },
+    });
+    if (consumed.count !== 1) return null;
     await tx.buyerTrustedSession.upsert({
       where: { sessionId: input.sessionId },
       create: {
-        customerContactId: input.customerContactId,
+        customerContactId: challenge.customerContactId,
         authUserId: input.authUserId,
         sessionId: input.sessionId,
         userAgentHash: input.userAgent ? digest(input.userAgent.slice(0, 1_000)) : null,
+        createdAt: now,
         expiresAt,
         lastSeenAt: now,
       },
@@ -300,16 +312,35 @@ export async function registerBuyerTrustedSession(input: {
       },
     });
     await tx.customerContact.update({
-      where: { id: input.customerContactId },
+      where: { id: challenge.customerContactId },
       data: { buyerLastLoginAt: now },
     });
-    await tx.buyerSecurityEvent.create({
-      data: {
-        customerContactId: input.customerContactId,
-        authUserId: input.authUserId,
-        eventType: "BUYER_TRUSTED_SESSION_CREATED",
-        metadata: { expiresAt: expiresAt.toISOString() },
-      },
+    await tx.buyerSecurityEvent.createMany({
+      data: [
+        {
+          customerContactId: challenge.customerContactId,
+          authUserId: challenge.authUserId,
+          eventType: "BUYER_LOGIN_CHALLENGE_CONSUMED",
+          metadata: {
+            userAgentChanged: Boolean(challenge.userAgentHash && input.userAgent && challenge.userAgentHash !== digest(input.userAgent.slice(0, 1_000))),
+          },
+        },
+        {
+          customerContactId: challenge.customerContactId,
+          authUserId: input.authUserId,
+          eventType: "BUYER_TRUSTED_SESSION_CREATED",
+          metadata: { expiresAt: expiresAt.toISOString() },
+        },
+      ],
     });
+    return challenge;
+  });
+}
+
+export async function recordBuyerLoginVerificationFailure(authUserId: string | undefined, errorType: string) {
+  await recordEvent({
+    authUserId,
+    eventType: "BUYER_LOGIN_VERIFICATION_FAILED",
+    metadata: { errorType: errorType.slice(0, 64) },
   });
 }
