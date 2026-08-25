@@ -1239,16 +1239,16 @@ model BuyerOrder {
 }
 
 model BuyerOrderEvent {
-  id              String           @id @default(cuid())
+  id              String          @id @default(cuid())
   buyerOrderId    String
   state           BuyerOrderState
-  stageKey        String           @db.VarChar(64)
+  stageKey        String          @db.VarChar(64)
   title           String
   detail          String?
-  source          String           @db.VarChar(32)
-  actorAuthUserId String?          @db.Uuid
-  createdAt       DateTime         @default(now())
-  buyerOrder      BuyerOrder       @relation(fields: [buyerOrderId], references: [id], onDelete: Cascade)
+  source          String          @db.VarChar(32)
+  actorAuthUserId String?         @db.Uuid
+  createdAt       DateTime        @default(now())
+  buyerOrder      BuyerOrder      @relation(fields: [buyerOrderId], references: [id], onDelete: Cascade)
 
   @@index([buyerOrderId, createdAt])
   @@index([actorAuthUserId])
@@ -1434,6 +1434,33 @@ model WhatsAppJob {
   @@index([quoteRequestId, createdAt])
   @@index([quotationId])
   @@index([quoteMessageId])
+  @@schema("bridge_ai")
+}
+
+model AiUsageEvent {
+  id                     String   @id @default(cuid())
+  model                  String
+  task                   String
+  inputTokens            Int?
+  cachedInputTokens      Int?
+  outputTokens           Int?
+  reasoningTokens        Int?
+  latencyMs              Int
+  attempts               Int      @default(1)
+  escalationLevel        String
+  escalationReason       String
+  providerResponseIdHash String
+  requestId              String?
+  workflowId             String?
+  quoteRequestId         String?
+  estimatedCostUsd       Decimal  @db.Decimal(18, 8)
+  createdAt              DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([model, createdAt])
+  @@index([task, createdAt])
+  @@index([workflowId, createdAt])
+  @@index([quoteRequestId, createdAt])
   @@schema("bridge_ai")
 }
 

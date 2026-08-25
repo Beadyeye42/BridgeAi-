@@ -19,28 +19,48 @@ export async function requestOpenAiResponse(input: {
   apiKey: string;
   body: unknown;
   timeoutMs: number;
+  maxRetries?: number;
+  retryDelayMs?: number;
 }) {
-  let response: Response;
-  try {
-    response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${input.apiKey}`,
-        "content-type": "application/json",
-      },
-      signal: AbortSignal.timeout(input.timeoutMs),
-      cache: "no-store",
-      body: JSON.stringify(input.body),
-    });
-  } catch (error) {
-    throw new Error(isTimeout(error) ? "OPENAI_TIMEOUT" : "OPENAI_NETWORK_ERROR", { cause: error });
-  }
+  const startedAt = Date.now();
+  const maxRetries = Math.max(0, Math.min(2, input.maxRetries ?? 2));
+  let attempts = 0;
+  while (attempts <= maxRetries) {
+    attempts += 1;
+    let response: Response;
+    try {
+      response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${input.apiKey}`,
+          "content-type": "application/json",
+        },
+        signal: AbortSignal.timeout(input.timeoutMs),
+        cache: "no-store",
+        body: JSON.stringify(input.body),
+      });
+    } catch (error) {
+      if (attempts <= maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, (input.retryDelayMs ?? 150) * attempts));
+        continue;
+      }
+      throw new Error(isTimeout(error) ? "OPENAI_TIMEOUT" : "OPENAI_NETWORK_ERROR", { cause: error });
+    }
 
-  if (!response.ok) throw new Error(responseErrorCode(response.status));
+    if (!response.ok) {
+      const code = responseErrorCode(response.status);
+      if (code === "OPENAI_TEMPORARY_FAILURE" && attempts <= maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, (input.retryDelayMs ?? 150) * attempts));
+        continue;
+      }
+      throw new Error(code);
+    }
 
-  try {
-    return await response.json();
-  } catch (error) {
-    throw new Error("OPENAI_RESPONSE_INVALID_JSON", { cause: error });
+    try {
+      return { data: await response.json(), latencyMs: Date.now() - startedAt, attempts };
+    } catch (error) {
+      throw new Error("OPENAI_RESPONSE_INVALID_JSON", { cause: error });
+    }
   }
+  throw new Error("OPENAI_TEMPORARY_FAILURE");
 }

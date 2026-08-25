@@ -13,6 +13,8 @@ import { isTransportCategorySlug, matchingCoveragePurpose, resolveTransportColle
 import { runAsDatabaseWorker } from "@/lib/db";
 import { analyzeQuoteAttachment, quoteAttachmentAnalysisSchema, type QuoteAttachmentAnalysis } from "@/lib/ai/attachment-intake";
 import { extractQuoteIntake, quoteDraftSchema, type QuoteDraft } from "@/lib/ai/quote-intake";
+import type { AiCallTelemetry } from "@/lib/ai/telemetry";
+import { recordAiUsageEvents } from "@/lib/ai/usage-store";
 import { createBuyerLoginLink, recordBuyerLoginLinkSent, revokeBuyerLoginLink } from "@/lib/buyer/auth";
 import { lookupPostcode, PostcodeLookupError } from "@/lib/location/postcodes";
 import { evaluateSupplierMatches, selectAdaptiveSupplierMatches } from "@/lib/matching/suppliers";
@@ -262,7 +264,7 @@ async function loadJob(id: string) {
   }));
 }
 
-async function completeJob(job: WhatsAppJob, telemetry?: { model: string; providerResponseIdHash: string; inputTokens?: number; outputTokens?: number }) {
+async function completeJob(job: WhatsAppJob, telemetry?: AiCallTelemetry) {
   await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
     await tx.whatsAppJob.update({
       where: { id: job.id },
@@ -276,12 +278,27 @@ async function completeJob(job: WhatsAppJob, telemetry?: { model: string; provid
         outputTokens: telemetry?.outputTokens,
       },
     });
+    if (telemetry) {
+      await recordAiUsageEvents(tx, [telemetry], {
+        requestId: job.id,
+        workflowId: job.conversationId,
+        quoteRequestId: job.quoteRequestId,
+      });
+    }
     await writeWhatsAppAudit(tx, {
       action: "WHATSAPP.JOB_COMPLETED",
       entityType: "WhatsAppJob",
       entityId: job.id,
       summary: "WhatsApp background job completed",
-      metadata: { type: job.type, attempts: job.attempts },
+      metadata: {
+        type: job.type,
+        attempts: job.attempts,
+        model: telemetry?.model,
+        escalationLevel: telemetry?.escalationLevel,
+        escalationReason: telemetry?.escalationReason,
+        latencyMs: telemetry?.latencyMs,
+        estimatedCostUsd: telemetry?.estimatedCostUsd,
+      },
     });
   });
 }
@@ -600,12 +617,13 @@ async function ensureAttachmentAnalysis(
   attachment: Attachment,
   initialBytes: Uint8Array | undefined,
   safetyIdentifier: string,
+  context: { requestId: string; workflowId: string; quoteRequestId?: string | null },
 ) {
   const existing = decryptAttachmentAnalysis(attachment.aiSummaryEncrypted);
   if (existing) return existing;
   if (!["image/jpeg", "image/png", "application/pdf"].includes(attachment.mimeType)) return null;
   const bytes = initialBytes ?? await loadAttachmentBytes(attachment.storageKey);
-  const { result, telemetry } = await analyzeQuoteAttachment({
+  const { result, telemetry, usageEvents } = await analyzeQuoteAttachment({
     fileName: attachment.fileName,
     mimeType: attachment.mimeType as "image/jpeg" | "image/png" | "application/pdf",
     bytes,
@@ -621,6 +639,7 @@ async function ensureAttachmentAnalysis(
         aiResponseIdHash: telemetry.providerResponseIdHash,
       },
     });
+    await recordAiUsageEvents(tx, usageEvents, context);
     await writeWhatsAppAudit(tx, {
       action: "WHATSAPP.MEDIA_ANALYSED",
       entityType: "Attachment",
@@ -631,7 +650,12 @@ async function ensureAttachmentAnalysis(
         usefulForQuote: result.usefulForQuote,
         needsHumanReview: result.needsHumanReview,
         inputTokens: telemetry.inputTokens,
+        cachedInputTokens: telemetry.cachedInputTokens,
         outputTokens: telemetry.outputTokens,
+        reasoningTokens: telemetry.reasoningTokens,
+        escalationLevel: telemetry.escalationLevel,
+        escalationReason: telemetry.escalationReason,
+        estimatedCostUsd: telemetry.estimatedCostUsd,
       },
     });
   });
@@ -1511,6 +1535,11 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
         outcome.attachment,
         outcome.bytes,
         conversation.customerContact.phoneHash,
+        {
+          requestId: job.id,
+          workflowId: conversation.id,
+          quoteRequestId: job.quoteRequestId,
+        },
       );
       if (analysis) {
         const decision = attachmentAutomationDecision(analysis);

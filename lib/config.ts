@@ -81,15 +81,38 @@ export function whatsappMessagingPolicy() {
   return { allowPaidTemplates: raw === "true" };
 }
 
-export function openAiCredentials() {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!apiKey) throw new Error("OpenAI API credentials are not configured");
-  const model = process.env.OPENAI_MODEL?.trim() || "gpt-5.6-terra";
-  const isBareCodexProfile = /^(?:terra|sol|codex)(?:[-_:].*)?$/i.test(model);
+const openAiRoutingModes = ["LUNA_ONLY", "LUNA_WITH_TERRA_ESCALATION", "TERRA_ONLY_TESTING"] as const;
+
+function openAiModel(name: string, fallback: string) {
+  const model = process.env[name]?.trim() || fallback;
+  const isBareCodexProfile = /^(?:luna|terra|sol|codex)(?:[-_:].*)?$/i.test(model);
   if (!/^[a-z0-9][a-z0-9._:-]{0,127}$/i.test(model) || isBareCodexProfile) {
     throw new Error("OPENAI_MODEL_INVALID");
   }
-  return { apiKey, model };
+  return model;
+}
+
+export function openAiConfiguration() {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) throw new Error("OpenAI API credentials are not configured");
+  const defaultModel = openAiModel("OPENAI_DEFAULT_MODEL", "gpt-5.6-luna");
+  const complexModel = openAiModel("OPENAI_COMPLEX_MODEL", "gpt-5.6-terra");
+  const routingMode = process.env.OPENAI_ROUTING_MODE?.trim() || "LUNA_WITH_TERRA_ESCALATION";
+  if (!openAiRoutingModes.includes(routingMode as (typeof openAiRoutingModes)[number])) {
+    throw new Error("OPENAI_ROUTING_MODE_INVALID");
+  }
+  return {
+    apiKey,
+    defaultModel,
+    complexModel,
+    routingMode: routingMode as (typeof openAiRoutingModes)[number],
+  };
+}
+
+/** @deprecated Prefer openAiConfiguration and the central model router. */
+export function openAiCredentials() {
+  const configuration = openAiConfiguration();
+  return { apiKey: configuration.apiKey, model: configuration.defaultModel };
 }
 
 function boundedInteger(name: string, fallback: number, minimum: number, maximum: number) {
@@ -100,6 +123,22 @@ function boundedInteger(name: string, fallback: number, minimum: number, maximum
     throw new Error(`${name} must be an integer between ${minimum} and ${maximum}`);
   }
   return value;
+}
+
+function boundedNumber(name: string, fallback: number, minimum: number, maximum: number) {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < minimum || value > maximum) {
+    throw new Error(`${name} must be a number between ${minimum} and ${maximum}`);
+  }
+  return value;
+}
+
+export function openAiGuardrailConfiguration() {
+  return {
+    highCostCallAlertUsd: boundedNumber("OPENAI_HIGH_COST_CALL_ALERT_USD", 0.05, 0.001, 100),
+  };
 }
 
 export function whatsappConciergeConfig() {

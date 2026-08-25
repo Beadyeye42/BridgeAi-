@@ -1,8 +1,9 @@
 import "server-only";
-import { createHash } from "node:crypto";
 import { z } from "zod";
-import { openAiCredentials } from "@/lib/config";
+import { openAiConfiguration } from "@/lib/config";
 import { requestOpenAiResponse } from "@/lib/ai/openai-client";
+import { initialAiRoute } from "@/lib/ai/model-router";
+import { responseTelemetry } from "@/lib/ai/telemetry";
 import { normalizeLaunchCategorySlug } from "@/lib/categories/catalogue";
 import { HYPERLOCAL_INDUSTRIES } from "@/lib/categories/hyperlocal-industries";
 import { intakeQuestionKeys, resolveCustomerDeadline } from "@/lib/whatsapp/intake-state";
@@ -55,7 +56,12 @@ const responseSchema = z.object({
     type: z.string(),
     content: z.array(z.object({ type: z.string(), text: z.string().optional() }).passthrough()).optional(),
   }).passthrough()),
-  usage: z.object({ input_tokens: z.number().int().nonnegative(), output_tokens: z.number().int().nonnegative() }).nullable().optional(),
+  usage: z.object({
+    input_tokens: z.number().int().nonnegative(),
+    output_tokens: z.number().int().nonnegative(),
+    input_tokens_details: z.object({ cached_tokens: z.number().int().nonnegative().optional() }).optional(),
+    output_tokens_details: z.object({ reasoning_tokens: z.number().int().nonnegative().optional() }).optional(),
+  }).nullable().optional(),
 }).passthrough();
 
 const outputJsonSchema = {
@@ -151,15 +157,16 @@ export async function extractQuoteIntake(input: {
   referenceDate?: Date;
 }) {
   const referenceDate = input.referenceDate ?? new Date();
-  const { apiKey, model } = openAiCredentials();
+  const { apiKey } = openAiConfiguration();
+  const route = initialAiRoute("QUOTE_INTAKE");
   const categorySlugs = new Set(input.categories.map((category) => category.slug));
-  const parsedResponse = responseSchema.parse(await requestOpenAiResponse({
+  const providerResult = await requestOpenAiResponse({
     apiKey,
     timeoutMs: 30_000,
     body: {
-      model,
+      model: route.model,
       store: false,
-      reasoning: { effort: "medium" },
+      reasoning: { effort: "low" },
       max_output_tokens: 1_000,
       safety_identifier: input.safetyIdentifier.slice(0, 64),
       instructions: [
@@ -248,7 +255,8 @@ export async function extractQuoteIntake(input: {
         },
       },
     },
-  }));
+  });
+  const parsedResponse = responseSchema.parse(providerResult.data);
   if (parsedResponse.status !== "completed") throw new Error("OPENAI_RESPONSE_INCOMPLETE");
   const untrustedResult = JSON.parse(outputText(parsedResponse)) as Record<string, unknown>;
   if (untrustedResult.draft && typeof untrustedResult.draft === "object") {
@@ -268,11 +276,14 @@ export async function extractQuoteIntake(input: {
   }
   return {
     result,
-    telemetry: {
-      model,
-      providerResponseIdHash: createHash("sha256").update(parsedResponse.id).digest("hex"),
-      inputTokens: parsedResponse.usage?.input_tokens,
-      outputTokens: parsedResponse.usage?.output_tokens,
-    },
+    telemetry: responseTelemetry({
+      response: parsedResponse,
+      model: route.model,
+      task: "QUOTE_INTAKE",
+      latencyMs: providerResult.latencyMs,
+      attempts: providerResult.attempts,
+      escalationLevel: route.escalationLevel,
+      escalationReason: route.reason,
+    }),
   };
 }
