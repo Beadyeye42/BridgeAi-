@@ -3,7 +3,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { applicationOrigin, metaBuyerLoginTemplate } from "@/lib/config";
 import { runAsDatabaseWorker } from "@/lib/db";
-import { blindIndex, decryptPrivateValue } from "@/lib/security/encryption";
+import { blindIndex } from "@/lib/security/encryption";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { sendMetaTemplate } from "@/lib/whatsapp/meta-client";
 
@@ -14,6 +14,13 @@ const TRUSTED_DEVICE_DAYS = 30;
 
 export const BUYER_LOGIN_NEUTRAL_MESSAGE =
   "If that WhatsApp number is linked to Bridge-iT, a secure sign-in link will arrive shortly.";
+
+export type BuyerLoginLink = {
+  url: string;
+  challengeId: string;
+  customerContactId: string;
+  authUserId: string;
+};
 
 export function normalizeBuyerPhone(value: string) {
   let digits = value.replace(/\D/g, "");
@@ -68,15 +75,15 @@ async function ensureBuyerAuthUser(customer: { id: string; phoneHash: string; bu
   return linked.buyerAuthUserId;
 }
 
-export async function requestBuyerLogin(input: {
+export async function createBuyerLoginLink(input: {
   phone: string;
   requestUrl: string;
   requestedPath?: string | null;
   requestIp?: string | null;
   userAgent?: string | null;
-}) {
+}): Promise<BuyerLoginLink | null> {
   const phone = normalizeBuyerPhone(input.phone);
-  if (!phone) return;
+  if (!phone) return null;
 
   const phoneHash = blindIndex(phone);
   const requestIpHash = input.requestIp ? blindIndex(`buyer-login-ip:${input.requestIp}`) : null;
@@ -88,12 +95,11 @@ export async function requestBuyerLogin(input: {
     select: {
       id: true,
       phoneHash: true,
-      phoneEncrypted: true,
       buyerAuthUserId: true,
       buyerPortalStatus: true,
     },
   }));
-  if (!customer || customer.buyerPortalStatus !== "ACTIVE") return;
+  if (!customer || customer.buyerPortalStatus !== "ACTIVE") return null;
 
   const limited = await runAsDatabaseWorker("buyer_auth", async (tx) => {
     const [customerCount, networkCount] = await Promise.all([
@@ -106,7 +112,7 @@ export async function requestBuyerLogin(input: {
   });
   if (limited) {
     await recordEvent({ customerContactId: customer.id, authUserId: customer.buyerAuthUserId ?? undefined, eventType: "BUYER_LOGIN_RATE_LIMITED" });
-    return;
+    return null;
   }
 
   let authUserId: string | undefined;
@@ -135,8 +141,6 @@ export async function requestBuyerLogin(input: {
     }));
     challengeId = challenge.id;
 
-    const template = metaBuyerLoginTemplate();
-    if (!template) throw new Error("BUYER_LOGIN_TEMPLATE_NOT_CONFIGURED");
     const origin = applicationOrigin(input.requestUrl);
     const url = new URL("/buyer/auth/verify", origin);
     // Keep both bearer secrets in the URL fragment. Browsers do not send the
@@ -147,12 +151,12 @@ export async function requestBuyerLogin(input: {
       token_hash: tokenHash,
       type: "magiclink",
     }).toString();
-    await sendMetaTemplate({
-      to: decryptPrivateValue(customer.phoneEncrypted),
-      ...template,
-      parameters: [url.toString()],
-    });
-    await recordEvent({ customerContactId: customer.id, authUserId, eventType: "BUYER_LOGIN_LINK_SENT" });
+    return {
+      url: url.toString(),
+      challengeId: challenge.id,
+      customerContactId: customer.id,
+      authUserId,
+    };
   } catch (error) {
     if (challengeId) {
       await runAsDatabaseWorker("buyer_auth", (tx) => tx.buyerLoginChallenge.updateMany({
@@ -166,6 +170,54 @@ export async function requestBuyerLogin(input: {
       eventType: "BUYER_LOGIN_LINK_FAILED",
       metadata: { errorType: error instanceof Error ? error.message.slice(0, 64) : "UNKNOWN" },
     });
+    throw error;
+  }
+}
+
+export async function recordBuyerLoginLinkSent(
+  link: BuyerLoginLink,
+  channel: "WHATSAPP_SESSION" | "WHATSAPP_TEMPLATE",
+) {
+  await recordEvent({
+    customerContactId: link.customerContactId,
+    authUserId: link.authUserId,
+    eventType: "BUYER_LOGIN_LINK_SENT",
+    metadata: { channel },
+  });
+}
+
+export async function revokeBuyerLoginLink(link: BuyerLoginLink, reason: string) {
+  await runAsDatabaseWorker("buyer_auth", (tx) => tx.buyerLoginChallenge.updateMany({
+    where: { id: link.challengeId, consumedAt: null },
+    data: { revokedAt: new Date() },
+  })).catch(() => undefined);
+  await recordEvent({
+    customerContactId: link.customerContactId,
+    authUserId: link.authUserId,
+    eventType: "BUYER_LOGIN_LINK_FAILED",
+    metadata: { errorType: reason.slice(0, 64) },
+  });
+}
+
+export async function requestBuyerLogin(input: {
+  phone: string;
+  requestUrl: string;
+  requestedPath?: string | null;
+  requestIp?: string | null;
+  userAgent?: string | null;
+}) {
+  const link = await createBuyerLoginLink(input);
+  if (!link) return;
+
+  try {
+    const template = metaBuyerLoginTemplate();
+    if (!template) throw new Error("BUYER_LOGIN_TEMPLATE_NOT_CONFIGURED");
+    const phone = normalizeBuyerPhone(input.phone);
+    if (!phone) throw new Error("BUYER_PHONE_INVALID");
+    await sendMetaTemplate({ to: phone, ...template, parameters: [link.url] });
+    await recordBuyerLoginLinkSent(link, "WHATSAPP_TEMPLATE");
+  } catch (error) {
+    await revokeBuyerLoginLink(link, error instanceof Error ? error.message : "UNKNOWN");
   }
 }
 

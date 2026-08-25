@@ -192,6 +192,10 @@ export function isQuoteHistoryRequest(value: string) {
   return /^(?:2|my quotes?|past quotes?|quote history|previous quotes?|history)$/i.test(value.trim());
 }
 
+export function isBuyerHubRequest(value: string) {
+  return /^(?:4|buyer hub|customer hub|my hub|hub|portal|buyer portal|customer portal|my account)$/i.test(value.trim());
+}
+
 export function isCancelAllDraftsRequest(value: string) {
   return /^(?:cancel|clear|delete|discard|remove)\s+(?:(?:all|my)\s+)*(?:current\s+)?(?:(?:quote|job)\s+)?drafts$/i.test(value.trim())
     || /^(?:cancel|clear|delete|discard|remove)\s+all\s+(?:current\s+)?(?:(?:quote|job)\s+)?draft$/i.test(value.trim())
@@ -242,6 +246,7 @@ export function quoteMenu(hasDraft = false) {
     "1 — BRIDGE A REQUEST\nStart a fresh job, including a separate job for another customer.",
     "2 — MY QUOTES\nCheck your recent requests.",
     "3 — CANCEL DRAFT\nClear the unfinished job and start again. Confirmed requests stay safe.",
+    "4 — BUYER HUB\nOpen your private requests, quotes and orders.",
     "Send a message, photo, drawing or document. Include where and when you need it if you can; I’ll identify the right specialist category behind the scenes.",
     hasDraft ? "One unsent draft is open. Continue describing it, reply YES when the summary is right, or reply CANCEL DRAFT to clear it." : "There is no unfinished draft open.",
   ].filter(Boolean).join("\n\n");

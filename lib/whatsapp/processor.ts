@@ -13,6 +13,7 @@ import { isTransportCategorySlug, matchingCoveragePurpose, resolveTransportColle
 import { runAsDatabaseWorker } from "@/lib/db";
 import { analyzeQuoteAttachment, quoteAttachmentAnalysisSchema, type QuoteAttachmentAnalysis } from "@/lib/ai/attachment-intake";
 import { extractQuoteIntake, quoteDraftSchema, type QuoteDraft } from "@/lib/ai/quote-intake";
+import { createBuyerLoginLink, recordBuyerLoginLinkSent, revokeBuyerLoginLink } from "@/lib/buyer/auth";
 import { lookupPostcode, PostcodeLookupError } from "@/lib/location/postcodes";
 import { evaluateSupplierMatches, selectAdaptiveSupplierMatches } from "@/lib/matching/suppliers";
 import { lockSupplierAssignmentScope, recordMatchingEvaluation } from "@/lib/matching/distribution";
@@ -53,6 +54,7 @@ import {
   intakeFailureRecovery,
   isCancelAllDraftsRequest,
   isCancelDraftRequest,
+  isBuyerHubRequest,
   isConversationOptOut,
   isConversationalHelpRequest,
   isIndustryQuoteOfferAccepted,
@@ -1161,8 +1163,35 @@ async function quoteHistoryReply(conversation: LoadedJob["conversation"]) {
     lines.join("\n"),
     draft?.title ? `Unsent draft: ${draft.title}.` : null,
     draft?.title ? "Reply CANCEL DRAFT to clear only that unfinished job." : null,
-    "Reply NEW QUOTE to start another request. For the latest supplier prices on your active request, reply QUOTES.",
+    "Reply NEW QUOTE to start another request. For the latest supplier prices on your active request, reply QUOTES. To open your private online account, reply BUYER HUB.",
   ].filter(Boolean).join("\n\n");
+}
+
+async function sendBuyerHubLink(
+  job: WhatsAppJob,
+  conversation: NonNullable<LoadedJob["conversation"]>,
+) {
+  const link = await createBuyerLoginLink({
+    phone: decryptPrivateValue(conversation.customerContact.phoneEncrypted),
+    requestUrl: process.env.APP_URL?.trim() || "http://localhost:3000",
+    requestedPath: "/buyer",
+  });
+  if (!link) {
+    await sendReply(job, conversation, "I couldn’t create a Buyer Hub link just now. Please wait a moment and reply BUYER HUB again.");
+    return;
+  }
+
+  try {
+    await sendReply(job, conversation, [
+      "Open your private Bridge-iT Buyer Hub:",
+      link.url,
+      "This one-time link expires in 10 minutes. For your security, do not forward it.",
+    ].join("\n\n"));
+    await recordBuyerLoginLinkSent(link, "WHATSAPP_SESSION");
+  } catch (error) {
+    await revokeBuyerLoginLink(link, error instanceof Error ? error.message : "WHATSAPP_SESSION_SEND_FAILED");
+    throw error;
+  }
 }
 
 async function confirmedRequestReply(conversation: NonNullable<LoadedJob["conversation"]>) {
@@ -1332,6 +1361,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     || isQuoteRefresh(text)
     || isNewQuoteRequest(text)
     || isQuoteHistoryRequest(text)
+    || isBuyerHubRequest(text)
     || isMenuRequest(text)
     || questionIntent !== null
     || selectionIntent !== null;
@@ -1451,6 +1481,11 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
 
   if (isQuoteHistoryRequest(text)) {
     await sendReply(job, conversation, await quoteHistoryReply(conversation));
+    return undefined;
+  }
+
+  if (isBuyerHubRequest(text)) {
+    await sendBuyerHubLink(job, conversation);
     return undefined;
   }
 

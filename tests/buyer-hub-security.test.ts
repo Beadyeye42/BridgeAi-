@@ -29,6 +29,19 @@ describe("Buyer Hub security and ownership controls", () => {
     expect(migration).not.toContain('"tokenHash"');
   });
 
+  it("can issue the Buyer Hub link inside the active WhatsApp conversation", () => {
+    const auth = read("lib/buyer/auth.ts");
+    const processor = read("lib/whatsapp/processor.ts");
+    const policy = read("lib/whatsapp/policy.ts");
+    expect(auth).toContain("export async function createBuyerLoginLink");
+    expect(auth).toContain('channel: "WHATSAPP_SESSION" | "WHATSAPP_TEMPLATE"');
+    expect(processor).toContain("createBuyerLoginLink({");
+    expect(processor).toContain('requestedPath: "/buyer"');
+    expect(processor).toContain('recordBuyerLoginLinkSent(link, "WHATSAPP_SESSION")');
+    expect(processor).toContain("This one-time link expires in 10 minutes");
+    expect(policy).toContain("4 — BUYER HUB");
+  });
+
   it("binds the thirty-day trusted device to a verified Supabase session ID", () => {
     const session = read("lib/buyer/session.ts");
     const verifyRoute = read("app/api/buyer/auth/verify/route.ts");

@@ -8,6 +8,7 @@ import {
   intakeFailureRecovery,
   isCancelAllDraftsRequest,
   isCancelDraftRequest,
+  isBuyerHubRequest,
   isConversationOptOut,
   isConversationalHelpRequest,
   isIndustryQuoteOfferAccepted,
@@ -118,6 +119,11 @@ describe("WhatsApp messaging policy", () => {
     expect(isQuoteHistoryRequest("quotes")).toBe(false);
   });
 
+  it("recognises Buyer Hub requests without matching unrelated messages", () => {
+    expect(["4", "BUYER HUB", "customer hub", "portal", "my account"].every(isBuyerHubRequest)).toBe(true);
+    expect(isBuyerHubRequest("I need a customer portal built")).toBe(false);
+  });
+
   it("recognises natural requests for help without forcing the next saved-draft field", () => {
     expect([
       "Can you help me",
@@ -177,6 +183,7 @@ describe("WhatsApp messaging policy", () => {
     expect(menu).toContain("1 — BRIDGE A REQUEST");
     expect(menu).toContain("2 — MY QUOTES");
     expect(menu).toContain("3 — CANCEL DRAFT");
+    expect(menu).toContain("4 — BUYER HUB");
     expect(menu).toContain("photo, drawing or document");
     expect(menu).toContain("One unsent draft is open");
     expect(menu).toContain("Confirmed requests stay safe");
