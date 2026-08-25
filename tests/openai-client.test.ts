@@ -14,15 +14,21 @@ afterEach(() => {
 });
 
 describe("OpenAI server configuration", () => {
-  it("uses the public API model rather than a Codex desktop model alias", () => {
+  it("defaults to the balanced GPT-5.6 Terra API model", () => {
     process.env.OPENAI_API_KEY = "test-server-key";
     delete process.env.OPENAI_MODEL;
-    expect(openAiCredentials()).toMatchObject({ model: "gpt-5.6" });
+    expect(openAiCredentials()).toMatchObject({ model: "gpt-5.6-terra" });
   });
 
-  it("rejects Codex desktop aliases before a WhatsApp job calls the provider", () => {
+  it("accepts the official GPT-5.6 Terra API model ID", () => {
     process.env.OPENAI_API_KEY = "test-server-key";
     process.env.OPENAI_MODEL = "gpt-5.6-terra";
+    expect(openAiCredentials()).toMatchObject({ model: "gpt-5.6-terra" });
+  });
+
+  it("rejects a bare Codex desktop profile alias before calling the provider", () => {
+    process.env.OPENAI_API_KEY = "test-server-key";
+    process.env.OPENAI_MODEL = "terra";
     expect(() => openAiCredentials()).toThrow("OPENAI_MODEL_INVALID");
   });
 });
