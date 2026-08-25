@@ -66,6 +66,14 @@ describe("Buyer Hub security and ownership controls", () => {
     expect(selection).toContain('idempotencyKey: `contact-unlock:${grant.id}`');
   });
 
+  it("allows the trusted WhatsApp worker to return the order created by quote selection", () => {
+    const returningPolicy = read("supabase/migrations/20260825072729_allow_whatsapp_buyer_order_returning.sql");
+    expect(returningPolicy).toContain("DROP POLICY IF EXISTS buyer_order_owner_read");
+    expect(returningPolicy).toContain("DROP POLICY IF EXISTS buyer_order_event_owner_read");
+    expect(returningPolicy.match(/is_trusted_worker\('whatsapp_ai'\)/g)).toHaveLength(2);
+    expect(returningPolicy).toContain("server-only buyer_auth and whatsapp_ai INSERT RETURNING support");
+  });
+
   it("uses an immutable per-order rewards ledger", () => {
     const migration = read("supabase/migrations/20260824170900_buyer_hub_passwordless_orders_rewards.sql");
     expect(migration).toContain("buyer_reward_ledger_immutable");
