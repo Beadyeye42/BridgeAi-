@@ -96,6 +96,22 @@ describe("Buyer Hub security and ownership controls", () => {
     expect(returningPolicy).toContain("server-only buyer_auth and whatsapp_ai INSERT RETURNING support");
   });
 
+  it("keeps Buyer Hub actions identity-bound while using the trusted selection worker", () => {
+    const selection = read("lib/quotes/selection.ts");
+    const questions = read("app/api/buyer/questions/route.ts");
+    const actions = read("components/buyer/buyer-request-actions.tsx");
+    const returningPolicy = read("supabase/migrations/20260826103000_buyer_hub_action_returning.sql");
+    expect(selection).toContain('input.source === "BUYER_PORTAL"');
+    expect(selection).toContain("quotation.quoteRequest.customerContactId !== input.buyerCustomerContactId");
+    expect(selection).toContain('throw new Error("BUYER_SELECTION_SCOPE_MISMATCH")');
+    expect(selection).toContain('return runAsDatabaseWorker("whatsapp_ai", selectInTransaction)');
+    expect(questions).toContain("customerContactId: session.buyer.id");
+    expect(questions).toContain('console.error("Buyer Hub question failed"');
+    expect(returningPolicy).toContain("buyer_auth_security_event_read");
+    expect(returningPolicy).toContain("is_trusted_worker('whatsapp_ai')");
+    expect(actions.match(/finally \{/g)).toHaveLength(2);
+  });
+
   it("uses an immutable per-order rewards ledger", () => {
     const migration = read("supabase/migrations/20260824170900_buyer_hub_passwordless_orders_rewards.sql");
     expect(migration).toContain("buyer_reward_ledger_immutable");

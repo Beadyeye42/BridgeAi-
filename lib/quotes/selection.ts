@@ -218,7 +218,12 @@ export async function selectQuotationForCustomer(input: {
   };
 
   if (!input.actorUserId) {
-    return runAsDatabaseWorker(input.source === "BUYER_PORTAL" ? "buyer_auth" : "whatsapp_ai", selectInTransaction);
+    // Selection is a privileged, multi-table server operation. Buyer Hub calls
+    // prove ownership again inside the locked transaction before any write, so
+    // they can safely reuse the narrowly scoped WhatsApp selection worker.
+    // Running this as buyer_auth would require broad buyer write policies on
+    // contact grants, assignments, quotations and notifications.
+    return runAsDatabaseWorker("whatsapp_ai", selectInTransaction);
   }
   return runWithDatabaseIdentity(input.actorUserId, () => prisma.$transaction(
     selectInTransaction,

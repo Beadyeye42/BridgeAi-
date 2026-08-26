@@ -13,22 +13,32 @@ export function BuyerRequestActions({ reference, quotes }: { reference: string; 
     const body = questions[label]?.trim();
     if (!body) return;
     setBusy(`ask-${label}`); setMessage("");
-    const response = await fetch("/api/buyer/questions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reference, conversationId, body }) });
-    const result = await response.json().catch(() => ({})) as { error?: string };
-    setBusy("");
-    if (!response.ok) return setMessage(result.error ?? "The question could not be sent.");
-    setQuestions((current) => ({ ...current, [label]: "" }));
-    setMessage(`Question sent privately to Quote ${label}.`); router.refresh();
+    try {
+      const response = await fetch("/api/buyer/questions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reference, conversationId, body }) });
+      const result = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) return setMessage(result.error ?? "The question could not be sent. Please try again.");
+      setQuestions((current) => ({ ...current, [label]: "" }));
+      setMessage(`Question sent privately to Quote ${label}.`); router.refresh();
+    } catch {
+      setMessage("The question could not be sent. Check your connection and try again.");
+    } finally {
+      setBusy("");
+    }
   }
 
   async function selectQuote(label: string) {
     if (!confirm(`Select Quote ${label} to move forward? This will close the other quotes.`)) return;
     setBusy(`select-${label}`); setMessage("");
-    const response = await fetch("/api/buyer/select", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reference, label }) });
-    const result = await response.json().catch(() => ({})) as { error?: string; orderReference?: string };
-    setBusy("");
-    if (!response.ok) return setMessage(result.error ?? "The quote could not be selected.");
-    if (result.orderReference) router.push(`/buyer/orders/${result.orderReference}`); else router.refresh();
+    try {
+      const response = await fetch("/api/buyer/select", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reference, label }) });
+      const result = await response.json().catch(() => ({})) as { error?: string; orderReference?: string };
+      if (!response.ok) return setMessage(result.error ?? "The quote could not be selected. Please try again.");
+      if (result.orderReference) router.push(`/buyer/orders/${result.orderReference}`); else router.refresh();
+    } catch {
+      setMessage("The quote could not be selected. Check your connection and try again.");
+    } finally {
+      setBusy("");
+    }
   }
 
   return <div className="buyer-action-stack">
