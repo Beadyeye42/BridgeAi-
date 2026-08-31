@@ -27,7 +27,7 @@ export async function notifySuppliersWithStaleCapacity({ limit = 50 }: { limit?:
           select: { id: true },
         });
         if (existing) continue;
-        await tx.notification.create({
+        const notification = await tx.notification.create({
           data: {
             userId: membership.userId,
             supplierCompanyId: company.id,
@@ -38,6 +38,11 @@ export async function notifySuppliersWithStaleCapacity({ limit = 50 }: { limit?:
             actionUrl,
           },
         });
+        await tx.$queryRaw`SELECT bridge_private.write_whatsapp_audit(
+          'WHATSAPP.CAPACITY_REMINDER_CREATED', 'Notification', ${notification.id},
+          'Supplier prompted to confirm stale capacity and lead times',
+          ${JSON.stringify({ supplierCompanyId: company.id, actionUrl })}::jsonb
+        )`;
         created += 1;
       }
     }
@@ -76,7 +81,7 @@ export async function notifySuppliersWithStaleCapacity({ limit = 50 }: { limit?:
           select: { id: true },
         });
         if (existing) continue;
-        await tx.notification.create({
+        const notification = await tx.notification.create({
           data: {
             userId: membership.userId,
             supplierCompanyId: company.id,
@@ -87,6 +92,11 @@ export async function notifySuppliersWithStaleCapacity({ limit = 50 }: { limit?:
             actionUrl,
           },
         });
+        await tx.$queryRaw`SELECT bridge_private.write_whatsapp_audit(
+          'WHATSAPP.CAPACITY_REMINDER_CREATED', 'Notification', ${notification.id},
+          'Supplier prompted to review monthly opportunity capacity',
+          ${JSON.stringify({ supplierCompanyId: company.id, actionUrl })}::jsonb
+        )`;
         capacityNotifications += 1;
       }
     }

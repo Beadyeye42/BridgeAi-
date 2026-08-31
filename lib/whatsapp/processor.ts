@@ -47,6 +47,7 @@ import {
 } from "@/lib/whatsapp/product-knowledge";
 import { writeWhatsAppSystemEvent } from "@/lib/whatsapp/system-events";
 import { quoteQuestionWhatsAppHelp } from "@/lib/whatsapp/industry-question-guidance";
+import { currentRequestConversationWhere, selectionRecovery, startsNewQuote } from "@/lib/whatsapp/selection-state";
 import {
   attachmentInterpretation,
   conversationPivotContext,
@@ -1468,7 +1469,8 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     return undefined;
   }
 
-  if (isCancelAllDraftsRequest(text) || isCancelDraftRequest(text)) {
+  const numberedSelection = conversation.aiStage === "AWAITING_SELECTION" && /^[1-5]$/.test(text.trim());
+  if (!numberedSelection && (isCancelAllDraftsRequest(text) || isCancelDraftRequest(text))) {
     await cancelQuoteDrafts(job, conversation, inbound, isCancelAllDraftsRequest(text));
     return undefined;
   }
@@ -1497,18 +1499,18 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     return undefined;
   }
 
-  if (conversation.aiStage !== "AWAITING_SELECTION" && isNewQuoteRequest(text)) {
+  if (startsNewQuote(text, conversation.aiStage)) {
     const includesJobDetails = newQuoteDetails(text) !== null || Boolean(inbound.mediaIdEncrypted);
     conversation = await startNewQuote(job, conversation, inbound, !includesJobDetails);
     if (!includesJobDetails) return undefined;
   }
 
-  if (isQuoteHistoryRequest(text)) {
+  if (!numberedSelection && isQuoteHistoryRequest(text)) {
     await sendReply(job, conversation, await quoteHistoryReply(conversation));
     return undefined;
   }
 
-  if (isBuyerHubRequest(text)) {
+  if (!numberedSelection && isBuyerHubRequest(text)) {
     await sendBuyerHubLink(job, conversation);
     return undefined;
   }
@@ -1625,6 +1627,41 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     return undefined;
   }
 
+  // Resolve the latest request irrespective of status. Filtering out selected
+  // requests first can silently switch the customer to an unrelated older job.
+  const selectionRequest = stage === "AWAITING_SELECTION"
+    ? await runAsDatabaseWorker("whatsapp_ai", (tx) => tx.quoteRequest.findFirst({
+        where: { conversationId: refreshed.conversation!.id },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        include: {
+          category: { include: { parent: true } },
+          quotations: {
+            where: { status: "SUBMITTED" },
+            orderBy: [{ submittedAt: "asc" }, { id: "asc" }],
+            take: 5,
+            include: { conversation: true },
+          },
+        },
+      }))
+    : null;
+  const recovery = stage === "AWAITING_SELECTION" ? selectionRecovery(selectionRequest) : null;
+  if (recovery) {
+    await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
+      const changed = await tx.conversation.updateMany({
+        where: { id: refreshed.conversation!.id, aiStage: stage, aiSessionStartedAt: refreshed.conversation!.aiSessionStartedAt },
+        data: { aiStage: recovery.stage },
+      });
+      if (changed.count) await writeWhatsAppAudit(tx, {
+        action: "WHATSAPP.SELECTION_STATE_RECONCILED",
+        entityType: "Conversation", entityId: refreshed.conversation!.id,
+        summary: "Stale quote-selection state reconciled without changing requests or orders",
+        metadata: { jobId: job.id, requestId: selectionRequest?.id ?? null, stage: recovery.stage },
+      });
+    });
+    await sendReply(job, refreshed.conversation, recovery.reply);
+    return undefined;
+  }
+
   if (isQuoteRefresh(text) && ["QUOTE_CREATED", "AWAITING_SELECTION"].includes(stage)) {
     const summary = await currentQuoteSummary(refreshed.conversation.id);
     if (!summary) {
@@ -1637,23 +1674,7 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
   }
 
   if (stage === "AWAITING_SELECTION") {
-    const request = await runAsDatabaseWorker("whatsapp_ai", (tx) => tx.quoteRequest.findFirst({
-      where: { conversationId: refreshed.conversation!.id, status: { in: ["OPEN", "MATCHING", "QUOTED"] } },
-      orderBy: { createdAt: "desc" },
-      include: {
-        category: { include: { parent: true } },
-        quotations: {
-          where: { status: "SUBMITTED" },
-          orderBy: [{ submittedAt: "asc" }, { id: "asc" }],
-          take: 5,
-          include: { conversation: true },
-        },
-      },
-    }));
-    if (!request || !request.quotations.length) {
-      await sendReply(job, refreshed.conversation, "That quote is no longer available. Reply QUOTES and I’ll show the latest prices and lead times.");
-      return undefined;
-    }
+    const request = selectionRequest!;
     if (questionIntent) {
       const moderation = moderatePreSelectionQuoteMessage(questionIntent.question);
       if (!moderation.allowed) {
@@ -1785,7 +1806,6 @@ async function processInbound(job: WhatsAppJob, loaded: LoadedJob) {
     await enqueueContactUnlock(grant.id);
     await processSupplierEmailsSafely({ limit: 10 });
     await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
-      await tx.conversation.update({ where: { id: refreshed.conversation!.id }, data: { aiStage: "SELECTION_RECORDED" } });
       await writeWhatsAppAudit(tx, {
         action: "WHATSAPP.QUOTE_SELECTED",
         entityType: "SupplierQuotation",
@@ -2293,14 +2313,14 @@ function formatPrice(value: Prisma.Decimal, currency: string) {
 
 async function currentQuoteSummary(conversationId: string) {
   const request = await runAsDatabaseWorker("whatsapp_ai", (tx) => tx.quoteRequest.findFirst({
-    where: { conversationId, status: { in: ["OPEN", "MATCHING", "QUOTED"] } },
-    orderBy: { createdAt: "desc" },
+    where: { conversationId },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     include: {
       category: { include: { parent: true } },
       quotations: { where: { status: "SUBMITTED" }, orderBy: [{ submittedAt: "asc" }, { id: "asc" }], take: 5, include: { conversation: true } },
     },
   }));
-  if (!request) return null;
+  if (!request || !["OPEN", "MATCHING", "QUOTED"].includes(request.status)) return null;
   const quotes = request.quotations.filter((quote) => !quote.validUntil || quote.validUntil > new Date());
   if (!quotes.length) return null;
   const lines = quotes.map((quote, index) => {
@@ -2337,7 +2357,12 @@ async function markQuotesPresented(
   action = "WHATSAPP.QUOTE_SUMMARY_SENT",
 ) {
   await runAsDatabaseWorker("whatsapp_ai", async (tx) => {
-    await tx.conversation.update({ where: { id: conversationId }, data: { aiStage: "AWAITING_SELECTION" } });
+    const request = await tx.quoteRequest.findUnique({ where: { id: requestId }, select: { id: true, createdAt: true, status: true } });
+    if (!request || !["OPEN", "MATCHING", "QUOTED"].includes(request.status)) return;
+    await tx.conversation.updateMany({
+      where: currentRequestConversationWhere({ ...request, conversationId }),
+      data: { aiStage: "AWAITING_SELECTION" },
+    });
     await tx.quoteRequest.updateMany({ where: { id: requestId, status: { in: ["OPEN", "MATCHING"] } }, data: { status: "QUOTED" } });
     await writeWhatsAppAudit(tx, {
       action,

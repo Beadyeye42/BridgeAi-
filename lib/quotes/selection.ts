@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma, runAsDatabaseWorker, runWithDatabaseIdentity } from "@/lib/db";
 import { initialLifecycleStage, resolveBuyerExperience } from "@/lib/buyer/industry-experience";
+import { currentRequestConversationWhere } from "@/lib/whatsapp/selection-state";
 
 async function writeSelectionAudit(
   tx: Prisma.TransactionClient,
@@ -84,6 +85,18 @@ export async function selectQuotationForCustomer(input: {
       where: { id: quotation.quoteRequestId },
       data: { status: "SELECTED", selectedAt, closedAt: null },
     });
+    // Shared by WhatsApp, Buyer Hub and admin selection. Do not overwrite a
+    // newer draft if the buyer selected an older request in the Hub.
+    if (quotation.quoteRequest.conversationId) {
+      await tx.conversation.updateMany({
+        where: currentRequestConversationWhere({
+          id: quotation.quoteRequestId,
+          conversationId: quotation.quoteRequest.conversationId,
+          createdAt: quotation.quoteRequest.createdAt,
+        }),
+        data: { aiStage: "SELECTION_RECORDED" },
+      });
+    }
     await tx.quoteConversation.updateMany({
       where: { quoteRequestId: quotation.quoteRequestId, quotationId: { not: quotation.id } },
       data: { status: "CLOSED", closedAt: selectedAt },
