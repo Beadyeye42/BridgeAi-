@@ -16,7 +16,9 @@ export async function lockSupplierAssignmentScope(
 ) {
   const sortedIds = [...new Set(supplierCompanyIds)].sort();
   for (const supplierCompanyId of sortedIds) {
-    await tx.$queryRaw`
+    // pg_advisory_xact_lock returns PostgreSQL `void`, which Prisma cannot
+    // deserialize through $queryRaw. We only need its side effect.
+    await tx.$executeRaw`
       SELECT pg_advisory_xact_lock(
         hashtextextended(${'supplier:' + supplierCompanyId}, 0)
       )
