@@ -73,10 +73,10 @@ function company(
 
 describe("production membership radius boundaries", () => {
   it.each([
-    ["Hyperlocal", 10, 9.99, true],
-    ["Hyperlocal", 10, 10, true],
-    ["Hyperlocal", 10, 10.01, false],
-    ["Hyperlocal", 10, 11, false],
+    ["Hyperlocal", 2, 1.99, true],
+    ["Hyperlocal", 2, 2, true],
+    ["Hyperlocal", 2, 2.01, false],
+    ["Hyperlocal", 2, 3, false],
     ["Local", 40, 39.99, true],
     ["Local", 40, 40, true],
     ["Local", 40, 40.01, false],
@@ -90,9 +90,9 @@ describe("production membership radius boundaries", () => {
   });
 
   it.each([
-    ["HYPERLOCAL", 10, 9.99, true],
-    ["HYPERLOCAL", 10, 10, true],
-    ["HYPERLOCAL", 10, 10.01, false],
+    ["HYPERLOCAL", 2, 1.99, true],
+    ["HYPERLOCAL", 2, 2, true],
+    ["HYPERLOCAL", 2, 2.01, false],
     ["LOCAL", 40, 39.99, true],
     ["LOCAL", 40, 40, true],
     ["LOCAL", 40, 40.01, false],

@@ -277,7 +277,7 @@ export function IndustryHyperlocalControl({ id, enabled }: { id: string; enabled
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   return <div className="industry-audience-control">
-    <div><b>Hyperlocal Partner</b><small>Allow suppliers in this industry to choose the 1–10 mile membership.</small></div>
+    <div><b>Hyperlocal Partner</b><small>Allow suppliers in this industry to choose the free, fixed 2-mile membership.</small></div>
     <button className="button button-outline" disabled={busy} onClick={async () => {
       setBusy(true); setMessage("");
       try { await call(`/api/admin/categories/${id}`, "PATCH", { hyperlocalEnabled: !enabled }); setMessage(enabled ? "Hyperlocal disabled." : "Hyperlocal enabled."); router.refresh(); }

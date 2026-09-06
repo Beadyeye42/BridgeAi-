@@ -153,7 +153,7 @@ describe("Hyperlocal service network", () => {
   it("preserves the controlled commercial and lifecycle rules", () => {
     expect(read("lib/matching/suppliers.ts")).toContain('Math.min(5, limit)');
     expect(read("lib/matching/suppliers.ts")).toContain("An active supplier subscription is required");
-    expect(read("lib/billing/membership-plans.ts")).toContain('HYPERLOCAL: 10');
+    expect(read("lib/billing/membership-plans.ts")).toContain('HYPERLOCAL: 2');
     expect(read("prisma/schema.prisma")).toContain("SELECTED");
     expect(read("prisma/schema.prisma")).toContain("CANCELLED_AFTER_SELECTION");
   });

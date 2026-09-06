@@ -38,8 +38,14 @@ export function stripeConfigured() {
 }
 
 export async function ensureMembershipPlanStripePrice(plan: MembershipPlan) {
-  if (plan.providerPriceId) return plan.providerPriceId;
+  if (plan.tier === "HYPERLOCAL" && plan.monthlyPricePence !== 0) throw new Error("Free Hyperlocal migration has not been applied");
+  if (plan.providerPriceId && plan.tier !== "HYPERLOCAL") return plan.providerPriceId;
   const stripe = getStripe();
+  if (plan.providerPriceId && plan.tier === "HYPERLOCAL") {
+    const cached = await stripe.prices.retrieve(plan.providerPriceId);
+    if (cached.active && cached.unit_amount === 0 && cached.currency === plan.currency.toLowerCase()
+      && cached.recurring?.interval === "month" && cached.recurring.interval_count === 1) return cached.id;
+  }
   let productId = plan.providerProductId;
   if (!productId) {
     const product = await stripe.products.create({

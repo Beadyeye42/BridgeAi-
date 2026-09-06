@@ -23,6 +23,7 @@ export async function POST(request: Request) {
     const current = await prisma.subscription.findUnique({ where: { supplierCompanyId: auth.companyId }, include: { membershipPlan: true } });
     if (!plan) return NextResponse.json({ error: "That membership plan is not available" }, { status: 404 });
     if (plan.tier === "HYPERLOCAL") {
+      if (plan.monthlyPricePence !== 0 || plan.maximumRadiusMiles !== 2) return NextResponse.json({ error: "Free Hyperlocal membership is awaiting its database migration" }, { status: 503 });
       const eligibleCategory = await prisma.supplierProductCategory.findFirst({
         where: {
           supplierCompanyId: auth.companyId,
@@ -38,11 +39,11 @@ export async function POST(request: Request) {
         select: { type: true, radiusMiles: true },
       });
       if (!eligibleCategory) return NextResponse.json({ error: "Hyperlocal Partner is not available for the industries your company currently supplies" }, { status: 409 });
-      if (!activeCoverage.some((area) => area.type === "DISTANCE" && area.radiusMiles !== null && area.radiusMiles >= 1 && area.radiusMiles <= (plan.maximumRadiusMiles ?? 10))) {
-        return NextResponse.json({ error: `Choose a coverage radius between 1 and ${plan.maximumRadiusMiles ?? 10} miles before selecting Hyperlocal Partner`, actionUrl: "/dashboard/coverage" }, { status: 409 });
+      if (!activeCoverage.some((area) => area.type === "DISTANCE" && area.radiusMiles !== null && area.radiusMiles === 2)) {
+        return NextResponse.json({ error: "Save a fixed 2-mile coverage area at your company base before selecting Hyperlocal Partner", actionUrl: "/dashboard/coverage" }, { status: 409 });
       }
-      if (activeCoverage.some((area) => area.type === "NATIONWIDE" || (area.radiusMiles ?? 0) > (plan.maximumRadiusMiles ?? 10))) {
-        return NextResponse.json({ error: `Reduce every active coverage area to ${plan.maximumRadiusMiles ?? 10} miles or less before selecting Hyperlocal Partner`, actionUrl: "/dashboard/coverage" }, { status: 409 });
+      if (activeCoverage.some((area) => area.type !== "DISTANCE" || area.radiusMiles !== 2)) {
+        return NextResponse.json({ error: "Set every active coverage area to a fixed 2-mile radius before selecting Hyperlocal Partner", actionUrl: "/dashboard/coverage" }, { status: 409 });
       }
     }
     const stripe = getStripe();
@@ -50,6 +51,7 @@ export async function POST(request: Request) {
     const origin = applicationOrigin(request.url);
     const now = new Date();
     let applicablePromotion = await runAsDatabaseWorker("stripe_billing", async (tx) => {
+      if (plan.monthlyPricePence === 0) return null;
       const promotion = await tx.membershipPromotion.findFirst({
         where: {
           active: true,
@@ -76,7 +78,8 @@ export async function POST(request: Request) {
       await stripe.subscriptions.update(providerSubscription.id, {
         items: [{ id: item.id, price: priceId }],
         proration_behavior: "create_prorations",
-        discounts: promotionCouponId ? [{ coupon: promotionCouponId }] : undefined,
+        payment_behavior: "error_if_incomplete",
+        discounts: promotionCouponId ? [{ coupon: promotionCouponId }] : plan.monthlyPricePence === 0 ? [] : undefined,
         metadata: { ...providerSubscription.metadata, supplierCompanyId: auth.companyId, membershipPlanId: plan.id, planCode: plan.code, membershipTier: plan.tier, membershipPromotionId: applicablePromotion?.id ?? "" },
       });
       await runAsDatabaseWorker("stripe_billing", async (tx) => {
@@ -109,12 +112,13 @@ export async function POST(request: Request) {
 
     const checkout = await stripe.checkout.sessions.create({
       mode: "subscription",
+      payment_method_collection: plan.monthlyPricePence === 0 ? "if_required" : "always",
       customer: customerId,
       line_items: [{ price: priceId, quantity: 1 }],
-      discounts: promotionCouponId ? [{ coupon: promotionCouponId }] : undefined,
+      discounts: promotionCouponId ? [{ coupon: promotionCouponId }] : plan.monthlyPricePence === 0 ? [] : undefined,
       success_url: `${origin}/dashboard/subscription?checkout=success`,
       cancel_url: `${origin}/dashboard/subscription?checkout=cancelled`,
-      allow_promotion_codes: true,
+      allow_promotion_codes: plan.monthlyPricePence === 0 ? false : true,
       automatic_tax: { enabled: plan.taxEnabled },
       billing_address_collection: "required",
       customer_update: { address: "auto", name: "auto" },

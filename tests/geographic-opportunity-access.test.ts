@@ -55,8 +55,8 @@ const now = new Date("2026-08-12T12:00:00Z");
 
 describe("current geographic opportunity access", () => {
   it.each([
-    ["HYPERLOCAL", 10, 9, true],
-    ["HYPERLOCAL", 10, 11, false],
+    ["HYPERLOCAL", 2, 1, true],
+    ["HYPERLOCAL", 2, 3, false],
     ["LOCAL", 40, 39, true],
     ["LOCAL", 40, 41, false],
     ["REGIONAL", 100, 99, true],
@@ -104,6 +104,6 @@ describe("current geographic opportunity access", () => {
   it("applies a downgrade immediately to unquoted leads", () => {
     const assignment = { quotation: null, quoteRequest: destination(35) };
     expect(canReadSupplierAssignment(company("LOCAL", 40), assignment, now)).toBe(true);
-    expect(canReadSupplierAssignment(company("HYPERLOCAL", 10), assignment, now)).toBe(false);
+    expect(canReadSupplierAssignment(company("HYPERLOCAL", 2), assignment, now)).toBe(false);
   });
 });

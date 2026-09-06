@@ -24,7 +24,7 @@ export type MembershipLimits = {
 };
 
 const TIER_RANK: Record<MembershipTier, number> = { HYPERLOCAL: 0, LOCAL: 1, REGIONAL: 2, NATIONWIDE: 3 };
-const TIER_RADIUS: Record<MembershipTier, number | null> = { HYPERLOCAL: 10, LOCAL: 40, REGIONAL: 100, NATIONWIDE: null };
+const TIER_RADIUS: Record<MembershipTier, number | null> = { HYPERLOCAL: 2, LOCAL: 40, REGIONAL: 100, NATIONWIDE: null };
 
 function restrictedTier(planTier: MembershipTier, override: MembershipTier | null): MembershipTier {
   if (!override || TIER_RANK[override] > TIER_RANK[planTier]) return planTier;
@@ -52,7 +52,7 @@ export function effectiveMembershipLimits(plan: MembershipPlan, company: Geograp
   // Local subscription into Regional or Nationwide access without an upgrade.
   const tier = restrictedTier(plan.tier, company.membershipTierOverride);
   const canonicalTierRadius = TIER_RADIUS[tier];
-  const purchasedRadius = plan.maximumRadiusMiles === null
+  const purchasedRadius = tier === "HYPERLOCAL" ? 2 : plan.maximumRadiusMiles === null
     ? canonicalTierRadius
     : canonicalTierRadius === null
       ? plan.maximumRadiusMiles
