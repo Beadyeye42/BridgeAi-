@@ -44,6 +44,15 @@ async function syncSubscription(subscription: Stripe.Subscription) {
   await runAsDatabaseWorker("stripe_billing", async (tx) => {
     const current = await tx.subscription.findUnique({ where: { supplierCompanyId: companyId } });
     previousPlanCode = current?.planCode ?? null;
+    if (current?.accessSource === "FREE" && subscription.status !== "active") {
+      await tx.auditLog.create({ data: {
+        supplierCompanyId: companyId, action: "BILLING.FREE_ACCESS_RETAINED",
+        entityType: "Subscription", entityId: current.id,
+        summary: "Unpaid or cancelled Stripe subscription did not remove free two-mile access",
+        metadata: { stripeStatus: subscription.status },
+      } });
+      return;
+    }
     const complimentaryActive = current?.accessSource === "COMPLIMENTARY"
       && current.status === "ACTIVE"
       && Boolean(current.currentPeriodEnd && current.currentPeriodEnd > new Date());

@@ -6,7 +6,7 @@ import { PortalPage, identity } from "@/components/dashboard/portal-page";
 import { CheckoutButton } from "@/components/billing/checkout-button";
 import { stripeConfigured } from "@/lib/stripe/server";
 import { isComplimentaryMembership, isMembershipActive } from "@/lib/billing/pricing";
-import { effectiveMembershipLimits, formatPlanPrice, planTaxLabel } from "@/lib/billing/membership-plans";
+import { effectiveMembershipLimits, formatPlanPrice, planTaxLabel, isFreeHyperlocalPlan } from "@/lib/billing/membership-plans";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +24,7 @@ export default async function SubscriptionPage() {
   const configured = stripeConfigured();
   const active = isMembershipActive(sub);
   const complimentary = isComplimentaryMembership(sub);
+  const free = sub?.accessSource === "FREE";
   const currentPlan = sub?.membershipPlan;
   const currentLimits = currentPlan ? effectiveMembershipLimits(currentPlan, company) : null;
   const selectedRadii = company.coverageAreas.filter((area) => area.type === "DISTANCE" && area.radiusMiles !== null).map((area) => area.radiusMiles as number);
@@ -35,12 +36,12 @@ export default async function SubscriptionPage() {
     : 0;
   const displayStatus = active ? "ACTIVE" : sub?.status === "ACTIVE" ? "EXPIRED" : sub?.status ?? "NOT STARTED";
 
-  return <PortalPage {...identity(session, company)} eyebrow="Membership" title="Choose your reach" description="Your plan sets the largest area you may choose and how many live opportunities you can hold. Exact product, capability, capacity and deadline matching still applies on every tier.">
+  return <PortalPage {...identity(session, company)} eyebrow="Membership" title="Choose your reach" description="Start free within 2 miles of your registered business base. Choose a paid membership for wider reach. Your plan also sets how many live opportunities you can hold. Exact product, capability, capacity and deadline matching still applies on every tier.">
     <section className="panel subscription-detail">
       <span className="large-icon"><CreditCard size={24}/></span>
       <p className="eyebrow">Current access</p>
       <h2>{currentPlan?.name ?? (complimentary ? "Complimentary membership" : "No active membership")}</h2>
-      <p className="body-copy">{complimentary ? `Promotional access${sub?.complimentaryReason ? `: ${sub.complimentaryReason}` : ""}. No card details are required and no payment will be taken during this period.` : currentPlan ? `${formatPlanPrice(currentPlan.monthlyPricePence, currentPlan.currency)} ${planTaxLabel(currentPlan)}` : "Select a plan after your supplier account is approved."}</p>
+      <p className="body-copy">{free ? "Free within 2 miles. No card required and no monthly charge. Upgrade for wider reach." : complimentary ? `Promotional access${sub?.complimentaryReason ? `: ${sub.complimentaryReason}` : ""}. No card details are required and no payment will be taken during this period.` : currentPlan ? `${formatPlanPrice(currentPlan.monthlyPricePence, currentPlan.currency)} ${planTaxLabel(currentPlan)}` : "Select a plan after your supplier account is approved."}</p>
       <span className={`status-pill ${displayStatus.toLowerCase().replaceAll(" ", "-")}`}>{displayStatus}</span>
       <dl>
         <div><dt>Selected coverage</dt><dd>{currentPlan?.nationwideAllowed && company.coverageAreas.some((area) => area.type === "NATIONWIDE") ? "Great Britain" : selectedRadius ? `${selectedRadius} miles` : "Not selected"}</dd></div>
@@ -51,7 +52,7 @@ export default async function SubscriptionPage() {
         <div><dt>Current period ends</dt><dd>{sub?.currentPeriodEnd?.toLocaleDateString("en-GB") ?? "—"}</dd></div>
       </dl>
       {sub?.cancelAtPeriodEnd && active && <div className="honesty-note">Cancellation is scheduled. Your current access continues until {sub.currentPeriodEnd?.toLocaleDateString("en-GB") ?? "the end of the paid period"}, then new opportunity and quotation access ends.</div>}
-      {active && sub?.providerCustomerId && !complimentary && <a className="button button-outline" href="/api/billing/portal">Manage billing or cancel</a>}
+      {active && sub?.providerCustomerId && !complimentary && !free && <a className="button button-outline" href="/api/billing/portal">Manage billing or cancel</a>}
     </section>
     {active && <section className="panel form-section"><div className="section-heading"><div><p className="eyebrow">Your reach this month</p><h2>Opportunity insight</h2></div><MapPin size={20}/></div><div className="form-grid"><div className="entity-row"><div><b>{receivedThisMonth} matched opportunities</b><small>Received within your current plan, capability and selected coverage.</small></div></div><div className="entity-row"><div><b>{rejectedOutsideRadius} suitable-distance checks outside your radius</b><small>Anonymous count only. Upgrade if a wider area would suit your business; no buyer details are exposed.</small></div></div></div></section>}
     <div className="pricing-grid">
@@ -59,14 +60,14 @@ export default async function SubscriptionPage() {
         const selected = currentPlan?.id === plan.id && active;
         return <section className={`panel form-section ${selected ? "selected-plan" : ""}`} key={plan.id}>
           <div className="section-heading"><div><p className="eyebrow">{plan.tier.toLowerCase()} partner</p><h2>{plan.name}</h2></div>{selected ? <CheckCircle2 size={22}/> : <MapPin size={22}/>}</div>
-          <h3>{formatPlanPrice(plan.monthlyPricePence, plan.currency)} <small>{planTaxLabel(plan)}</small></h3>
+          <h3>{isFreeHyperlocalPlan(plan) ? "Free" : formatPlanPrice(plan.monthlyPricePence, plan.currency)} <small>{isFreeHyperlocalPlan(plan) ? "within 2 miles" : planTaxLabel(plan)}</small></h3>
           <p className="body-copy">{plan.description}</p>
           <div className="entity-list">
             <div className="entity-row"><div><b>{plan.nationwideAllowed ? "Great Britain eligibility" : `Choose 1–${plan.maximumRadiusMiles} miles`}</b><small>Your actual selected radius may be smaller.</small></div></div>
             <div className="entity-row"><div><b>Up to {plan.maximumActiveOpportunities} live opportunities</b><small>No open public job board.</small></div></div>
             <div className="entity-row"><div><b>Strict capability matching</b><small>Product, system, colour, capacity and deadline still required.</small></div></div>
           </div>
-          {selected ? <div className="honesty-note">This is your active plan.</div> : plan.tier === "HYPERLOCAL" && !hyperlocalEligible ? <div className="honesty-note">Hyperlocal is not enabled for your selected industries.</div> : company.status !== "APPROVED" ? <div className="honesty-note">Supplier approval is required before checkout.</div> : complimentary && active ? <div className="honesty-note">An administrator can change the tier of active complimentary access.</div> : configured ? <CheckoutButton endpoint="/api/billing/subscription/checkout" body={{ membershipPlanId: plan.id }}>{active ? `Change to ${plan.name}` : `Choose ${plan.name}`}</CheckoutButton> : <div className="honesty-note">Stripe is not configured in this environment.</div>}
+          {selected ? <div className="honesty-note">This is your active plan.</div> : plan.tier === "HYPERLOCAL" && !hyperlocalEligible ? <div className="honesty-note">Hyperlocal is not enabled for your selected industries.</div> : company.status !== "APPROVED" ? <div className="honesty-note">Supplier approval is required before checkout.</div> : complimentary && active ? <div className="honesty-note">An administrator can change the tier of active complimentary access.</div> : (configured || isFreeHyperlocalPlan(plan)) ? <CheckoutButton free={isFreeHyperlocalPlan(plan)} endpoint="/api/billing/subscription/checkout" body={{ membershipPlanId: plan.id }}>{isFreeHyperlocalPlan(plan) ? "Start free — no card required" : free ? `Upgrade to ${plan.name}` : active ? `Change to ${plan.name}` : `Choose ${plan.name}`}</CheckoutButton> : <div className="honesty-note">Stripe is not configured in this environment.</div>}
         </section>;
       })}
     </div>

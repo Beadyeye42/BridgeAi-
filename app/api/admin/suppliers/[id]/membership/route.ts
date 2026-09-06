@@ -4,6 +4,7 @@ import { requireAdminApi } from "@/lib/auth/api";
 import { adminComplimentaryMembershipSchema, validationError } from "@/lib/auth/validation";
 import { writeAuditLog } from "@/lib/audit";
 import { COMPLIMENTARY_PLAN_CODE, isMembershipActive } from "@/lib/billing/pricing";
+import { isFreeHyperlocalPlan } from "@/lib/billing/membership-plans";
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminApi();
@@ -26,6 +27,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const grant = parsed.data;
     const plan = await prisma.membershipPlan.findFirst({ where: { id: grant.membershipPlanId, active: true } });
     if (!plan) return NextResponse.json({ error: "Choose an active membership tier" }, { status: 404 });
+    if (isFreeHyperlocalPlan(plan)) return NextResponse.json({ error: "Free Hyperlocal needs no promotional grant. The approved supplier can activate it from Membership." }, { status: 400 });
     const paidMembershipInProgress = company.subscription?.accessSource === "STRIPE"
       && !["CANCELLED", "EXPIRED"].includes(company.subscription.status);
     if (paidMembershipInProgress) {

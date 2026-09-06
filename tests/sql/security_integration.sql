@@ -1179,6 +1179,68 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'production monitoring worker security audit is missing';
   END IF;
+  -- Free access uses the same company and request isolation as paid access,
+  -- but its configured geographic ceiling must never exceed two miles.
+  UPDATE bridge_ai."Subscription"
+  SET "accessSource"='FREE',provider='bridge-ai',"planCode"='bridge-ai-free-hyperlocal',
+      "membershipPlanId"='plan_free_hyperlocal',"currentPeriodEnd"=NULL,
+      "providerSubscriptionId"=NULL,"providerScheduleId"=NULL,"promotionId"=NULL,
+      "cancelAtPeriodEnd"=false
+  WHERE id='security_subscription_a';
+  IF (SELECT maximum_radius FROM bridge_private.effective_membership_limits('security_company_a')) <> 2 THEN
+    RAISE EXCEPTION 'Free Hyperlocal did not enforce its two-mile entitlement';
+  END IF;
+  UPDATE bridge_ai."QuoteRequest" SET "deliveryLatitude"=51.900000,"deliveryLongitude"=-2.080000 WHERE id='security_request';
+  IF NOT bridge_private.supplier_assignment_within_active_geography('security_assignment','security_company_a') THEN
+    RAISE EXCEPTION 'Free supplier could not access an opportunity at its own location';
+  END IF;
+  UPDATE bridge_ai."QuoteRequest" SET "deliveryLatitude"=52.000000 WHERE id='security_request';
+  IF bridge_private.supplier_assignment_within_active_geography('security_assignment','security_company_a') THEN
+    RAISE EXCEPTION 'Free supplier accessed an opportunity beyond two miles';
+  END IF;
+  BEGIN
+    UPDATE bridge_ai."MembershipPlan" SET "maximumRadiusMiles"=3 WHERE id='plan_free_hyperlocal';
+    RAISE EXCEPTION 'Free plan radius could be widened';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+  BEGIN
+    UPDATE bridge_ai."Subscription" SET "membershipPlanId"='plan_local_partner' WHERE id='security_subscription_a';
+    RAISE EXCEPTION 'Free access source was attached to a paid plan';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  PERFORM set_config('request.jwt.claim.sub',user_b::text,true);
+  SELECT count(*) INTO visible_count FROM bridge_ai."Subscription" WHERE id='security_subscription_a';
+  IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier B read supplier A free membership'; END IF;
+  BEGIN
+    UPDATE bridge_ai."Subscription" SET "accessSource"='STRIPE',"membershipPlanId"='plan_nationwide_partner' WHERE id='security_subscription_a';
+    GET DIAGNOSTICS affected_count = ROW_COUNT;
+    IF affected_count <> 0 THEN RAISE EXCEPTION 'Supplier B upgraded another supplier free membership'; END IF;
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  EXECUTE 'RESET ROLE';
+  PERFORM set_config('request.jwt.claim.sub','',true);
+  IF NOT EXISTS (SELECT 1 FROM bridge_ai."AuditLog" WHERE action='SYSTEM.FREE_HYPERLOCAL_ENABLED') THEN
+    RAISE EXCEPTION 'Free membership migration audit is missing';
+  END IF;
+  -- Exercise the real application login role, not a superuser with SET ROLE.
+  -- The activation worker carries the server-verified supplier identity.
+  PERFORM set_config('request.jwt.claim.sub',user_a::text,true);
+  PERFORM set_config('bridge_ai.worker_context','stripe_billing',true);
+  EXECUTE 'SET SESSION AUTHORIZATION bridge_ai_app';
+  PERFORM id FROM bridge_ai.supplier_companies WHERE id='security_company_a' FOR UPDATE;
+  SELECT count(*) INTO visible_count FROM bridge_ai.company_memberships
+    WHERE "supplierCompanyId"='security_company_a' AND "userId"=user_a AND status='ACTIVE';
+  IF visible_count <> 1 THEN RAISE EXCEPTION 'Free activation worker cannot verify its supplier membership'; END IF;
+  UPDATE bridge_ai."Subscription" SET "currentPeriodStart"=now() WHERE id='security_subscription_a';
+  GET DIAGNOSTICS affected_count = ROW_COUNT;
+  IF affected_count <> 1 THEN RAISE EXCEPTION 'Free activation worker cannot persist free access'; END IF;
+  INSERT INTO bridge_ai."AuditLog" (id,"actorUserId","supplierCompanyId",action,"entityType","entityId",summary,"createdAt")
+  VALUES ('security_free_activation_audit',user_a,'security_company_a','BILLING.FREE_HYPERLOCAL_ACTIVATED','Subscription','security_subscription_a','Free activation test',now());
+  IF NOT EXISTS (SELECT 1 FROM bridge_ai."AuditLog" WHERE id='security_free_activation_audit') THEN
+    RAISE EXCEPTION 'Free activation audit was not persisted';
+  END IF;
+  EXECUTE 'RESET SESSION AUTHORIZATION';
 END
 $test$;
 

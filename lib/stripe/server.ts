@@ -38,6 +38,7 @@ export function stripeConfigured() {
 }
 
 export async function ensureMembershipPlanStripePrice(plan: MembershipPlan) {
+  if (plan.monthlyPricePence <= 0) throw new Error("FREE_PLAN_DOES_NOT_USE_STRIPE");
   if (plan.providerPriceId) return plan.providerPriceId;
   const stripe = getStripe();
   let productId = plan.providerProductId;
