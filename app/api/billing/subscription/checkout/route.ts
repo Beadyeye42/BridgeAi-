@@ -5,6 +5,8 @@ import { applicationOrigin } from "@/lib/config";
 import { ensureMembershipPlanStripePrice, ensureMembershipPromotionStripeCoupon, getStripe } from "@/lib/stripe/server";
 import { membershipCheckoutSchema, validationError } from "@/lib/auth/validation";
 import { runProductionMonitoringSafely } from "@/lib/monitoring/operational-alerts";
+import { isFreeHyperlocalPlan } from "@/lib/billing/membership-plans";
+import { activateFreeHyperlocal } from "@/lib/billing/free-hyperlocal";
 
 export const runtime = "nodejs";
 
@@ -45,6 +47,10 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: `Reduce every active coverage area to ${plan.maximumRadiusMiles ?? 10} miles or less before selecting Hyperlocal Partner`, actionUrl: "/dashboard/coverage" }, { status: 409 });
       }
     }
+    if (isFreeHyperlocalPlan(plan)) {
+      await activateFreeHyperlocal(auth.companyId, auth.session.userId);
+      return NextResponse.json({ url: `${applicationOrigin(request.url)}/dashboard/subscription?free=active` });
+    }
     const stripe = getStripe();
     const priceId = await ensureMembershipPlanStripePrice(plan);
     const origin = applicationOrigin(request.url);
@@ -63,10 +69,10 @@ export async function POST(request: Request) {
       const claimed = await tx.subscription.count({ where: { promotionId: promotion.id, status: { in: ["ACTIVE", "TRIALING", "PAST_DUE"] } } });
       return claimed < promotion.subscriberLimit ? promotion : null;
     });
-    if (current?.status === "ACTIVE" && applicablePromotion && !applicablePromotion.existingSubscribersQualify) applicablePromotion = null;
+    if (current?.status === "ACTIVE" && current.accessSource !== "FREE" && applicablePromotion && !applicablePromotion.existingSubscribersQualify) applicablePromotion = null;
     const promotionCouponId = applicablePromotion ? await ensureMembershipPromotionStripeCoupon(applicablePromotion, plan) : null;
 
-    if (current?.status === "ACTIVE") {
+    if (current?.status === "ACTIVE" && current.accessSource !== "FREE") {
       if (current.accessSource === "COMPLIMENTARY") return NextResponse.json({ error: "Your complimentary access is active. An administrator can change its tier." }, { status: 409 });
       if (!current.providerSubscriptionId) throw new Error("Active Stripe subscription reference is missing");
       if (current.membershipPlanId === plan.id) return NextResponse.json({ error: `${plan.name} is already active` }, { status: 409 });
@@ -102,7 +108,11 @@ export async function POST(request: Request) {
     }
     const saved = await runAsDatabaseWorker("stripe_billing", (tx) => tx.subscription.upsert({
       where: { supplierCompanyId: auth.companyId },
-      update: { providerCustomerId: customerId, membershipPlanId: plan.id, promotionId: applicablePromotion?.id ?? null, planCode: plan.code },
+      // Starting checkout is not payment. Keep the free two-mile entitlement
+      // until the verified Stripe webhook confirms the paid subscription.
+      update: current?.accessSource === "FREE"
+        ? { providerCustomerId: customerId }
+        : { providerCustomerId: customerId, membershipPlanId: plan.id, promotionId: applicablePromotion?.id ?? null, planCode: plan.code },
       create: { supplierCompanyId: auth.companyId, providerCustomerId: customerId, membershipPlanId: plan.id, promotionId: applicablePromotion?.id ?? null, planCode: plan.code, status: "EXPIRED" },
     }));
     subscriptionId = saved.id;
@@ -125,6 +135,10 @@ export async function POST(request: Request) {
     await runAsDatabaseWorker("stripe_billing", (tx) => tx.auditLog.create({ data: { actorUserId: auth.session.userId, supplierCompanyId: auth.companyId, action: "BILLING.MEMBERSHIP_CHECKOUT_CREATED", entityType: "Subscription", entityId: subscriptionId, summary: `${plan.name} checkout created`, metadata: { membershipPlanId: plan.id, tier: plan.tier, monthlyPricePence: plan.monthlyPricePence, taxEnabled: plan.taxEnabled, membershipPromotionId: applicablePromotion?.id ?? null } } }));
     return NextResponse.json({ url: checkout.url });
   } catch (error) {
+    const code = error instanceof Error ? error.message : "";
+    if (code === "EXISTING_MEMBERSHIP_IN_PROGRESS") return NextResponse.json({ error: "Cancel your current membership through billing first. You can choose free access after the paid period ends." }, { status: 409 });
+    if (code === "FREE_MEMBERSHIP_FORBIDDEN") return NextResponse.json({ error: "An approved supplier and active owner or manager membership are required." }, { status: 403 });
+    if (code === "FREE_MEMBERSHIP_UNAVAILABLE") return NextResponse.json({ error: "Free Hyperlocal is not currently available." }, { status: 409 });
     console.error("Membership checkout failed", error);
     await runAsDatabaseWorker("stripe_billing", (tx) => tx.systemEvent.create({ data: { severity: "ERROR", source: "STRIPE_CHECKOUT", code: "STRIPE_CHECKOUT_CREATION_FAILED", message: "A supplier membership checkout or plan change could not be created.", context: { supplierCompanyId: auth.companyId, errorType: error instanceof Error ? error.name : "UnknownError" } } })).catch(() => undefined);
     after(runProductionMonitoringSafely);

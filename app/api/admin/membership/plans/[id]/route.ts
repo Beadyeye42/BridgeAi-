@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { requireAdminApi } from "@/lib/auth/api";
 import { membershipPlanAdminSchema, validationError } from "@/lib/auth/validation";
 import { writeAuditLog } from "@/lib/audit";
+import { isFreeHyperlocalPlan } from "@/lib/billing/membership-plans";
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAdminApi(); if ("error" in auth) return auth.error;
@@ -11,6 +12,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const { id } = await params;
   const current = await prisma.membershipPlan.findUnique({ where: { id } });
   if (!current) return NextResponse.json({ error: "Membership plan not found" }, { status: 404 });
+  if (isFreeHyperlocalPlan(current) && (parsed.data.monthlyPricePence !== 0 || parsed.data.maximumRadiusMiles !== 2 || parsed.data.taxEnabled || parsed.data.providerPriceId)) return NextResponse.json({ error: "Free Hyperlocal must remain free, within 2 miles, and without a Stripe price." }, { status: 400 });
+  if (!isFreeHyperlocalPlan(current) && parsed.data.monthlyPricePence < 100) return NextResponse.json({ error: "Paid memberships must cost at least £1 per month." }, { status: 400 });
   if (current.tier === "HYPERLOCAL" && (parsed.data.maximumRadiusMiles === null || parsed.data.maximumRadiusMiles > 10)) return NextResponse.json({ error: "Hyperlocal Partner must remain between 1 and 10 miles" }, { status: 400 });
   if (current.tier === "LOCAL" && parsed.data.maximumRadiusMiles !== 40) return NextResponse.json({ error: "Local Partner is fixed at a maximum 40-mile radius" }, { status: 400 });
   if (current.tier === "REGIONAL" && parsed.data.maximumRadiusMiles !== 100) return NextResponse.json({ error: "Regional Partner is fixed at a maximum 100-mile radius" }, { status: 400 });

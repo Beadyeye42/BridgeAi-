@@ -1,5 +1,12 @@
 import type { MembershipPlan, MembershipTier, SupplierCompany } from "@prisma/client";
 
+export const FREE_HYPERLOCAL_PLAN_ID = "plan_free_hyperlocal";
+export const FREE_HYPERLOCAL_RADIUS_MILES = 2;
+
+export function isFreeHyperlocalPlan(plan: Pick<MembershipPlan, "id"> | null | undefined) {
+  return plan?.id === FREE_HYPERLOCAL_PLAN_ID;
+}
+
 export const DEFAULT_PLAN_IDS: Record<MembershipTier, string> = {
   HYPERLOCAL: "plan_hyperlocal_partner",
   LOCAL: "plan_local_partner",
