@@ -32,7 +32,7 @@ export async function POST(request: Request) {
       type: "magiclink",
     });
     if (verified.error || !verified.data.user || !verified.data.session) {
-      await supabase.auth.signOut();
+      // An invalid link must not sign out a pre-existing browser session.
       return invalidResponse();
     }
     authUserId = verified.data.user.id;
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
     const claims = await supabase.auth.getClaims(verified.data.session.access_token);
     const sessionId = claims.data?.claims?.session_id;
     if (typeof sessionId !== "string") {
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: "local" });
       return invalidResponse();
     }
 
@@ -54,7 +54,7 @@ export async function POST(request: Request) {
       userAgent: request.headers.get("user-agent"),
     });
     if (!challenge) {
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: "local" });
       return invalidResponse();
     }
 
@@ -68,7 +68,7 @@ export async function POST(request: Request) {
       : `BUYER_LOGIN_${stage}_FAILED`;
     console.error("buyer_login_verification_failed", { stage, errorType: stableError });
     await recordBuyerLoginVerificationFailure(authUserId, stableError);
-    await supabase.auth.signOut().catch(() => undefined);
+    if (authUserId) await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
     return invalidResponse();
   }
 }

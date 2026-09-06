@@ -56,6 +56,8 @@ async function metaFetch(url: string, init?: RequestInit) {
     },
     signal: AbortSignal.timeout(20_000),
     cache: "no-store",
+    // An allow-listed media URL must not redirect the server to another host.
+    redirect: "error",
   });
   if (!response.ok) {
     let providerCode: number | undefined;

@@ -2,7 +2,7 @@
 
 ## Product and identity boundaries
 
-- Customers never receive portal accounts. Customer interactions enter only through trusted server-side WhatsApp ingestion.
+- Customers enter procurement requests through trusted server-side WhatsApp ingestion. The existing Buyer Hub uses separate passwordless Supabase identities and verified trusted sessions; buyers never receive supplier memberships or administrator privileges.
 - Supabase Auth is the sole credential/session/recovery authority. Do not add password hashes, reset tokens or application session tables.
 - A supplier needs an active `company_memberships` row. Resolve its company from the verified identity; never accept tenant authority from the client.
 - An administrator needs an active `platform_administrators` row. Never infer administrator status from email, Auth metadata or client state.

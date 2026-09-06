@@ -1,6 +1,7 @@
 -- The Prisma server connection remains subject to the same authenticated RLS policies.
 -- A verified Supabase user id is installed transaction-locally by lib/db.ts.
 DO $$
+DECLARE legacy_table text;
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'bridge_ai_app') THEN
     EXECUTE 'ALTER ROLE bridge_ai_app INHERIT';
@@ -11,7 +12,14 @@ BEGIN
     EXECUTE 'GRANT EXECUTE ON FUNCTION bridge_private.is_platform_admin() TO bridge_ai_app';
     EXECUTE 'GRANT EXECUTE ON FUNCTION bridge_private.has_company_membership(text, bridge_ai."SupplierTeamRole"[]) TO bridge_ai_app';
     EXECUTE 'GRANT EXECUTE ON FUNCTION bridge_private.can_access_request(text) TO bridge_ai_app';
-    EXECUTE 'REVOKE ALL ON TABLE public.profiles, public.quotes, public.request_customers, public.requests, public.subscriptions, public.whatsapp_messages FROM bridge_ai_app';
+    -- Fresh installations do not contain the quarantined legacy tables.
+    -- Revoke only objects that exist instead of failing role provisioning.
+    FOR legacy_table IN
+      SELECT tablename FROM pg_tables WHERE schemaname = 'public'
+        AND tablename IN ('profiles', 'quotes', 'request_customers', 'requests', 'subscriptions', 'whatsapp_messages')
+    LOOP
+      EXECUTE format('REVOKE ALL ON TABLE public.%I FROM bridge_ai_app', legacy_table);
+    END LOOP;
   END IF;
 END $$;
 

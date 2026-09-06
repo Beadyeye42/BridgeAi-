@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
+import { safeAuthNextPath } from "@/lib/auth/recovery-hash";
 import { applicationOrigin, metaBuyerLoginTemplate } from "@/lib/config";
 import { runAsDatabaseWorker } from "@/lib/db";
 import { blindIndex } from "@/lib/security/encryption";
@@ -35,8 +36,8 @@ function digest(value: string) {
 }
 
 function safeBuyerPath(value: string | null | undefined) {
-  if (!value?.startsWith("/buyer") || value.startsWith("//")) return "/buyer";
-  return value.slice(0, 512);
+  const path = safeAuthNextPath(value?.slice(0, 512) ?? null, "/buyer");
+  return /^\/buyer(?:\/|\?|#|$)/.test(path) ? path : "/buyer";
 }
 
 function buyerIdentityEmail(phoneHash: string) {

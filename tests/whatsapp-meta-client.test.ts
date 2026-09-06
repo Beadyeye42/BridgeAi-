@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { hasExpectedMediaSignature, sendMetaTemplate, sendMetaText } from "../lib/whatsapp/meta-client";
+import { downloadMetaMedia, hasExpectedMediaSignature, sendMetaTemplate, sendMetaText } from "../lib/whatsapp/meta-client";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -13,6 +13,27 @@ function configureMeta() {
 }
 
 describe("Meta outbound client", () => {
+  it("does not follow redirects from an allowed media host", async () => {
+    configureMeta();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(Response.json({ url: "https://lookaside.fbsbx.com/media", mime_type: "application/pdf", file_size: 8, id: "123" }))
+      .mockImplementationOnce(async (_url, init) => {
+        expect(init.redirect).toBe("error");
+        throw new TypeError("fetch failed: unexpected redirect");
+      });
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(downloadMetaMedia("123")).rejects.toThrow("unexpected redirect");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects untrusted media hosts before requesting their bytes", async () => {
+    configureMeta();
+    const fetchMock = vi.fn().mockResolvedValueOnce(Response.json({ url: "https://fbsbx.com.evil.example/media", mime_type: "application/pdf", file_size: 8, id: "123" }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(downloadMetaMedia("123")).rejects.toThrow("META_MEDIA_HOST_REJECTED");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("accepts only the expected magic bytes for supported customer files", () => {
     expect(hasExpectedMediaSignature("image/jpeg", new Uint8Array([0xff, 0xd8, 0xff, 0x00]))).toBe(true);
     expect(hasExpectedMediaSignature("image/png", new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe(true);
