@@ -33,7 +33,7 @@ export default function Home() {
       <div className="home-offer-bar">
         <span><Sparkles size={14} /> The AI sourcing network</span>
         <b>Free for people and businesses to use on WhatsApp</b>
-        <span>Supplier plans from £14.99 per month</span>
+        <span>Free Hyperlocal supplier membership</span>
         <Link href="/register">Join the network <ArrowRight size={14} /></Link>
       </div>
 
@@ -198,7 +198,7 @@ export default function Home() {
           <div className="home-membership-points"><span><Check size={15} /> No introduction fees</span><span><Check size={15} /> No winning fees</span><span><Check size={15} /> Stripe-secured billing</span></div>
         </div>
         <div className="home-plan-stack">
-          <div className="home-price-card"><span>HYPERLOCAL PARTNER</span><div><sup>£</sup><strong>14.99</strong><small>per month</small></div><p>Choose a radius from 1–10 miles in eligible industries. Up to 3 live opportunities.</p></div>
+          <div className="home-price-card"><span>HYPERLOCAL PARTNER</span><div><sup>£</sup><strong>0</strong><small>per month</small></div><p>Free membership with a fixed 2-mile radius in eligible industries. Up to 5 live opportunities.</p></div>
           <div className="home-price-card"><span>LOCAL PARTNER</span><div><sup>£</sup><strong>29.99</strong><small>per month</small></div><p>Choose a service and delivery radius from 1–40 miles. Up to 5 live opportunities.</p></div>
           <div className="home-price-card"><span>REGIONAL PARTNER</span><div><sup>£</sup><strong>59.99</strong><small>per month</small></div><p>Choose a radius from 1–100 miles. Up to 10 live opportunities.</p></div>
           <div className="home-price-card"><span>NATIONWIDE PARTNER</span><div><sup>£</sup><strong>89.99</strong><small>per month</small></div><p>Great Britain eligibility with exact capability matching. Up to 20 live opportunities.</p></div>

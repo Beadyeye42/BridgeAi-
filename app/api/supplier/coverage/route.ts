@@ -30,6 +30,9 @@ export async function POST(request: Request) {
     ?? await prisma.membershipPlan.findUnique({ where: { id: DEFAULT_PLAN_IDS.LOCAL } });
   if (!plan) return NextResponse.json({ error: "Membership plans are not configured" }, { status: 503 });
   const limits = effectiveMembershipLimits(plan, company);
+  if (limits.tier === "HYPERLOCAL" && (parsed.data.type !== "DISTANCE" || parsed.data.radiusMiles !== 2)) {
+    return NextResponse.json({ error: "Hyperlocal coverage is fixed at 2 miles from your company base" }, { status: 400 });
+  }
   const purposeRadius = parsed.data.purpose === "SERVICE"
     ? limits.maximumServiceRadiusMiles
     : limits.maximumDeliveryRadiusMiles;

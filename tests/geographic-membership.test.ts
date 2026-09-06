@@ -29,12 +29,12 @@ describe("geographic memberships and controlled distribution", () => {
     expect(matchCoverageRule(rule(40), destination(41))).toBeNull();
   });
 
-  it("accepts the selected Hyperlocal radius and rejects work beyond it", () => {
-    expect(matchCoverageRule(rule(7), destination(6))).not.toBeNull();
-    expect(matchCoverageRule(rule(7), destination(8))).toBeNull();
+  it("accepts the fixed Hyperlocal radius and rejects work beyond it", () => {
+    expect(matchCoverageRule(rule(2), destination(1))).not.toBeNull();
+    expect(matchCoverageRule(rule(2), destination(3))).toBeNull();
     expect(effectiveMembershipLimits(plan("HYPERLOCAL", 10, 3), noOverrides)).toMatchObject({
       tier: "HYPERLOCAL",
-      maximumRadiusMiles: 10,
+      maximumRadiusMiles: 2,
       maximumActiveOpportunities: 3,
       nationwideAllowed: false,
     });

@@ -215,7 +215,7 @@ export const membershipCheckoutSchema = z.object({ membershipPlanId: z.string().
 export const membershipPlanAdminSchema = z.object({
   name: z.string().trim().min(2).max(100),
   description: z.string().trim().max(500).nullable(),
-  monthlyPricePence: z.coerce.number().int().min(100).max(1_000_000),
+  monthlyPricePence: z.coerce.number().int().min(0).max(1_000_000),
   maximumRadiusMiles: z.coerce.number().int().min(1).max(500).nullable(),
   nationwideAllowed: z.boolean(),
   maximumActiveOpportunities: z.coerce.number().int().min(1).max(100),

@@ -62,7 +62,7 @@ export default async function SubscriptionPage() {
           <h3>{formatPlanPrice(plan.monthlyPricePence, plan.currency)} <small>{planTaxLabel(plan)}</small></h3>
           <p className="body-copy">{plan.description}</p>
           <div className="entity-list">
-            <div className="entity-row"><div><b>{plan.nationwideAllowed ? "Great Britain eligibility" : `Choose 1–${plan.maximumRadiusMiles} miles`}</b><small>Your actual selected radius may be smaller.</small></div></div>
+            <div className="entity-row"><div><b>{plan.tier === "HYPERLOCAL" ? "Fixed 2-mile radius" : plan.nationwideAllowed ? "Great Britain eligibility" : `Choose 1–${plan.maximumRadiusMiles} miles`}</b><small>{plan.tier === "HYPERLOCAL" ? "Free membership in eligible industries." : "Your actual selected radius may be smaller."}</small></div></div>
             <div className="entity-row"><div><b>Up to {plan.maximumActiveOpportunities} live opportunities</b><small>No open public job board.</small></div></div>
             <div className="entity-row"><div><b>Strict capability matching</b><small>Product, system, colour, capacity and deadline still required.</small></div></div>
           </div>

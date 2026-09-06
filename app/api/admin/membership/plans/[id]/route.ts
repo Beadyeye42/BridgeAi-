@@ -11,11 +11,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const { id } = await params;
   const current = await prisma.membershipPlan.findUnique({ where: { id } });
   if (!current) return NextResponse.json({ error: "Membership plan not found" }, { status: 404 });
-  if (current.tier === "HYPERLOCAL" && (parsed.data.maximumRadiusMiles === null || parsed.data.maximumRadiusMiles > 10)) return NextResponse.json({ error: "Hyperlocal Partner must remain between 1 and 10 miles" }, { status: 400 });
+  if (current.tier === "HYPERLOCAL" && (parsed.data.maximumRadiusMiles !== 2 || parsed.data.monthlyPricePence !== 0 || parsed.data.providerPriceId !== null || parsed.data.taxEnabled)) return NextResponse.json({ error: "Hyperlocal Partner is free with a fixed 2-mile radius; Stripe price is managed automatically and tax must remain disabled" }, { status: 400 });
   if (current.tier === "LOCAL" && parsed.data.maximumRadiusMiles !== 40) return NextResponse.json({ error: "Local Partner is fixed at a maximum 40-mile radius" }, { status: 400 });
   if (current.tier === "REGIONAL" && parsed.data.maximumRadiusMiles !== 100) return NextResponse.json({ error: "Regional Partner is fixed at a maximum 100-mile radius" }, { status: 400 });
   if (current.tier === "NATIONWIDE" && (!parsed.data.nationwideAllowed || parsed.data.maximumRadiusMiles !== null)) return NextResponse.json({ error: "Nationwide membership must retain nationwide eligibility and no mileage ceiling" }, { status: 400 });
   if (current.tier !== "NATIONWIDE" && (parsed.data.nationwideAllowed || parsed.data.maximumRadiusMiles === null)) return NextResponse.json({ error: "Mileage-controlled plans require a radius and cannot enable nationwide eligibility" }, { status: 400 });
+  if (current.tier !== "HYPERLOCAL" && parsed.data.monthlyPricePence < 100) return NextResponse.json({ error: "Paid membership plans must cost at least £1" }, { status: 400 });
   const priceChanged = current.monthlyPricePence !== parsed.data.monthlyPricePence || current.taxEnabled !== parsed.data.taxEnabled;
   const explicitPriceChanged = parsed.data.providerPriceId !== current.providerPriceId;
   const saved = await prisma.$transaction(async (tx) => {

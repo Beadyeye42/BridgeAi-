@@ -1118,5 +1118,51 @@ BEGIN
 END
 $test$;
 
+DO $hyperlocal$
+DECLARE radius integer; rejected boolean; affected integer; user_a uuid;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM bridge_ai."AuditLog" WHERE action='SYSTEM.HYPERLOCAL_MADE_FREE') THEN
+    RAISE EXCEPTION 'free Hyperlocal migration audit is missing';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM bridge_ai."MembershipPlan" WHERE tier='HYPERLOCAL' AND "monthlyPricePence"=0 AND "maximumRadiusMiles"=2) THEN
+    RAISE EXCEPTION 'free Hyperlocal defaults are incorrect';
+  END IF;
+  BEGIN
+    UPDATE bridge_ai."MembershipPlan" SET "monthlyPricePence"=1499 WHERE tier='HYPERLOCAL';
+    RAISE EXCEPTION 'paid Hyperlocal was accepted';
+  EXCEPTION WHEN check_violation THEN NULL; END;
+  BEGIN
+    UPDATE bridge_ai."MembershipPlan" SET "maximumRadiusMiles"=10 WHERE tier='HYPERLOCAL';
+    RAISE EXCEPTION 'old Hyperlocal radius was accepted';
+  EXCEPTION WHEN check_violation THEN NULL; END;
+  UPDATE bridge_ai."Subscription" SET "membershipPlanId"='plan_hyperlocal_partner', status='ACTIVE', "currentPeriodEnd"=now()+interval '1 month' WHERE id='security_subscription_a';
+  UPDATE bridge_ai.supplier_companies SET "membershipTierOverride"=NULL,"maximumServiceRadiusOverride"=NULL,"maximumDeliveryRadiusOverride"=NULL WHERE id='security_company_a';
+  SELECT maximum_radius INTO radius FROM bridge_private.effective_membership_limits('security_company_a');
+  IF radius IS DISTINCT FROM 2 THEN RAISE EXCEPTION 'effective Hyperlocal radius is not two'; END IF;
+  INSERT INTO bridge_ai."CoverageArea" (id,"supplierCompanyId",type,purpose,label,"centrePostcode","radiusMiles",latitude,longitude,active,"createdAt","updatedAt")
+  VALUES ('hyperlocal_fixed','security_company_a','DISTANCE','DELIVERY','Fixed','GL52 6TD',2,51.900000,-2.080000,true,now(),now());
+  FOREACH radius IN ARRAY ARRAY[1,3,10] LOOP
+    rejected := false;
+    BEGIN
+      UPDATE bridge_ai."CoverageArea" SET "radiusMiles"=radius WHERE id='hyperlocal_fixed';
+    EXCEPTION WHEN check_violation THEN rejected := true; END;
+    IF NOT rejected THEN RAISE EXCEPTION 'Hyperlocal accepted radius %', radius; END IF;
+  END LOOP;
+  SELECT "userId" INTO user_a FROM bridge_ai.company_memberships WHERE id='security_membership_a';
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  PERFORM set_config('request.jwt.claim.sub',user_a::text,true);
+  UPDATE bridge_ai."CoverageArea" SET label='forbidden' WHERE "supplierCompanyId"='security_company_b';
+  GET DIAGNOSTICS affected=ROW_COUNT;
+  IF affected <> 0 THEN RAISE EXCEPTION 'Hyperlocal supplier changed another tenant coverage'; END IF;
+  BEGIN
+    UPDATE bridge_ai."MembershipPlan" SET "monthlyPricePence"=0 WHERE tier='LOCAL';
+    GET DIAGNOSTICS affected=ROW_COUNT;
+    IF affected <> 0 THEN RAISE EXCEPTION 'supplier changed centrally controlled pricing'; END IF;
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+  EXECUTE 'RESET ROLE';
+  PERFORM set_config('request.jwt.claim.sub','',true);
+END
+$hyperlocal$;
+
 ROLLBACK;
 SELECT 'security integration suite passed' AS result;
