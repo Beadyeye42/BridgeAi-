@@ -40,7 +40,7 @@ describe("quote request job lifecycle", () => {
   });
 
   it("enforces ordered lifecycle transitions in PostgreSQL", () => {
-    const migration = read("supabase/migrations/20260811233745_apply_quote_request_lifecycle.sql");
+    const migration = read("supabase/migrations/20260811234539_apply_quote_request_lifecycle.sql");
     expect(migration).toContain("job can only be confirmed after customer selection");
     expect(migration).toContain("job can only be completed after confirmation");
     expect(migration).toContain("selected job lifecycle requires exactly one accepted quotation");

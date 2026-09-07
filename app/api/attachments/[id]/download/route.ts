@@ -42,7 +42,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       include: { subscription: { include: { membershipPlan: true } } },
     });
     const assignment = attachment.quoteRequest?.assignments[0];
-    const permitted = attachment.quotation?.supplierCompanyId === companyId
+    const permitted = attachment.supplierCompanyId === companyId
+      || attachment.quotation?.supplierCompanyId === companyId
       || Boolean(company && assignment && attachment.quoteRequest && canReadSupplierAssignment(company, {
         quotation: assignment.quotation,
         quoteRequest: attachment.quoteRequest,

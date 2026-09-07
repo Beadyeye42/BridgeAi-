@@ -1,3 +1,4 @@
+import { readBoundedJson } from "@/lib/security/bounded-json";
 import { after, NextResponse } from "next/server";
 import { z } from "zod";
 import { BUYER_LOGIN_NEUTRAL_MESSAGE, requestBuyerLogin } from "@/lib/buyer/auth";
@@ -15,7 +16,7 @@ export async function POST(request: Request) {
   try {
     const contentLength = Number(request.headers.get("content-length") ?? 0);
     if (contentLength > 2_048) return neutral;
-    const parsed = bodySchema.safeParse(await request.json());
+    const parsed = bodySchema.safeParse(await readBoundedJson(request));
     if (!parsed.success) return neutral;
     const forwarded = request.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim() ?? null;
     const input = {

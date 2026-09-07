@@ -3,7 +3,7 @@ import { prisma, runAsDatabaseWorker } from "@/lib/db";
 import { getCurrentSession, getPrimarySupplierCompanyId } from "@/lib/auth/session";
 import { quotationSchema, validationError } from "@/lib/auth/validation";
 import { writeAuditLog } from "@/lib/audit";
-import { enqueueQuoteSummary, processWhatsAppJobs } from "@/lib/whatsapp/processor";
+import { processWhatsAppJobs } from "@/lib/whatsapp/processor";
 import { isMembershipActive } from "@/lib/billing/pricing";
 import { quotationValidUntil } from "@/lib/quotes/validity";
 import { ensureQuoteConversation } from "@/lib/quotes/conversations";
@@ -126,8 +126,8 @@ export async function POST(request: Request) {
   }
   after(async () => {
     try {
-      const job = await enqueueQuoteSummary(quotation.id);
-      if (job) await processWhatsAppJobs({ limit: 5 });
+      // The quotation-version trigger already persisted the job atomically.
+      await processWhatsAppJobs({ limit: 5 });
     } catch {
       console.error("Customer quote-summary scheduling failed", { quotationId: quotation.id });
     }

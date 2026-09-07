@@ -704,6 +704,22 @@ BEGIN
   INSERT INTO bridge_ai."QuotationVersion" (
     id,"quotationId","versionNumber",price,currency,"leadTimeDays","submittedById","submittedAt"
   ) VALUES ('security_quote_version','security_quote',1,125,'GBP',7,user_a,now());
+  IF NOT EXISTS (SELECT 1 FROM bridge_ai."WhatsAppJob" WHERE "idempotencyKey"='quote-summary:security_request:quotation:security_quote') THEN
+    RAISE EXCEPTION 'Quotation committed without its durable notification';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM bridge_ai."AuditLog" WHERE action='QUOTATION.NOTIFICATION_QUEUED' AND "entityId"='security_quote') THEN
+    RAISE EXCEPTION 'Quotation notification audit missing';
+  END IF;
+  -- A failing transaction must roll its notification back too.
+  BEGIN
+    INSERT INTO bridge_ai."QuotationVersion" (id,"quotationId","versionNumber",price,currency,"leadTimeDays","submittedById","submittedAt")
+    VALUES ('security_quote_rollback','security_quote',2,126,'GBP',7,user_a,now());
+    RAISE EXCEPTION 'intentional rollback' USING ERRCODE='P0002';
+  EXCEPTION WHEN no_data_found THEN NULL;
+  END;
+  IF EXISTS (SELECT 1 FROM bridge_ai."WhatsAppJob" WHERE "idempotencyKey"='quote-summary:security_request:quotation:security_quote:version:2') THEN
+    RAISE EXCEPTION 'Failed quotation left a notification behind';
+  END IF;
   INSERT INTO bridge_ai."QuoteConversation" (
     id,"quoteRequestId","quotationId","supplierCompanyId","anonymousLabel",status,"questionResponseDueAt","lastMessageAt","createdAt","updatedAt"
   ) VALUES (
@@ -794,6 +810,12 @@ BEGIN
   PERFORM set_config('request.jwt.claim.sub', user_b::text, true);
   SELECT count(*) INTO visible_count FROM bridge_ai."QuotationVersion" WHERE id='security_quote_version';
   IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier B read Supplier A quote version'; END IF;
+  BEGIN
+    INSERT INTO bridge_ai."QuotationVersion" (id,"quotationId","versionNumber",price,currency,"leadTimeDays","submittedById","submittedAt")
+    VALUES ('security_cross_tenant_version','security_quote',3,126,'GBP',7,user_b,now());
+    RAISE EXCEPTION 'Supplier B queued a notification for Supplier A quotation';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
   SELECT count(*) INTO visible_count FROM bridge_ai."QuoteConversation" WHERE id='security_quote_conversation';
   IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier B read Supplier A quote conversation'; END IF;
   SELECT count(*) INTO visible_count FROM bridge_ai."QuoteMessage" WHERE id IN ('security_buyer_question','security_supplier_answer');
@@ -1241,6 +1263,18 @@ BEGIN
     RAISE EXCEPTION 'Free activation audit was not persisted';
   END IF;
   EXECUTE 'RESET SESSION AUTHORIZATION';
+  -- One existing challenge plus four reservations exhausts this customer's limit.
+  FOR affected_count IN 1..4 LOOP
+    INSERT INTO bridge_ai."BuyerLoginChallenge" (id,"customerContactId","authUserId","tokenDigest","expiresAt")
+    VALUES ('security_limit_'||affected_count,'security_customer',user_a,md5('limit-'||affected_count)||md5('limit-'||affected_count),now()+interval '10 minutes');
+  END LOOP;
+  BEGIN
+    INSERT INTO bridge_ai."BuyerLoginChallenge" (id,"customerContactId","authUserId","tokenDigest","expiresAt")
+    VALUES ('security_limit_denied','security_customer',user_a,repeat('f',64),now()+interval '10 minutes');
+    RAISE EXCEPTION 'Buyer exceeded login reservation limit';
+  EXCEPTION WHEN check_violation THEN
+    IF SQLERRM <> 'BUYER_LOGIN_RATE_LIMITED' THEN RAISE; END IF;
+  END;
 END
 $test$;
 

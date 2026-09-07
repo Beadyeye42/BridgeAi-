@@ -4,9 +4,9 @@ import { buildSupplierNotificationEmail, buildSupplierWinnerEmail } from "@/lib/
 
 const selection = readFileSync("lib/quotes/selection.ts", "utf8");
 const worker = readFileSync("lib/notifications/email-worker.ts", "utf8");
-const migration = readFileSync("supabase/migrations/20260806215024_supplier_winner_email_notifications.sql", "utf8");
-const opportunityMigration = readFileSync("supabase/migrations/20260807190000_supplier_opportunity_email_notifications.sql", "utf8");
-const returningMigration = readFileSync("supabase/migrations/20260807191500_supplier_email_worker_returning_policies.sql", "utf8");
+const migration = readFileSync("supabase/migrations/20260806220514_supplier_winner_email_notifications.sql", "utf8");
+const opportunityMigration = readFileSync("supabase/migrations/20260807180624_supplier_opportunity_email_notifications.sql", "utf8");
+const returningMigration = readFileSync("supabase/migrations/20260807181510_supplier_email_worker_returning_policies.sql", "utf8");
 const assignmentNotifications = readFileSync("lib/notifications/assignment-notifications.ts", "utf8");
 const automaticAssignment = readFileSync("lib/whatsapp/processor.ts", "utf8");
 const replacementAssignment = readFileSync("lib/matching/replacements.ts", "utf8");

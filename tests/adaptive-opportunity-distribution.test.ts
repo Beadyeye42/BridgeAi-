@@ -69,7 +69,7 @@ describe("adaptive supplier opportunity distribution", () => {
 
   it("keeps wins out of access caps and preserves database concurrency safeguards", () => {
     const matching = read("lib/matching/suppliers.ts");
-    const migration = read("supabase/migrations/20260811214821_adaptive_opportunity_distribution.sql");
+    const migration = read("supabase/migrations/20260811221745_adaptive_opportunity_distribution.sql");
     expect(matching).not.toMatch(/wins30Days\s*[>=]/);
     expect(migration).toContain("pg_advisory_xact_lock");
     expect(migration).toContain("request_active >= request_limit");
@@ -79,7 +79,7 @@ describe("adaptive supplier opportunity distribution", () => {
   });
 
   it("sets the requested default plan limits and protects coverage-gap data", () => {
-    const migration = read("supabase/migrations/20260811214821_adaptive_opportunity_distribution.sql");
+    const migration = read("supabase/migrations/20260811221745_adaptive_opportunity_distribution.sql");
     expect(migration).toContain("THEN 5");
     expect(migration).toContain("THEN 10");
     expect(migration).toContain("THEN 20");
@@ -100,7 +100,7 @@ describe("adaptive supplier opportunity distribution", () => {
 
   it("supports per-industry response-window overrides", () => {
     const deadlineResolver = read("lib/matching/deadlines.ts");
-    const migration = read("supabase/migrations/20260811230500_industry_response_deadlines.sql");
+    const migration = read("supabase/migrations/20260811223112_industry_response_deadlines.sql");
     expect(deadlineResolver).toContain("category?.parent?.acknowledgementDeadlineHours");
     expect(deadlineResolver).toContain("category?.parent?.quotationDeadlineHours");
     expect(migration).toContain("ProductCategory_acknowledgementDeadlineHours_check");

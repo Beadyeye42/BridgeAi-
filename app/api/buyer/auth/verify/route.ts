@@ -1,3 +1,4 @@
+import { readBoundedJson } from "@/lib/security/bounded-json";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { completeBuyerLogin, recordBuyerLoginVerificationFailure } from "@/lib/buyer/auth";
@@ -18,7 +19,7 @@ export async function POST(request: Request) {
   const contentLength = Number(request.headers.get("content-length") ?? 0);
   if (contentLength > 2_048) return invalidResponse();
 
-  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
+  const parsed = bodySchema.safeParse(await readBoundedJson(request).catch(() => null));
   if (!parsed.success) return invalidResponse();
 
   const supabase = await createClient();

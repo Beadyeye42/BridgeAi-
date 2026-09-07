@@ -17,7 +17,7 @@ describe("Buyer Hub security and ownership controls", () => {
     const auth = read("lib/buyer/auth.ts");
     const route = read("app/api/buyer/auth/request-link/route.ts");
     const verifier = read("components/buyer/buyer-auth-verifier.tsx");
-    const migration = read("supabase/migrations/20260824170900_buyer_hub_passwordless_orders_rewards.sql");
+    const migration = read("supabase/migrations/20260824182717_buyer_hub_passwordless_orders_rewards.sql");
     expect(route).toContain("BUYER_LOGIN_NEUTRAL_MESSAGE");
     expect(route).toContain("status: 202");
     expect(route).toContain("after(async");
@@ -46,7 +46,7 @@ describe("Buyer Hub security and ownership controls", () => {
     const session = read("lib/buyer/session.ts");
     const verifyRoute = read("app/api/buyer/auth/verify/route.ts");
     const verified = read("lib/supabase/verified-user.ts");
-    const migration = read("supabase/migrations/20260824170900_buyer_hub_passwordless_orders_rewards.sql");
+    const migration = read("supabase/migrations/20260824182717_buyer_hub_passwordless_orders_rewards.sql");
     expect(verified).toContain("supabase.auth.getClaims()");
     expect(verified).toContain("claims?.session_id");
     expect(verifyRoute).toContain("completeBuyerLogin");
@@ -100,7 +100,7 @@ describe("Buyer Hub security and ownership controls", () => {
     const selection = read("lib/quotes/selection.ts");
     const questions = read("app/api/buyer/questions/route.ts");
     const actions = read("components/buyer/buyer-request-actions.tsx");
-    const returningPolicy = read("supabase/migrations/20260826103000_buyer_hub_action_returning.sql");
+    const returningPolicy = read("supabase/migrations/20260826072133_buyer_hub_action_returning.sql");
     expect(selection).toContain('input.source === "BUYER_PORTAL"');
     expect(selection).toContain("quotation.quoteRequest.customerContactId !== input.buyerCustomerContactId");
     expect(selection).toContain('throw new Error("BUYER_SELECTION_SCOPE_MISMATCH")');
@@ -113,7 +113,7 @@ describe("Buyer Hub security and ownership controls", () => {
   });
 
   it("uses an immutable per-order rewards ledger", () => {
-    const migration = read("supabase/migrations/20260824170900_buyer_hub_passwordless_orders_rewards.sql");
+    const migration = read("supabase/migrations/20260824182717_buyer_hub_passwordless_orders_rewards.sql");
     expect(migration).toContain("buyer_reward_ledger_immutable");
     expect(migration).toContain('UNIQUE ("buyerOrderId", "entryType")');
     expect(migration).toContain("ON CONFLICT (\"buyerOrderId\", \"entryType\") DO NOTHING");
@@ -129,7 +129,7 @@ describe("Buyer Hub security and ownership controls", () => {
   });
 
   it("publishes only buyer-owned RLS data for live updates and records the security baseline", () => {
-    const migration = read("supabase/migrations/20260824170900_buyer_hub_passwordless_orders_rewards.sql");
+    const migration = read("supabase/migrations/20260824182717_buyer_hub_passwordless_orders_rewards.sql");
     const realtime = read("components/buyer/buyer-realtime-refresh.tsx");
     expect(migration).toContain('ALTER PUBLICATION supabase_realtime ADD TABLE bridge_ai."BuyerOrder"');
     expect(migration).toContain('ALTER TABLE bridge_ai."BuyerOrder" FORCE ROW LEVEL SECURITY');

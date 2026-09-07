@@ -98,7 +98,7 @@ describe("geographic memberships and controlled distribution", () => {
 
   it("enforces server and database controls instead of trusting browser radius values", () => {
     const api = read("app/api/supplier/coverage/route.ts");
-    const migration = read("supabase/migrations/20260810195356_enforce_live_geographic_membership_boundaries.sql");
+    const migration = read("supabase/migrations/20260810200612_enforce_live_geographic_membership_boundaries.sql");
     expect(api).toContain("isCoverageBoundaryWithinGeographicRadius");
     expect(api).toContain("!limits.nationwideAllowed || purposeRadius !== null");
     expect(api).toContain("Postcode-area rules are no longer used");
@@ -123,7 +123,7 @@ describe("geographic memberships and controlled distribution", () => {
     const api = read("app/api/supplier/coverage/route.ts");
     const page = read("app/dashboard/coverage/page.tsx");
     const migration = read("supabase/migrations/20260810193926_allow_preplan_onboarding_coverage.sql");
-    const originalMembershipMigration = read("supabase/migrations/20260807163701_geographic_membership_intelligent_matching.sql");
+    const originalMembershipMigration = read("supabase/migrations/20260807173146_geographic_membership_intelligent_matching.sql");
     expect(api).toContain("isMembershipActive(company.subscription)");
     expect(page).toContain("isMembershipActive(company.subscription)");
     expect(migration).toContain("coverage_configuration_limits");
@@ -146,7 +146,7 @@ describe("geographic memberships and controlled distribution", () => {
   it("retires free-for-all opportunity claiming and limits automatic competition to five", () => {
     const claimRoute = read("app/api/opportunities/[reference]/claim/route.ts");
     const processor = read("lib/whatsapp/processor.ts");
-    const migration = read("supabase/migrations/20260807163701_geographic_membership_intelligent_matching.sql");
+    const migration = read("supabase/migrations/20260807173146_geographic_membership_intelligent_matching.sql");
     expect(claimRoute).toContain("status: 410");
     expect(claimRoute).toContain("Open opportunity claiming has been retired");
     expect(processor).toContain("maximumSuppliersPerRequest ?? 5, 5");
@@ -156,8 +156,8 @@ describe("geographic memberships and controlled distribution", () => {
   it("keeps promotions separate from plans and enforces them in Stripe and PostgreSQL", () => {
     const checkout = read("app/api/billing/subscription/checkout/route.ts");
     const stripe = read("lib/stripe/server.ts");
-    const migration = read("supabase/migrations/20260807163701_geographic_membership_intelligent_matching.sql");
-    const followup = read("supabase/migrations/20260807184500_geographic_membership_stripe_promotion_read.sql");
+    const migration = read("supabase/migrations/20260807173146_geographic_membership_intelligent_matching.sql");
+    const followup = read("supabase/migrations/20260807173936_geographic_membership_stripe_promotion_read.sql");
     expect(checkout).toContain('runAsDatabaseWorker("stripe_billing"');
     expect(checkout).toContain("eligiblePlanCodes: { has: plan.code }");
     expect(stripe).toContain("ensureMembershipPromotionStripeCoupon");

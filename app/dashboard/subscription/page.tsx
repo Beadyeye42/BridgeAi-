@@ -3,10 +3,11 @@ import { CheckCircle2, CreditCard, MapPin, ShieldCheck } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { requireSupplierPage } from "@/lib/auth/guards";
 import { PortalPage, identity } from "@/components/dashboard/portal-page";
+import { CoverageManager } from "@/components/dashboard/management-forms";
 import { CheckoutButton } from "@/components/billing/checkout-button";
 import { stripeConfigured } from "@/lib/stripe/server";
 import { isComplimentaryMembership, isMembershipActive } from "@/lib/billing/pricing";
-import { effectiveMembershipLimits, formatPlanPrice, planTaxLabel, isFreeHyperlocalPlan } from "@/lib/billing/membership-plans";
+import { DEFAULT_PLAN_IDS, effectiveMembershipLimits, formatPlanPrice, planTaxLabel, isFreeHyperlocalPlan } from "@/lib/billing/membership-plans";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,8 @@ export default async function SubscriptionPage() {
   const { session, companyId } = await requireSupplierPage();
   const company = await prisma.supplierCompany.findUniqueOrThrow({ where: { id: companyId }, include: {
     subscription: { include: { membershipPlan: true } },
-    coverageAreas: { where: { active: true }, select: { type: true, purpose: true, radiusMiles: true } },
+    coverageAreas: { where: { active: true } },
+    collectionLocations: { where: { active: true } },
     categories: { include: { productCategory: { select: { hyperlocalEnabled: true, parent: { select: { hyperlocalEnabled: true } } } } } },
   } });
   const allPlans = await prisma.membershipPlan.findMany({ where: { active: true }, orderBy: { displayOrder: "asc" } });
@@ -26,17 +28,16 @@ export default async function SubscriptionPage() {
   const complimentary = isComplimentaryMembership(sub);
   const free = sub?.accessSource === "FREE";
   const currentPlan = sub?.membershipPlan;
-  const currentLimits = currentPlan ? effectiveMembershipLimits(currentPlan, company) : null;
+  const coveragePlan = active && currentPlan ? currentPlan : allPlans.find((plan) => plan.id === DEFAULT_PLAN_IDS.LOCAL);
+  const coverageLimits = coveragePlan ? effectiveMembershipLimits(coveragePlan, company) : null;
+  const freeCoverageReady = company.coverageAreas.length > 0 && company.coverageAreas.every((area) => area.type === "DISTANCE" && area.radiusMiles !== null && area.radiusMiles >= 1 && area.radiusMiles <= 2);
   const selectedRadii = company.coverageAreas.filter((area) => area.type === "DISTANCE" && area.radiusMiles !== null).map((area) => area.radiusMiles as number);
   const selectedRadius = selectedRadii.length ? Math.max(...selectedRadii) : null;
   const monthStart = new Date(); monthStart.setUTCDate(1); monthStart.setUTCHours(0, 0, 0, 0);
   const receivedThisMonth = await prisma.supplierAssignment.count({ where: { supplierCompanyId: companyId, assignedAt: { gte: monthStart } } });
-  const rejectedOutsideRadius = currentLimits?.maximumRadiusMiles
-    ? await prisma.supplierMatchDecision.count({ where: { supplierCompanyId: companyId, decidedAt: { gte: monthStart }, outcome: "REJECTED", distanceMiles: { gt: currentLimits.maximumRadiusMiles } } })
-    : 0;
   const displayStatus = active ? "ACTIVE" : sub?.status === "ACTIVE" ? "EXPIRED" : sub?.status ?? "NOT STARTED";
 
-  return <PortalPage {...identity(session, company)} eyebrow="Membership" title="Choose your reach" description="Start free within 2 miles of your registered business base. Choose a paid membership for wider reach. Your plan also sets how many live opportunities you can hold. Exact product, capability, capacity and deadline matching still applies on every tier.">
+  return <PortalPage {...identity(session, company)} eyebrow="Membership" title="Choose your reach" description={hyperlocalEligible ? "Jobs within 2 miles are free. Choose a paid plan to reach further. No introduction or winning fees." : "Choose how far you want to work. Free 2-mile access is available in eligible service industries; your available plans are shown below."}>
     <section className="panel subscription-detail">
       <span className="large-icon"><CreditCard size={24}/></span>
       <p className="eyebrow">Current access</p>
@@ -54,7 +55,18 @@ export default async function SubscriptionPage() {
       {sub?.cancelAtPeriodEnd && active && <div className="honesty-note">Cancellation is scheduled. Your current access continues until {sub.currentPeriodEnd?.toLocaleDateString("en-GB") ?? "the end of the paid period"}, then new opportunity and quotation access ends.</div>}
       {active && sub?.providerCustomerId && !complimentary && !free && <a className="button button-outline" href="/api/billing/portal">Manage billing or cancel</a>}
     </section>
-    {active && <section className="panel form-section"><div className="section-heading"><div><p className="eyebrow">Your reach this month</p><h2>Opportunity insight</h2></div><MapPin size={20}/></div><div className="form-grid"><div className="entity-row"><div><b>{receivedThisMonth} matched opportunities</b><small>Received within your current plan, capability and selected coverage.</small></div></div><div className="entity-row"><div><b>{rejectedOutsideRadius} suitable-distance checks outside your radius</b><small>Anonymous count only. Upgrade if a wider area would suit your business; no buyer details are exposed.</small></div></div></div></section>}
+    <section className="panel form-section" id="choose-coverage">
+      <div className="section-heading"><div><p className="eyebrow">1. Choose your area</p><h2>How far will you travel?</h2></div><MapPin size={20}/></div>
+      <p className="body-copy">Distances are measured from your registered business base{company.geographicOriginPostcode ? ` in ${company.geographicOriginPostcode}` : ""}. Service and delivery areas can be different.</p>
+      {hyperlocalEligible && !freeCoverageReady && <p className="honesty-note">To start free, add a distance area and set every active area to 2 miles or less. Save your changes below, then choose Free Hyperlocal.</p>}
+      {coveragePlan && coverageLimits && <details><summary className="text-link">Edit coverage here</summary><CoverageManager
+        areas={company.coverageAreas.map((area) => ({ id: area.id, type: area.type, purpose: area.purpose, label: area.label, postcodePrefix: area.postcodePrefix, centrePostcode: area.centrePostcode, radiusMiles: area.radiusMiles }))}
+        collections={company.collectionLocations.map((location) => ({ id: location.id, label: location.label, postcode: location.postcode, collectionDays: location.collectionDays, noticeRequired: location.noticeRequired, noticeHours: location.noticeHours }))}
+        plan={{ name: coveragePlan.name, tier: coverageLimits.tier, maximumRadiusMiles: coverageLimits.maximumRadiusMiles, maximumServiceRadiusMiles: coverageLimits.maximumServiceRadiusMiles, maximumDeliveryRadiusMiles: coverageLimits.maximumDeliveryRadiusMiles, nationwideAllowed: coverageLimits.nationwideAllowed, maximumActiveOpportunities: coverageLimits.maximumActiveOpportunities, onboardingDefault: !active }}
+        companyBasePostcode={company.geographicOriginPostcode ?? company.postcode ?? ""}
+      /></details>}
+    </section>
+    <div className="section-heading"><div><p className="eyebrow">2. Choose your plan</p><h2>{hyperlocalEligible ? "Start free. Upgrade when you need more reach." : "Find a plan for your business"}</h2></div></div>
     <div className="pricing-grid">
       {plans.map((plan) => {
         const selected = currentPlan?.id === plan.id && active;
@@ -63,14 +75,15 @@ export default async function SubscriptionPage() {
           <h3>{isFreeHyperlocalPlan(plan) ? "Free" : formatPlanPrice(plan.monthlyPricePence, plan.currency)} <small>{isFreeHyperlocalPlan(plan) ? "within 2 miles" : planTaxLabel(plan)}</small></h3>
           <p className="body-copy">{plan.description}</p>
           <div className="entity-list">
-            <div className="entity-row"><div><b>{plan.nationwideAllowed ? "Great Britain eligibility" : `Choose 1–${plan.maximumRadiusMiles} miles`}</b><small>Your actual selected radius may be smaller.</small></div></div>
+            <div className="entity-row"><div><b>{plan.nationwideAllowed ? "Great Britain eligibility" : `Up to ${plan.maximumRadiusMiles} miles`}</b><small>Your actual selected radius may be smaller.</small></div></div>
             <div className="entity-row"><div><b>Up to {plan.maximumActiveOpportunities} live opportunities</b><small>No open public job board.</small></div></div>
-            <div className="entity-row"><div><b>Strict capability matching</b><small>Product, system, colour, capacity and deadline still required.</small></div></div>
+            <div className="entity-row"><div><b>Jobs matched to your business</b><small>Your skills, availability and the buyer’s requirements must also match.</small></div></div>
           </div>
-          {selected ? <div className="honesty-note">This is your active plan.</div> : plan.tier === "HYPERLOCAL" && !hyperlocalEligible ? <div className="honesty-note">Hyperlocal is not enabled for your selected industries.</div> : company.status !== "APPROVED" ? <div className="honesty-note">Supplier approval is required before checkout.</div> : complimentary && active ? <div className="honesty-note">An administrator can change the tier of active complimentary access.</div> : (configured || isFreeHyperlocalPlan(plan)) ? <CheckoutButton free={isFreeHyperlocalPlan(plan)} endpoint="/api/billing/subscription/checkout" body={{ membershipPlanId: plan.id }}>{isFreeHyperlocalPlan(plan) ? "Start free — no card required" : free ? `Upgrade to ${plan.name}` : active ? `Change to ${plan.name}` : `Choose ${plan.name}`}</CheckoutButton> : <div className="honesty-note">Stripe is not configured in this environment.</div>}
+          {selected ? <div className="honesty-note">This is your active plan.</div> : plan.tier === "HYPERLOCAL" && !hyperlocalEligible ? <div className="honesty-note">Hyperlocal is not enabled for your selected industries.</div> : company.status !== "APPROVED" ? <div className="honesty-note">Supplier approval is required before checkout.</div> : complimentary && active ? <div className="honesty-note">An administrator can change the tier of active complimentary access.</div> : isFreeHyperlocalPlan(plan) && !freeCoverageReady ? <a className="button button-outline" href="#choose-coverage">Set your 2-mile area first</a> : (configured || isFreeHyperlocalPlan(plan)) ? <CheckoutButton free={isFreeHyperlocalPlan(plan)} endpoint="/api/billing/subscription/checkout" body={{ membershipPlanId: plan.id }}>{isFreeHyperlocalPlan(plan) ? "Start free — no card required" : free ? `Upgrade to ${plan.name}` : active ? `Change to ${plan.name}` : `Choose ${plan.name}`}</CheckoutButton> : <div className="honesty-note">Stripe is not configured in this environment.</div>}
         </section>;
       })}
     </div>
+    {active && <p className="body-copy">You received {receivedThisMonth} matched opportunities this month. A wider plan increases your eligible area; it does not guarantee more work.</p>}
     <section className="panel form-section"><div className="section-heading"><div><p className="eyebrow">Secure billing</p><h2>Managed by Stripe</h2></div><ShieldCheck size={20}/></div><p className="body-copy">Bridge-iT never stores card details. Plan prices and geographic limits are controlled centrally and enforced on every opportunity.</p><p className="body-copy">Review the <Link href="/legal/terms">supplier terms</Link> and <Link href="/legal/cancellation">subscription and cancellation policy</Link>. Cancellation normally takes effect at the end of the current paid monthly period.</p></section>
   </PortalPage>;
 }
