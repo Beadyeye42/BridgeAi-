@@ -1,12 +1,12 @@
 # Bridge-iT
 
-Bridge-iT is an AI-powered WhatsApp procurement platform owned by Ironbridge Group Ltd. Customers communicate only through WhatsApp. Approved suppliers and Bridge-iT administrators use this Next.js portal to distribute enquiries, submit quotations and operate the marketplace.
+Bridge-iT is an AI-powered WhatsApp procurement platform owned by Ironbridge Group Ltd. Customers start requests through WhatsApp and can use the passwordless Buyer Hub to compare quotes, ask questions and track orders. Approved suppliers and Bridge-iT administrators use this Next.js portal to distribute enquiries, submit quotations and operate the marketplace.
 
 This repository is the security foundation for the first supplier-portal release. Authentication is owned by Supabase Auth, application data is isolated with PostgreSQL row-level security (RLS), files are kept in a private Supabase Storage bucket, and Prisma remains the typed server-side data layer.
 
 ## Security model
 
-- Customers never have portal identities. Their contact values and message content are encrypted at rest and exposed to suppliers only when required to quote.
+- Buyer Hub identities are separate from supplier profiles and memberships. Buyers sign in through a one-time WhatsApp link backed by Supabase Auth and a database trusted-session record. Their contact values and message content are encrypted at rest and exposed to suppliers only through authorised flows.
 - Supabase Auth is the sole password, session, email-verification and password-recovery authority. There are no application password hashes, session-token tables or reset-token tables.
 - A portal identity is an `auth.users` row plus a `bridge_ai.portal_profiles` row. Supplier access requires an active `bridge_ai.company_memberships` row. Administrator access requires an active `bridge_ai.platform_administrators` row; user metadata is not an authority.
 - All application tables have RLS enabled and forced. Server-side Prisma transactions install the verified Auth user ID as a transaction-local Postgres claim, so application SQL is subject to the same policies. WhatsApp workers use separate transaction-local worker identities with narrowly scoped policies.
@@ -24,7 +24,7 @@ This repository is the security foundation for the first supplier-portal release
 - Affiliate accounting is invoice-ledger based. A supplier is permanently attributed at registration, but no earnings are estimated from referral or customer counts. Each successful Stripe subscription invoice creates one immutable commission row, the first successful payment is a zero-value qualification row, and the following twelve successful paid periods earn the configured percentage of actual eligible revenue excluding VAT. Failed or unpaid invoices create no commission. Refunds and disputes create separate negative adjustment rows rather than rewriting the original invoice record, preserving a complete audit trail through cancellations, retries, upgrades and payouts.
 - Storage is private. Object keys are company-prefixed (`companies/<company-id>/...`) and Storage RLS checks active membership or protected administrator status.
 - Supplier owners and managers can upload private insurance, certification and trade-membership evidence. Documents remain locked while malware scanning is pending; suppliers cannot change review state, and every administrator decision is audited.
-- Supplier and administrator dashboards share one approval-readiness checklist. Approval is blocked in both the API and database until company details, categories, coverage, hours, ownership and current evidence are complete.
+- Supplier and administrator dashboards share one approval-readiness checklist. Approval is blocked in both the API and database until required company details, categories, coverage, hours and ownership are complete. Insurance and accreditation evidence is optional.
 - The administrator operations centre exposes failed WhatsApp jobs, webhooks, notifications and serious system events. Only idempotent jobs can be retried; uncertain outbound deliveries require manual review, and every retry is audit logged.
 - Secrets, database credentials and Meta/AI/payment keys are server-only. Only the Supabase URL and publishable key may use `NEXT_PUBLIC_` names.
 
@@ -40,7 +40,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/SUPABASE_SECURITY.md](do
 
 ## Local development
 
-Prerequisites: Node.js 22+, npm, the Supabase CLI, and access to the intended Supabase project.
+Prerequisites: Node.js 22+, npm, the Supabase CLI, and access to the intended Supabase project. Before first migration, provision the dedicated `bridge_ai_app` database role with `INHERIT`, no superuser/BYPASSRLS privileges and its own secret password. The migrations install its application grants. Use that role for runtime connections and the database owner only for controlled migration work. Supavisor usernames include the role and project reference; see [Supabase connection guidance](https://supabase.com/docs/guides/troubleshooting/how-do-i-update-connection-pool-settings-in-my-dashboard-wAxTJ_).
 
 1. Run `npm install`.
 2. Copy `.env.example` to `.env.local` and fill in the project-specific values.

@@ -8,7 +8,7 @@ const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.ur
 
 describe("Hyperlocal supplier membership", () => {
   it("has a stable £14.99 monthly identity and a ten-mile database ceiling", () => {
-    const migration = read("supabase/migrations/20260811210920_hyperlocal_membership_tier.sql");
+    const migration = read("supabase/migrations/20260811213431_hyperlocal_membership_tier.sql");
     expect(DEFAULT_PLAN_IDS.HYPERLOCAL).toBe("plan_hyperlocal_partner");
     expect(DEFAULT_PLAN_CODES.HYPERLOCAL).toBe("bridge-ai-hyperlocal-partner");
     expect(migration).toContain("'HYPERLOCAL'");
@@ -75,7 +75,7 @@ describe("Hyperlocal supplier membership", () => {
       amountPaidPence: 1499,
       subscriptionLinesExcludingTaxPence: [1499],
     })).toBe(1499);
-    const ledger = read("supabase/migrations/20260809131748_affiliate_invoice_ledger.sql");
+    const ledger = read("supabase/migrations/20260809135318_affiliate_invoice_ledger.sql");
     expect(ledger).toContain("eligible_revenue_pence::bigint * affiliate_rate");
     expect(ledger).not.toContain("1499 * affiliate_rate");
   });

@@ -23,4 +23,13 @@ describe("authentication recovery redirects", () => {
     expect(safeAuthNextPath("//example.com")).toBe("/dashboard");
     expect(safeAuthNextPath("https://example.com")).toBe("/dashboard");
   });
+
+  it.each(["/\\evil.example", "/\t/evil.example", "/\n/evil.example", "/\r/evil.example", "///evil.example"])("rejects URL parser bypass %j", (path) => {
+    expect(safeAuthNextPath(path)).toBe("/dashboard");
+  });
+
+  it("preserves local queries and fragments and normalises path traversal", () => {
+    expect(safeAuthNextPath("/reset-password?from=email#form")).toBe("/reset-password?from=email#form");
+    expect(safeAuthNextPath("/buyer/../admin")).toBe("/admin");
+  });
 });

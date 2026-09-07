@@ -3,9 +3,10 @@ import { prisma, runAsDatabaseWorker } from "@/lib/db";
 import { getCurrentSession, getPrimarySupplierCompanyId } from "@/lib/auth/session";
 import { quotationSchema, validationError } from "@/lib/auth/validation";
 import { writeAuditLog } from "@/lib/audit";
-import { enqueueQuoteSummary, processWhatsAppJobs } from "@/lib/whatsapp/processor";
+import { processWhatsAppJobs } from "@/lib/whatsapp/processor";
 import { isMembershipActive } from "@/lib/billing/pricing";
 import { quotationValidUntil } from "@/lib/quotes/validity";
+import { ensureQuoteConversation } from "@/lib/quotes/conversations";
 import { hasCurrentGeographicOpportunityAccess } from "@/lib/billing/opportunity-access";
 
 export const runtime = "nodejs";
@@ -102,16 +103,7 @@ export async function POST(request: Request) {
         },
       });
       await tx.supplierQuotation.update({ where: { id: saved.id }, data: { currentVersionNumber: versionNumber } });
-      const existingConversation = await tx.quoteConversation.findUnique({ where: { quotationId: saved.id } });
-      if (!existingConversation) {
-        const usedLabels = await tx.quoteConversation.findMany({
-          where: { quoteRequestId: assignment.quoteRequestId },
-          select: { anonymousLabel: true },
-        });
-        const anonymousLabel = ["A", "B", "C", "D", "E"].find((label) => !usedLabels.some((used) => used.anonymousLabel === label));
-        if (!anonymousLabel) throw new Error("QUOTE_CONVERSATION_LIMIT_REACHED");
-        await tx.quoteConversation.create({ data: { quoteRequestId: assignment.quoteRequestId, quotationId: saved.id, supplierCompanyId: companyId, anonymousLabel } });
-      }
+      await ensureQuoteConversation(tx, saved.id);
       await tx.supplierAssignment.update({ where: { id: assignment.id }, data: { status: "QUOTED", respondedAt: submittedAt } });
       await writeAuditLog({ actorUserId: session.userId, supplierCompanyId: companyId, action: versionNumber === 1 ? "QUOTATION.SUBMITTED" : "QUOTATION.REVISED", entityType: "SupplierQuotation", entityId: saved.id, summary: versionNumber === 1 ? "Supplier quotation submitted" : "Supplier quotation revision submitted", metadata: { versionNumber, price: parsed.data.price, leadTimeDays: parsed.data.leadTimeDays, validUntil: validUntil.toISOString() }, request }, tx);
       return saved;
@@ -134,8 +126,8 @@ export async function POST(request: Request) {
   }
   after(async () => {
     try {
-      const job = await enqueueQuoteSummary(quotation.id);
-      if (job) await processWhatsAppJobs({ limit: 5 });
+      // The quotation-version trigger already persisted the job atomically.
+      await processWhatsAppJobs({ limit: 5 });
     } catch {
       console.error("Customer quote-summary scheduling failed", { quotationId: quotation.id });
     }

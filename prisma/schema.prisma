@@ -360,6 +360,7 @@ enum SubscriptionStatus {
 enum SubscriptionAccessSource {
   STRIPE
   COMPLIMENTARY
+  FREE
 
   @@schema("bridge_ai")
 }
@@ -1561,7 +1562,7 @@ model MembershipPlan {
   id                         String                @id @default(cuid())
   code                       String                @unique
   name                       String
-  tier                       MembershipTier        @unique
+  tier                       MembershipTier
   description                String?
   monthlyPricePence          Int
   currency                   String                @default("GBP") @db.VarChar(3)
@@ -1579,6 +1580,7 @@ model MembershipPlan {
   affiliateCommissions       AffiliateCommission[]
 
   @@index([active, displayOrder])
+  @@index([tier])
   @@schema("bridge_ai")
 }
 

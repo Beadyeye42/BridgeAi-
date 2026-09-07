@@ -159,7 +159,7 @@ describe("Hyperlocal service network", () => {
   });
 
   it("ships the full database catalogue and the new persisted intake state", () => {
-    const migration = read("supabase/migrations/20260811235611_hyperlocal_industries_expansion.sql");
+    const migration = read("supabase/migrations/20260812211506_hyperlocal_industries_expansion.sql");
     expect(migration).toContain("SYSTEM.HYPERLOCAL_INDUSTRIES_EXPANDED");
     expect(migration).toContain("HYPERLOCAL_SERVICE");
     expect(migration).toContain("attachmentExtractionConfidence");
@@ -167,7 +167,7 @@ describe("Hyperlocal service network", () => {
     const capabilityManager = read("components/dashboard/capability-manager.tsx");
     expect(capabilityManager).toContain("Appliance brands supported");
     expect(capabilityManager).toContain('"Bosch"');
-    const routingMigration = read("supabase/migrations/20260812163000_clarify_hyperlocal_clearance_routing.sql");
+    const routingMigration = read("supabase/migrations/20260812211519_clarify_hyperlocal_clearance_routing.sql");
     expect(routingMigration).toContain("SYSTEM.HYPERLOCAL_CLEARANCE_ROUTING_CLARIFIED");
   });
 

@@ -18,7 +18,7 @@ export function SupplierDashboard({ data, demo = false, onboarding, supplierStat
       <main className="portal-main">
         {demo && <div className="demo-banner"><Sparkles size={15} /><span><b>Demonstration workspace</b> — realistic sample data, no customer information.</span><Link href="/login">Supplier sign in <ArrowUpRight size={14} /></Link></div>}
         <div className="page-heading">
-          <div><p className="eyebrow">{demo ? "Sunday, 2 August" : new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long" }).format(new Date())}</p><h1>Good afternoon, {data.contactName.split(" ")[0]}.</h1><p>Here’s what needs your attention across {data.companyName}.</p></div>
+          <div><p className="eyebrow">{demo ? "Sunday, 2 August" : new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long" }).format(new Date())}</p><h1>Welcome, {data.contactName.split(" ")[0]}.</h1><p>Here’s what needs your attention across {data.companyName}.</p></div>
           <div className="heading-actions"><RefreshButton/><Link href={notificationsHref} className="icon-button desktop-only" aria-label={demo ? "Supplier sign in" : "Notifications"}><Bell size={19} />{!demo && data.unreadNotificationCount > 0 && <i />}</Link><span className="avatar">{data.initials}</span></div>
         </div>
 
@@ -55,6 +55,7 @@ export function SupplierDashboard({ data, demo = false, onboarding, supplierStat
           <div className="dashboard-primary">
             <section className="panel" id="new-requests">
               <div className="panel-heading"><div><p className="eyebrow">Matched opportunities</p><h2>Requests selected for you</h2></div><Link href={requestListHref} className="text-link">View all <ChevronRight size={15} /></Link></div>
+              {data.requests.length === 0 && <div className="honesty-note"><h3>No new requests right now</h3><p>{onboarding && !onboarding.ready ? "Finish your company setup so we can match you with suitable requests." : supplierStatus !== "APPROVED" ? "Your account needs approval before you can respond to requests." : "New requests will appear here when they match your business and area. Check that your services and availability are up to date."}</p><Link href={demo ? "/register" : onboarding?.items.find((item) => !item.complete)?.href ?? "/dashboard/capabilities"} className="text-link">{onboarding && !onboarding.ready ? "Continue setup" : "Review services and availability"} <ArrowUpRight size={14}/></Link></div>}
               <div className="request-list">
                 {data.requests.map((request) => (
                   <article className="request-card" key={request.reference}>
@@ -70,6 +71,7 @@ export function SupplierDashboard({ data, demo = false, onboarding, supplierStat
 
             <section className="panel recent-panel" id="recent-quotes">
               <div className="panel-heading"><div><p className="eyebrow">Pipeline</p><h2>Recent quotations</h2></div><Link href={demo ? "/demo#recent-quotes" : "/dashboard/requests?view=submitted"} className="text-link">Quotation history <ChevronRight size={15} /></Link></div>
+              {data.recent.length === 0 && <p className="honesty-note">Your submitted quotes will appear here. Open a matched request to prepare your first quote.</p>}
               <div className="table-wrap"><table><thead><tr><th>Request</th><th>Submitted</th><th>Quote value</th><th>Status</th><th /></tr></thead><tbody>{data.recent.map((item) => <tr key={item.reference}><td><b>{item.title}</b><span>{item.reference}</span></td><td>{item.date}</td><td><b>{item.value}</b></td><td><span className={`result ${item.status.toLowerCase()}`}>{item.status}</span></td><td><ChevronRight size={16} /></td></tr>)}</tbody></table></div>
             </section>
           </div>
@@ -78,7 +80,7 @@ export function SupplierDashboard({ data, demo = false, onboarding, supplierStat
             {data.opportunityAccess ? <section className="panel subscription-card">
               <p className="eyebrow">Opportunity access</p>
               <h3>{data.opportunityAccess.currentActive} active of {data.opportunityAccess.normalActiveLimit || "—"} normal plan places</h3>
-              <p>Bridge-iT adapts distribution to market supply. In a sparse market, suitable suppliers may receive a temporary soft-cap invitation so a buyer is not left without a quote.</p>
+              <p>These are requests you can work on now. Update your availability if you are too busy to take on more work.</p>
               <div className="performance-list">
                 <div><span>Invitations in 30 days</span><b>{data.opportunityAccess.invitations30Days}</b></div>
                 <div><span>Declared monthly comfort level</span><b>{data.opportunityAccess.declaredMonthlyCapacity ?? "Not set"}</b></div>
@@ -98,7 +100,7 @@ export function SupplierDashboard({ data, demo = false, onboarding, supplierStat
               <div className="plan-orbit"><i /><Plus size={18} /></div><p className="eyebrow">{data.subscription.plan} plan</p><h3>Your subscription is {data.subscription.status.toLowerCase()}</h3><p>{demo ? "Unlimited team members and up to 25 qualified requests each month." : "Your live billing status and renewal date are shown here."}</p>{demo ? <><div className="usage"><span><b>11</b> of 25 requests</span><span>44%</span></div><div className="usage-track"><i /></div></> : null}<small>{data.subscription.renewal === "—" ? "No renewal date recorded" : `Renews ${data.subscription.renewal}`}</small><Link href={demo ? "/register" : "/dashboard/subscription"} className="text-link">{demo ? "Apply to join" : "Manage subscription"} <ArrowUpRight size={14} /></Link>
             </section>
 
-            <section className="help-card"><HelpCircle size={20} /><div><b>Need a hand?</b><p>Your supplier success team usually replies within one working hour.</p><Link href="/help">Contact support</Link></div></section>
+            <section className="help-card"><HelpCircle size={20} /><div><b>Need a hand?</b><p>Get help with your account, requests or quotations.</p><Link href="/help">Contact support</Link></div></section>
           </aside>
         </div>
       </main>

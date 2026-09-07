@@ -1,0 +1,267 @@
+{
+  "checkedAt": "2026-09-06",
+  "repository": "Beadyeye42/BridgeAi-",
+  "note": "Same name does not establish SQL equivalence. No production migration history was modified.",
+  "differences": [
+    {
+      "localVersion": "20260804204515",
+      "name": "whatsapp_job_webhook_returning_policy",
+      "productionVersionWithSameName": "20260804204606"
+    },
+    {
+      "localVersion": "20260804205358",
+      "name": "seed_initial_product_categories",
+      "productionVersionWithSameName": "20260804205523"
+    },
+    {
+      "localVersion": "20260804235708",
+      "name": "whatsapp_robust_intake",
+      "productionVersionWithSameName": "20260805001155"
+    },
+    {
+      "localVersion": "20260805020238",
+      "name": "whatsapp_quote_sessions",
+      "productionVersionWithSameName": "20260805031047"
+    },
+    {
+      "localVersion": "20260805074006",
+      "name": "supplier_approval_and_admin_operations",
+      "productionVersionWithSameName": "20260805075045"
+    },
+    {
+      "localVersion": "20260805075130",
+      "name": "fix_supplier_review_trigger_execution",
+      "productionVersionWithSameName": "20260805075152"
+    },
+    {
+      "localVersion": "20260805102048",
+      "name": "whatsapp_conversation_reliability",
+      "productionVersionWithSameName": null
+    },
+    {
+      "localVersion": "20260805102631",
+      "name": "whatsapp_conversation_reliability_constraints",
+      "productionVersionWithSameName": "20260805103044"
+    },
+    {
+      "localVersion": "20260805103603",
+      "name": "whatsapp_system_event_writer",
+      "productionVersionWithSameName": "20260805103745"
+    },
+    {
+      "localVersion": "20260805130054",
+      "name": "whatsapp_auto_distribution",
+      "productionVersionWithSameName": "20260805131828"
+    },
+    {
+      "localVersion": "20260805135021",
+      "name": "supplier_opportunity_marketplace",
+      "productionVersionWithSameName": "20260805140432"
+    },
+    {
+      "localVersion": "20260805140640",
+      "name": "optimize_supplier_opportunity_policy",
+      "productionVersionWithSameName": "20260805140703"
+    },
+    {
+      "localVersion": "20260805175617",
+      "name": "allow_pending_supplier_opportunity_browsing",
+      "productionVersionWithSameName": "20260805175829"
+    },
+    {
+      "localVersion": "20260805180031",
+      "name": "restore_supplier_review_trigger_security_definer",
+      "productionVersionWithSameName": "20260805180054"
+    },
+    {
+      "localVersion": "20260805202555",
+      "name": "production_monitoring_alerts",
+      "productionVersionWithSameName": "20260805203042"
+    },
+    {
+      "localVersion": "20260806150303",
+      "name": "whatsapp_preferred_first_names",
+      "productionVersionWithSameName": "20260806151104"
+    },
+    {
+      "localVersion": "20260806215024",
+      "name": "supplier_winner_email_notifications",
+      "productionVersionWithSameName": "20260806220514"
+    },
+    {
+      "localVersion": "20260806221000",
+      "name": "secure_supplier_contact_unlock",
+      "productionVersionWithSameName": "20260806210352"
+    },
+    {
+      "localVersion": "20260807163701",
+      "name": "geographic_membership_intelligent_matching",
+      "productionVersionWithSameName": "20260807173146"
+    },
+    {
+      "localVersion": "20260807184500",
+      "name": "geographic_membership_stripe_promotion_read",
+      "productionVersionWithSameName": "20260807173936"
+    },
+    {
+      "localVersion": "20260807190000",
+      "name": "supplier_opportunity_email_notifications",
+      "productionVersionWithSameName": "20260807180624"
+    },
+    {
+      "localVersion": "20260807191500",
+      "name": "supplier_email_worker_returning_policies",
+      "productionVersionWithSameName": "20260807181510"
+    },
+    {
+      "localVersion": "20260808080738",
+      "name": "whatsapp_industry_quote_offer",
+      "productionVersionWithSameName": "20260808081223"
+    },
+    {
+      "localVersion": "20260809131748",
+      "name": "affiliate_invoice_ledger",
+      "productionVersionWithSameName": "20260809135318"
+    },
+    {
+      "localVersion": "20260809145500",
+      "name": "protect_supplier_commercial_identity",
+      "productionVersionWithSameName": "20260809135448"
+    },
+    {
+      "localVersion": "20260809145934",
+      "name": "production_monitoring_worker_rls",
+      "productionVersionWithSameName": "20260809150941"
+    },
+    {
+      "localVersion": "20260809150500",
+      "name": "affiliate_portal_data_api_grants",
+      "productionVersionWithSameName": "20260809135803"
+    },
+    {
+      "localVersion": "20260809151500",
+      "name": "affiliate_ledger_foreign_key_indexes",
+      "productionVersionWithSameName": "20260809140019"
+    },
+    {
+      "localVersion": "20260809152418",
+      "name": "production_alert_database_audit_trigger",
+      "productionVersionWithSameName": "20260809152638"
+    },
+    {
+      "localVersion": "20260809193000",
+      "name": "affiliate_cancellation_admin_alerts",
+      "productionVersionWithSameName": "20260809143906"
+    },
+    {
+      "localVersion": "20260810195356",
+      "name": "enforce_live_geographic_membership_boundaries",
+      "productionVersionWithSameName": "20260810200612"
+    },
+    {
+      "localVersion": "20260810200838",
+      "name": "fix_geographic_reconciliation_trigger",
+      "productionVersionWithSameName": "20260810200911"
+    },
+    {
+      "localVersion": "20260810202500",
+      "name": "affiliate_supplier_summary",
+      "productionVersionWithSameName": "20260810191917"
+    },
+    {
+      "localVersion": "20260810203000",
+      "name": "enforce_restricted_nationwide_coverage",
+      "productionVersionWithSameName": "20260810201804"
+    },
+    {
+      "localVersion": "20260810205306",
+      "name": "enforce_subscription_quotation_access",
+      "productionVersionWithSameName": "20260810210120"
+    },
+    {
+      "localVersion": "20260811210920",
+      "name": "hyperlocal_membership_tier",
+      "productionVersionWithSameName": "20260811213431"
+    },
+    {
+      "localVersion": "20260811214821",
+      "name": "adaptive_opportunity_distribution",
+      "productionVersionWithSameName": "20260811221745"
+    },
+    {
+      "localVersion": "20260811230500",
+      "name": "industry_response_deadlines",
+      "productionVersionWithSameName": "20260811223112"
+    },
+    {
+      "localVersion": "20260811233744",
+      "name": "add_quote_request_lifecycle_statuses",
+      "productionVersionWithSameName": "20260811234506"
+    },
+    {
+      "localVersion": "20260811233745",
+      "name": "apply_quote_request_lifecycle",
+      "productionVersionWithSameName": "20260811234539"
+    },
+    {
+      "localVersion": "20260811235611",
+      "name": "hyperlocal_industries_expansion",
+      "productionVersionWithSameName": "20260812211506"
+    },
+    {
+      "localVersion": "20260812131500",
+      "name": "enforce_geographic_opportunity_read_access",
+      "productionVersionWithSameName": "20260812005739"
+    },
+    {
+      "localVersion": "20260812163000",
+      "name": "clarify_hyperlocal_clearance_routing",
+      "productionVersionWithSameName": "20260812211519"
+    },
+    {
+      "localVersion": "20260813003000",
+      "name": "transport_collection_geographic_matching",
+      "productionVersionWithSameName": "20260812235734"
+    },
+    {
+      "localVersion": "20260813004500",
+      "name": "correct_transport_collection_backfill",
+      "productionVersionWithSameName": "20260812235953"
+    },
+    {
+      "localVersion": "20260813010000",
+      "name": "normalize_transport_capability_defaults",
+      "productionVersionWithSameName": "20260813001104"
+    },
+    {
+      "localVersion": "20260813075641",
+      "name": "fix_quote_message_rls_recursion",
+      "productionVersionWithSameName": "20260813080021"
+    },
+    {
+      "localVersion": "20260813083547",
+      "name": "fix_supplier_answer_delivery",
+      "productionVersionWithSameName": "20260813084533"
+    },
+    {
+      "localVersion": "20260824170900",
+      "name": "buyer_hub_passwordless_orders_rewards",
+      "productionVersionWithSameName": "20260824182717"
+    },
+    {
+      "localVersion": "20260824190000",
+      "name": "buyer_hub_foreign_key_indexes",
+      "productionVersionWithSameName": "20260824183820"
+    },
+    {
+      "localVersion": "20260825214057",
+      "name": "ai_usage_telemetry",
+      "productionVersionWithSameName": "20260825220558"
+    },
+    {
+      "localVersion": "20260826103000",
+      "name": "buyer_hub_action_returning",
+      "productionVersionWithSameName": "20260826072133"
+    }
+  ]
+}

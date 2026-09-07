@@ -166,7 +166,7 @@ describe("security foundation static controls", () => {
   });
 
   it("queues supplier answers atomically with tenant-isolated WhatsApp delivery", () => {
-    const migration = read("supabase/migrations/20260813083547_fix_supplier_answer_delivery.sql");
+    const migration = read("supabase/migrations/20260813084533_fix_supplier_answer_delivery.sql");
     const api = read("app/api/quote-conversations/messages/route.ts");
     const processor = read("lib/whatsapp/processor.ts");
     expect(migration).toContain("type = 'SEND_QUOTE_MESSAGE'");
@@ -179,7 +179,7 @@ describe("security foundation static controls", () => {
   });
 
   it("keeps quote-message inserts non-recursive while enforcing supplier reply scope", () => {
-    const fix = read("supabase/migrations/20260813075641_fix_quote_message_rls_recursion.sql");
+    const fix = read("supabase/migrations/20260813080021_fix_quote_message_rls_recursion.sql");
     const workerPolicy = fix.slice(
       fix.indexOf("CREATE POLICY quote_message_admin_worker_insert"),
       fix.indexOf("CREATE POLICY quote_message_supplier_insert"),
@@ -238,7 +238,7 @@ describe("security foundation static controls", () => {
     expect(customer).not.toMatch(/\n\s+displayName\s+String/);
     expect(customer).not.toMatch(/\n\s+preferredFirstName\s+String/);
 
-    const migration = read("supabase/migrations/20260806150303_whatsapp_preferred_first_names.sql");
+    const migration = read("supabase/migrations/20260806151104_whatsapp_preferred_first_names.sql");
     expect(migration).toContain('ADD COLUMN "preferredFirstNameEncrypted" bytea');
     expect(migration).toContain("'PREFERRED_NAME'");
     const processor = read("lib/whatsapp/processor.ts");
@@ -251,7 +251,7 @@ describe("security foundation static controls", () => {
     expect(quoteIntake).toContain("always leave draft.customerName null");
     expect(quoteIntake).toContain("Classify a general question about, or interest in, any launched industry or product as QUESTION");
     expect(quoteIntake).toContain("offered to find a competitive quote");
-    const quoteOfferState = read("supabase/migrations/20260808080738_whatsapp_industry_quote_offer.sql");
+    const quoteOfferState = read("supabase/migrations/20260808081223_whatsapp_industry_quote_offer.sql");
     expect(quoteOfferState).toContain("'QUOTE_OFFER'");
     expect(quoteOfferState).toContain("'INDUSTRY'");
     expect(quoteOfferState).toContain("'PHE_SPECIFICATION'");
@@ -311,7 +311,7 @@ describe("security foundation static controls", () => {
     expect(processor).toContain('action: "WHATSAPP.NEW_QUOTE_STARTED"');
     expect(processor).toContain("message.occurredAt >= refreshed.conversation!.aiSessionStartedAt");
     expect(processor).toContain("occurredAt: { gte: loaded.conversation!.aiSessionStartedAt }");
-    const sessions = read("supabase/migrations/20260805020238_whatsapp_quote_sessions.sql");
+    const sessions = read("supabase/migrations/20260805031047_whatsapp_quote_sessions.sql");
     expect(sessions).toContain('ADD COLUMN "aiSessionStartedAt"');
     expect(sessions).toContain('ALTER COLUMN "aiSessionStartedAt" SET NOT NULL');
     expect(read("lib/whatsapp/meta-client.ts")).toContain('type: "template"');
@@ -324,7 +324,7 @@ describe("security foundation static controls", () => {
     expect(ai).toContain("tradeClarification");
     expect(ai).toContain("For olive");
     expect(ai).toContain("RAL/BS code");
-    const reliability = read("supabase/migrations/20260805102631_whatsapp_conversation_reliability_constraints.sql");
+    const reliability = read("supabase/migrations/20260805103044_whatsapp_conversation_reliability_constraints.sql");
     expect(reliability).toContain("conversation_ai_question_key_valid");
     expect(reliability).toContain('"customerConfirmationMessageId"');
     expect(reliability).toContain("SEND_INTAKE_FALLBACK");
@@ -333,13 +333,13 @@ describe("security foundation static controls", () => {
     expect(buyerTypeQuestion).toContain("'BUYER_TYPE'");
     const questionKeySync = [
       read("supabase/migrations/20260811201445_sync_whatsapp_question_keys.sql"),
-      read("supabase/migrations/20260811235611_hyperlocal_industries_expansion.sql"),
+      read("supabase/migrations/20260812211506_hyperlocal_industries_expansion.sql"),
     ].join("\n");
     const intakeQuestionKeys = [...read("lib/whatsapp/intake-state.ts").matchAll(/^  "([A-Z_]+)",$/gm)]
       .map((match) => match[1]);
     expect(intakeQuestionKeys.length).toBeGreaterThan(0);
     for (const key of intakeQuestionKeys) expect(questionKeySync).toContain(`'${key}'`);
-    const systemEventWriter = read("supabase/migrations/20260805103603_whatsapp_system_event_writer.sql");
+    const systemEventWriter = read("supabase/migrations/20260805103745_whatsapp_system_event_writer.sql");
     expect(systemEventWriter).toContain("session_user <> 'bridge_ai_app'");
     expect(systemEventWriter).toContain("event_source <> worker_name");
     expect(systemEventWriter).toContain("SET row_security = 'off'");
@@ -351,7 +351,7 @@ describe("security foundation static controls", () => {
     const policyIndex = read("supabase/migrations/20260804195834_whatsapp_job_policy_and_index.sql");
     expect(policyIndex).toContain("whatsapp_job_message_idx");
     expect(policyIndex).toContain("whatsapp_job_insert");
-    const returningPolicy = read("supabase/migrations/20260804204515_whatsapp_job_webhook_returning_policy.sql");
+    const returningPolicy = read("supabase/migrations/20260804204606_whatsapp_job_webhook_returning_policy.sql");
     expect(returningPolicy).toContain("DROP POLICY whatsapp_ai_job_select");
     expect(returningPolicy).toContain("CREATE POLICY whatsapp_job_select");
     expect(returningPolicy).toContain("is_trusted_worker('whatsapp_webhook')");
@@ -439,7 +439,7 @@ describe("security foundation static controls", () => {
 
   it("automatically distributes confirmed WhatsApp requests without weakening tenant isolation", () => {
     const processor = read("lib/whatsapp/processor.ts");
-    const migration = read("supabase/migrations/20260805130054_whatsapp_auto_distribution.sql");
+    const migration = read("supabase/migrations/20260805131828_whatsapp_auto_distribution.sql");
     expect(processor).toContain("evaluateSupplierMatches(");
     expect(processor).toContain("Math.min(distributionLimit, matchingConfiguration?.maximumSuppliersPerRequest ?? 5, 5)");
     expect(processor).toContain("recordMatchingEvaluation(tx");
@@ -488,7 +488,7 @@ describe("security foundation static controls", () => {
 
   it("enforces supplier approval readiness and limits administrator recovery actions", () => {
     const migration = read("supabase/migrations/20260805172853_simplify_supplier_company_approval.sql");
-    const triggerFix = read("supabase/migrations/20260805180031_restore_supplier_review_trigger_security_definer.sql");
+    const triggerFix = read("supabase/migrations/20260805180054_restore_supplier_review_trigger_security_definer.sql");
     expect(migration).toContain("enforce_supplier_review_state");
     expect(migration).toContain("supplier review state can only be changed by a platform administrator");
     expect(migration).toContain("supplier approval requirements are incomplete");
@@ -558,7 +558,7 @@ describe("security foundation static controls", () => {
     expect(contact).toContain("runWithDatabaseIdentity");
     expect(contact).not.toContain("trustedPrisma");
     expect(contact).toContain('action: "CONTACT_ACCESS.VIEWED"');
-    const contactRead = read("supabase/migrations/20260806221000_secure_supplier_contact_unlock.sql");
+    const contactRead = read("supabase/migrations/20260806210352_secure_supplier_contact_unlock.sql");
     expect(contactRead).toContain("SECURITY DEFINER");
     expect(contactRead).toContain("bridge_private.has_company_membership(target_company_id)");
     expect(contactRead).toContain("quotation.status = 'ACCEPTED'");

@@ -75,8 +75,8 @@ describe("production monitoring", () => {
   it("ignores deliberately superseded WhatsApp failures and keeps maintenance out of the live message path", () => {
     const monitoring = readFileSync("lib/monitoring/operational-alerts.ts", "utf8");
     const database = readFileSync("lib/db.ts", "utf8");
-    const migration = readFileSync("supabase/migrations/20260809145934_production_monitoring_worker_rls.sql", "utf8");
-    const triggerMigration = readFileSync("supabase/migrations/20260809152418_production_alert_database_audit_trigger.sql", "utf8");
+    const migration = readFileSync("supabase/migrations/20260809150941_production_monitoring_worker_rls.sql", "utf8");
+    const triggerMigration = readFileSync("supabase/migrations/20260809152638_production_alert_database_audit_trigger.sql", "utf8");
     const processor = readFileSync("lib/whatsapp/processor.ts", "utf8");
     const cron = readFileSync("app/api/cron/monitor-production/route.ts", "utf8");
     expect(monitoring).toContain('NOT: { errorCode: { startsWith: "SUPERSEDED_" } }');

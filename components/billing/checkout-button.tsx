@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { CreditCard, LoaderCircle } from "lucide-react";
 
-export function CheckoutButton({ endpoint, children, body, className = "button button-dark" }: { endpoint: string; children: React.ReactNode; body?: unknown; className?: string }) {
+export function CheckoutButton({ endpoint, children, body, free = false, className = "button button-dark" }: { endpoint: string; children: React.ReactNode; body?: unknown; free?: boolean; className?: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   async function start() {
@@ -17,5 +17,5 @@ export function CheckoutButton({ endpoint, children, body, className = "button b
       setBusy(false);
     }
   }
-  return <div><button type="button" className={className} disabled={busy} onClick={start}>{busy ? <LoaderCircle className="spin" size={15}/> : <CreditCard size={15}/>} {busy ? "Opening secure checkout…" : children}</button>{error && <p className="form-result error">{error}</p>}</div>;
+  return <div><button type="button" className={className} disabled={busy} onClick={start}>{busy ? <LoaderCircle className="spin" size={15}/> : !free && <CreditCard size={15}/>} {busy ? (free ? "Activating free access…" : "Opening secure checkout…") : children}</button>{error && <p className="form-result error" role="alert">{error}</p>}</div>;
 }

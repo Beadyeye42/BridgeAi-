@@ -4,13 +4,13 @@ This document records the implemented baseline. It supersedes the earlier server
 
 ## Migration authority
 
-`supabase/migrations` is the only database migration authority. The connected project and repository contain the same 23 migration versions. The six `202607...` files are migration-history reconciliation stubs: they intentionally do not recreate the obsolete insecure `public` design on a fresh project. The live legacy objects/data were preserved, stripped of privileged execution paths and quarantined behind deny-all policies. Do not replace these files with the old SQL or delete the history entries.
+`supabase/migrations` is the only database migration authority. The September 2026 audit found 114 pre-existing migrations in both the repository and production, but 52 local versions were absent from the production version list. Similar migration names do not prove identical SQL. Reconcile the recorded SQL before any `db:deploy`; do not replay historical migrations or repair remote history by assumption. See [the audit report](AUDIT_2026-09-06.md). The six `202607...` files are migration-history reconciliation stubs: they intentionally do not recreate the obsolete insecure `public` design on a fresh project. The live legacy objects/data were preserved, stripped of privileged execution paths and quarantined behind deny-all policies. Do not replace these files with the old SQL or delete the history entries.
 
 The `20260802183212_security_foundation.sql` migration establishes the current schema and baseline. Subsequent migrations install the application RLS role/context, secure invitation acceptance, cross-row authorisation invariants and advisor cleanup.
 
 ## RLS and privileges
 
-- 28 of 28 Bridge-iT tables have `ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY`.
+- 59 of 59 Bridge-iT tables (verified on 6 September 2026) have `ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY`.
 - The current schema adds a private `WhatsAppJob` queue and separate policies for verified webhook ingestion and AI processing, in addition to supplier, administrator, reference-data, notification, audit and file paths.
 - `anon` has no application-table privileges. The application role is subject to policies as `authenticated` and has no `BYPASSRLS` attribute.
 - Policy helper functions live in the non-exposed `bridge_private` schema, set a fixed search path and are not generally executable.
@@ -21,7 +21,7 @@ The Next.js data layer installs only an ID already verified by Supabase `getUser
 
 ## Storage
 
-The `bridge-ai-private` bucket is non-public and has size/MIME restrictions. Supplier objects use `companies/<company-uuid>/...` paths. Storage policies validate the path company against active membership or protected administrator status for each operation. Customer WhatsApp media uses a separate `customers/<conversation-id>/...` server-worker prefix that suppliers cannot access. The application does not create buckets lazily and does not use a service key for ordinary supplier downloads. Supplier logos use a deterministic object key for upsert, immutable metadata replacement, an explicit logo-only delete policy and a `CLEAN` scanner-state gate before download.
+The `bridge-ai-private` bucket is non-public and has size/MIME restrictions. Supplier objects use `companies/<company-uuid>/...` paths. Storage policies validate the path company against active membership or protected administrator status for each operation. Customer WhatsApp media uses a separate `customers/<conversation-id>/...` server-worker prefix that suppliers cannot access. The application does not create buckets lazily. Downloads verify ownership and clean scan state before using the server-only administrative Storage client to issue short-lived signed URLs; each successful supplier download is audited. Supplier logos use a deterministic object key for upsert, immutable metadata replacement, an explicit logo-only delete policy and a `CLEAN` scanner-state gate before download.
 
 ## Administrator provisioning
 

@@ -4,7 +4,10 @@
 
 ```mermaid
 flowchart LR
-  Customer["Customer · WhatsApp only"] --> Meta["Meta WhatsApp Cloud API"]
+  Customer["Customer"] --> Meta["Meta WhatsApp Cloud API"]
+  Customer --> BuyerHub["Passwordless Buyer Hub"]
+  BuyerHub --> Auth
+  BuyerHub --> DAL
   Meta --> Intake["Verified webhook and intake"]
   Intake --> Queue["RLS-protected WhatsApp jobs"]
   Queue --> AI["OpenAI structured quote intake"]
@@ -25,7 +28,7 @@ flowchart LR
   Policies --> Storage
 ```
 
-Customers have no portal profile, credentials or session. `customer_contacts` represents a WhatsApp/channel contact and is never an authentication table.
+Customers have no supplier portal profile or membership. A WhatsApp contact may link to a dedicated Supabase Auth buyer identity. Buyer Hub access additionally checks an active, unexpired `BuyerTrustedSession` bound to the verified Supabase session ID. Buyer-facing server queries explicitly constrain request and order ownership. Passwordless challenge and session state live in separate tables from customer contact content.
 
 ## Identity and authorisation
 
@@ -35,7 +38,7 @@ The verified Auth UUID maps to `bridge_ai.portal_profiles.id`, whose database fo
 
 - Supplier: an active `company_memberships` record determines the company and role.
 - Administrator: an active `platform_administrators` record, optionally joined to explicit permissions.
-- Customer: no portal identity.
+- Buyer: a separate Supabase Auth identity linked to `CustomerContact`, plus an active trusted session for Buyer Hub server routes. The September 2026 hardening migration also enforces trusted-session validity for direct Data API and Realtime reads. Deploy it only after reconciling migration history (see the audit report).
 
 Supplier registration and invitation acceptance use narrow `bridge_private` database functions. Each function verifies the Auth identity/email and atomically creates the profile, tenant relationship and audit entry. No signup metadata can grant administrator access. Administrators are deliberately provisioned through a controlled database migration/runbook, never by a public UI.
 
@@ -43,7 +46,7 @@ Supplier registration and invitation acceptance use narrow `bridge_private` data
 
 Supabase SQL migrations under `supabase/migrations` are the sole DDL history. Prisma describes and queries the resulting schema but does not own a second migration stream.
 
-All 28 `bridge_ai` tables have RLS enabled and forced. The application database role inherits the Supabase `authenticated` role but does not bypass RLS. For each Prisma operation, the data layer starts a transaction and installs the UUID returned by `getUser()` into transaction-local `request.jwt.claim.sub` and the `authenticated` role claim. Policies then evaluate the same protected identity helpers used by direct Supabase requests. Bootstrap access uses a separate, narrowly scoped function rather than a general RLS bypass. WhatsApp webhook and AI workers set distinct transaction-local worker names; policies grant each only the rows and operations required by that worker.
+All application tables in `bridge_ai` have RLS enabled and forced (59 tables verified on 6 September 2026). The application database role inherits the Supabase `authenticated` role but does not bypass RLS. For each Prisma operation, the data layer starts a transaction and installs the UUID returned by `getUser()` into transaction-local `request.jwt.claim.sub` and the `authenticated` role claim. Policies then evaluate the same protected identity helpers used by direct Supabase requests. Bootstrap access uses a separate, narrowly scoped function rather than a general RLS bypass. WhatsApp webhook and AI workers set distinct transaction-local worker names; policies grant each only the rows and operations required by that worker.
 
 The tenant chain is:
 

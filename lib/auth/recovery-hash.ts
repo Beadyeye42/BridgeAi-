@@ -16,5 +16,14 @@ export function recoverySessionFromHash(hash: string): RecoveryHashSession | nul
 }
 
 export function safeAuthNextPath(value: string | null, fallback = "/dashboard") {
-  return value?.startsWith("/") && !value.startsWith("//") ? value : fallback;
+  // URL parsers treat backslashes as slashes and strip control characters.
+  // Reject both before a callback resolves this path against the app origin.
+  if (!value?.startsWith("/") || value.startsWith("//") || /[\\\u0000-\u0020\u007f]/.test(value)) return fallback;
+  const base = "https://bridge-it.invalid";
+  try {
+    const url = new URL(value, base);
+    return url.origin === base ? `${url.pathname}${url.search}${url.hash}` : fallback;
+  } catch {
+    return fallback;
+  }
 }

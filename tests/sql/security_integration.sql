@@ -12,6 +12,7 @@ DECLARE
   error_text text;
   founding_a integer;
   founding_b integer;
+  buyer_session uuid := gen_random_uuid();
 BEGIN
   SELECT u.id INTO user_a
   FROM auth.users u
@@ -703,6 +704,22 @@ BEGIN
   INSERT INTO bridge_ai."QuotationVersion" (
     id,"quotationId","versionNumber",price,currency,"leadTimeDays","submittedById","submittedAt"
   ) VALUES ('security_quote_version','security_quote',1,125,'GBP',7,user_a,now());
+  IF NOT EXISTS (SELECT 1 FROM bridge_ai."WhatsAppJob" WHERE "idempotencyKey"='quote-summary:security_request:quotation:security_quote') THEN
+    RAISE EXCEPTION 'Quotation committed without its durable notification';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM bridge_ai."AuditLog" WHERE action='QUOTATION.NOTIFICATION_QUEUED' AND "entityId"='security_quote') THEN
+    RAISE EXCEPTION 'Quotation notification audit missing';
+  END IF;
+  -- A failing transaction must roll its notification back too.
+  BEGIN
+    INSERT INTO bridge_ai."QuotationVersion" (id,"quotationId","versionNumber",price,currency,"leadTimeDays","submittedById","submittedAt")
+    VALUES ('security_quote_rollback','security_quote',2,126,'GBP',7,user_a,now());
+    RAISE EXCEPTION 'intentional rollback' USING ERRCODE='P0002';
+  EXCEPTION WHEN no_data_found THEN NULL;
+  END;
+  IF EXISTS (SELECT 1 FROM bridge_ai."WhatsAppJob" WHERE "idempotencyKey"='quote-summary:security_request:quotation:security_quote:version:2') THEN
+    RAISE EXCEPTION 'Failed quotation left a notification behind';
+  END IF;
   INSERT INTO bridge_ai."QuoteConversation" (
     id,"quoteRequestId","quotationId","supplierCompanyId","anonymousLabel",status,"questionResponseDueAt","lastMessageAt","createdAt","updatedAt"
   ) VALUES (
@@ -714,6 +731,42 @@ BEGIN
     'security_buyer_question','security_quote_conversation','BUYER',decode(repeat('ab',40),'hex'),'DELIVERED',
     'security-buyer-question',now()+interval '4 hours',now(),now()
   );
+  -- A competing supplier cannot SELECT A's conversation, but the unique
+  -- constraint must still reserve its label without aborting B's transaction.
+  UPDATE bridge_ai."QuoteRequest" SET "distributionLimit"=2 WHERE id='security_request';
+  INSERT INTO bridge_ai."Subscription" (
+    id,"supplierCompanyId",provider,"planCode","membershipPlanId",status,"currentPeriodStart","currentPeriodEnd","createdAt","updatedAt"
+  ) VALUES ('security_label_subscription_b','security_company_b','stripe','bridge-ai-nationwide-partner','plan_nationwide_partner','ACTIVE',now(),now()+interval '1 month',now(),now());
+  INSERT INTO bridge_ai."SupplierAssignment" (
+    id,"quoteRequestId","supplierCompanyId",status,"assignedAt","expiresAt"
+  ) VALUES ('security_assignment_b','security_request','security_company_b','ACCEPTED',now(),request_deadline);
+  INSERT INTO bridge_ai."SupplierQuotation" (
+    id,"quoteRequestId","supplierCompanyId","assignmentId",status,price,currency,"leadTimeDays","createdAt","updatedAt"
+  ) VALUES ('security_quote_b','security_request','security_company_b','security_assignment_b','DRAFT',130,'GBP',7,now(),now());
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  PERFORM set_config('request.jwt.claim.sub', user_b::text, true);
+  SELECT count(*) INTO visible_count FROM bridge_ai."QuoteConversation" WHERE "quoteRequestId"='security_request';
+  IF visible_count <> 0 THEN RAISE EXCEPTION 'Competing supplier read a private conversation during label allocation'; END IF;
+  INSERT INTO bridge_ai."QuoteConversation" (
+    id,"quoteRequestId","quotationId","supplierCompanyId","anonymousLabel","createdAt","updatedAt"
+  ) VALUES ('security_quote_conversation_b','security_request','security_quote_b','security_company_b','A',now(),now())
+  ON CONFLICT DO NOTHING;
+  GET DIAGNOSTICS affected_count = ROW_COUNT;
+  IF affected_count <> 0 THEN RAISE EXCEPTION 'Duplicate anonymous label was accepted'; END IF;
+  INSERT INTO bridge_ai."QuoteConversation" (
+    id,"quoteRequestId","quotationId","supplierCompanyId","anonymousLabel","createdAt","updatedAt"
+  ) VALUES ('security_quote_conversation_b','security_request','security_quote_b','security_company_b','B',now(),now())
+  ON CONFLICT DO NOTHING;
+  GET DIAGNOSTICS affected_count = ROW_COUNT;
+  IF affected_count <> 1 THEN RAISE EXCEPTION 'Supplier could not allocate the next anonymous label'; END IF;
+  INSERT INTO bridge_ai."AuditLog" (
+    id,"actorUserId","supplierCompanyId",action,"entityType","entityId",summary,"createdAt"
+  ) VALUES ('security_quote_label_audit',user_b,'security_company_b','QUOTATION.SUBMITTED','SupplierQuotation','security_quote_b','Label allocation regression fixture',now());
+  IF NOT EXISTS (SELECT 1 FROM bridge_ai."AuditLog" WHERE id='security_quote_label_audit') THEN
+    RAISE EXCEPTION 'Quotation label allocation transaction could not retain its audit record';
+  END IF;
+  EXECUTE 'RESET ROLE';
+  DELETE FROM bridge_ai."Subscription" WHERE id='security_label_subscription_b';
   EXECUTE 'SET LOCAL ROLE authenticated';
   PERFORM set_config('request.jwt.claim.sub', user_a::text, true);
   SELECT count(*) INTO visible_count FROM bridge_ai."QuotationVersion" WHERE id='security_quote_version';
@@ -757,6 +810,12 @@ BEGIN
   PERFORM set_config('request.jwt.claim.sub', user_b::text, true);
   SELECT count(*) INTO visible_count FROM bridge_ai."QuotationVersion" WHERE id='security_quote_version';
   IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier B read Supplier A quote version'; END IF;
+  BEGIN
+    INSERT INTO bridge_ai."QuotationVersion" (id,"quotationId","versionNumber",price,currency,"leadTimeDays","submittedById","submittedAt")
+    VALUES ('security_cross_tenant_version','security_quote',3,126,'GBP',7,user_b,now());
+    RAISE EXCEPTION 'Supplier B queued a notification for Supplier A quotation';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
   SELECT count(*) INTO visible_count FROM bridge_ai."QuoteConversation" WHERE id='security_quote_conversation';
   IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier B read Supplier A quote conversation'; END IF;
   SELECT count(*) INTO visible_count FROM bridge_ai."QuoteMessage" WHERE id IN ('security_buyer_question','security_supplier_answer');
@@ -820,9 +879,11 @@ BEGIN
   EXECUTE 'RESET ROLE';
   PERFORM set_config('request.jwt.claim.sub', '', true);
 
-  IF has_function_privilege('anon','public.handle_new_user()','EXECUTE')
-     OR has_function_privilege('authenticated','public.handle_new_user()','EXECUTE')
-     OR has_function_privilege('anon','public.sync_request_quote_count()','EXECUTE')
+  -- Reconciled legacy objects are absent on a fresh database. A missing
+  -- legacy function has no executable privilege; existing ones remain tested.
+  IF has_function_privilege('anon',to_regprocedure('public.handle_new_user()'),'EXECUTE')
+     OR has_function_privilege('authenticated',to_regprocedure('public.handle_new_user()'),'EXECUTE')
+     OR has_function_privilege('anon',to_regprocedure('public.sync_request_quote_count()'),'EXECUTE')
      OR has_function_privilege('authenticated','bridge_private.next_supplier_response_start(timestamptz)','EXECUTE')
      OR has_function_privilege('authenticated','bridge_private.add_supplier_response_hours(timestamptz,integer)','EXECUTE')
      OR has_function_privilege('authenticated','bridge_private.write_whatsapp_system_event(bridge_ai."SystemEventSeverity",text,text,text,jsonb)','EXECUTE')
@@ -1004,6 +1065,17 @@ BEGIN
   EXECUTE 'SET LOCAL ROLE authenticated';
   PERFORM set_config('request.jwt.claim.sub', user_a::text, true);
   SELECT count(*) INTO visible_count FROM bridge_ai."BuyerRewardAccount";
+  IF visible_count <> 0 THEN RAISE EXCEPTION 'Buyer without a device grant read rewards'; END IF;
+  EXECUTE 'RESET ROLE';
+  INSERT INTO bridge_ai."BuyerTrustedSession" (
+    id,"customerContactId","authUserId","sessionId","expiresAt","createdAt","lastSeenAt"
+  ) VALUES ('security_buyer_session','security_customer',user_a,buyer_session,now()+interval '1 day',now()-interval '1 day',now());
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  PERFORM set_config('request.jwt.claims', jsonb_build_object('sub',user_a,'session_id',gen_random_uuid())::text, true);
+  SELECT count(*) INTO visible_count FROM bridge_ai."BuyerRewardAccount";
+  IF visible_count <> 0 THEN RAISE EXCEPTION 'Untrusted device reused another session grant'; END IF;
+  PERFORM set_config('request.jwt.claims', jsonb_build_object('sub',user_a,'session_id',buyer_session)::text, true);
+  SELECT count(*) INTO visible_count FROM bridge_ai."BuyerRewardAccount";
   IF visible_count <> 1 THEN RAISE EXCEPTION 'Buyer A reward account isolation failed'; END IF;
   SELECT count(*) INTO visible_count FROM bridge_ai."BuyerRewardAccount" WHERE "customerContactId"='security_customer_b';
   IF visible_count <> 0 THEN RAISE EXCEPTION 'Buyer A read Buyer B reward account'; END IF;
@@ -1019,7 +1091,21 @@ BEGIN
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   END;
   EXECUTE 'RESET ROLE';
+  UPDATE bridge_ai."BuyerTrustedSession" SET "revokedAt"=now() WHERE id='security_buyer_session';
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  SELECT count(*) INTO visible_count FROM bridge_ai."BuyerRewardAccount";
+  IF visible_count <> 0 THEN RAISE EXCEPTION 'Revoked buyer device retained Data API access'; END IF;
+  EXECUTE 'RESET ROLE';
+  UPDATE bridge_ai."BuyerTrustedSession" SET "revokedAt"=NULL,"expiresAt"=now()-interval '1 hour' WHERE id='security_buyer_session';
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  SELECT count(*) INTO visible_count FROM bridge_ai."BuyerRewardAccount";
+  IF visible_count <> 0 THEN RAISE EXCEPTION 'Expired buyer device retained Data API access'; END IF;
+  EXECUTE 'RESET ROLE';
+  PERFORM set_config('request.jwt.claims', '', true);
   PERFORM set_config('request.jwt.claim.sub', '', true);
+  IF NOT EXISTS (SELECT 1 FROM bridge_ai."AuditLog" WHERE action='SYSTEM.BUYER_TRUSTED_SESSION_RLS_ENABLED') THEN
+    RAISE EXCEPTION 'Buyer session policy change has no security audit record';
+  END IF;
 
   BEGIN
     UPDATE bridge_ai.affiliate_commissions
@@ -1115,6 +1201,80 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'production monitoring worker security audit is missing';
   END IF;
+  -- Free access uses the same company and request isolation as paid access,
+  -- but its configured geographic ceiling must never exceed two miles.
+  UPDATE bridge_ai."Subscription"
+  SET "accessSource"='FREE',provider='bridge-ai',"planCode"='bridge-ai-free-hyperlocal',
+      "membershipPlanId"='plan_free_hyperlocal',"currentPeriodEnd"=NULL,
+      "providerSubscriptionId"=NULL,"providerScheduleId"=NULL,"promotionId"=NULL,
+      "cancelAtPeriodEnd"=false
+  WHERE id='security_subscription_a';
+  IF (SELECT maximum_radius FROM bridge_private.effective_membership_limits('security_company_a')) <> 2 THEN
+    RAISE EXCEPTION 'Free Hyperlocal did not enforce its two-mile entitlement';
+  END IF;
+  UPDATE bridge_ai."QuoteRequest" SET "deliveryLatitude"=51.900000,"deliveryLongitude"=-2.080000 WHERE id='security_request';
+  IF NOT bridge_private.supplier_assignment_within_active_geography('security_assignment','security_company_a') THEN
+    RAISE EXCEPTION 'Free supplier could not access an opportunity at its own location';
+  END IF;
+  UPDATE bridge_ai."QuoteRequest" SET "deliveryLatitude"=52.000000 WHERE id='security_request';
+  IF bridge_private.supplier_assignment_within_active_geography('security_assignment','security_company_a') THEN
+    RAISE EXCEPTION 'Free supplier accessed an opportunity beyond two miles';
+  END IF;
+  BEGIN
+    UPDATE bridge_ai."MembershipPlan" SET "maximumRadiusMiles"=3 WHERE id='plan_free_hyperlocal';
+    RAISE EXCEPTION 'Free plan radius could be widened';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+  BEGIN
+    UPDATE bridge_ai."Subscription" SET "membershipPlanId"='plan_local_partner' WHERE id='security_subscription_a';
+    RAISE EXCEPTION 'Free access source was attached to a paid plan';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  PERFORM set_config('request.jwt.claim.sub',user_b::text,true);
+  SELECT count(*) INTO visible_count FROM bridge_ai."Subscription" WHERE id='security_subscription_a';
+  IF visible_count <> 0 THEN RAISE EXCEPTION 'Supplier B read supplier A free membership'; END IF;
+  BEGIN
+    UPDATE bridge_ai."Subscription" SET "accessSource"='STRIPE',"membershipPlanId"='plan_nationwide_partner' WHERE id='security_subscription_a';
+    GET DIAGNOSTICS affected_count = ROW_COUNT;
+    IF affected_count <> 0 THEN RAISE EXCEPTION 'Supplier B upgraded another supplier free membership'; END IF;
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  EXECUTE 'RESET ROLE';
+  PERFORM set_config('request.jwt.claim.sub','',true);
+  IF NOT EXISTS (SELECT 1 FROM bridge_ai."AuditLog" WHERE action='SYSTEM.FREE_HYPERLOCAL_ENABLED') THEN
+    RAISE EXCEPTION 'Free membership migration audit is missing';
+  END IF;
+  -- Exercise the real application login role, not a superuser with SET ROLE.
+  -- The activation worker carries the server-verified supplier identity.
+  PERFORM set_config('request.jwt.claim.sub',user_a::text,true);
+  PERFORM set_config('bridge_ai.worker_context','stripe_billing',true);
+  EXECUTE 'SET SESSION AUTHORIZATION bridge_ai_app';
+  PERFORM id FROM bridge_ai.supplier_companies WHERE id='security_company_a' FOR UPDATE;
+  SELECT count(*) INTO visible_count FROM bridge_ai.company_memberships
+    WHERE "supplierCompanyId"='security_company_a' AND "userId"=user_a AND status='ACTIVE';
+  IF visible_count <> 1 THEN RAISE EXCEPTION 'Free activation worker cannot verify its supplier membership'; END IF;
+  UPDATE bridge_ai."Subscription" SET "currentPeriodStart"=now() WHERE id='security_subscription_a';
+  GET DIAGNOSTICS affected_count = ROW_COUNT;
+  IF affected_count <> 1 THEN RAISE EXCEPTION 'Free activation worker cannot persist free access'; END IF;
+  INSERT INTO bridge_ai."AuditLog" (id,"actorUserId","supplierCompanyId",action,"entityType","entityId",summary,"createdAt")
+  VALUES ('security_free_activation_audit',user_a,'security_company_a','BILLING.FREE_HYPERLOCAL_ACTIVATED','Subscription','security_subscription_a','Free activation test',now());
+  IF NOT EXISTS (SELECT 1 FROM bridge_ai."AuditLog" WHERE id='security_free_activation_audit') THEN
+    RAISE EXCEPTION 'Free activation audit was not persisted';
+  END IF;
+  EXECUTE 'RESET SESSION AUTHORIZATION';
+  -- One existing challenge plus four reservations exhausts this customer's limit.
+  FOR affected_count IN 1..4 LOOP
+    INSERT INTO bridge_ai."BuyerLoginChallenge" (id,"customerContactId","authUserId","tokenDigest","expiresAt")
+    VALUES ('security_limit_'||affected_count,'security_customer',user_a,md5('limit-'||affected_count)||md5('limit-'||affected_count),now()+interval '10 minutes');
+  END LOOP;
+  BEGIN
+    INSERT INTO bridge_ai."BuyerLoginChallenge" (id,"customerContactId","authUserId","tokenDigest","expiresAt")
+    VALUES ('security_limit_denied','security_customer',user_a,repeat('f',64),now()+interval '10 minutes');
+    RAISE EXCEPTION 'Buyer exceeded login reservation limit';
+  EXCEPTION WHEN check_violation THEN
+    IF SQLERRM <> 'BUYER_LOGIN_RATE_LIMITED' THEN RAISE; END IF;
+  END;
 END
 $test$;
 

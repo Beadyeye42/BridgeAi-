@@ -2503,10 +2503,12 @@ export async function enqueueQuoteSummary(quotationId: string) {
       where: { id: quotationId }, include: { quoteRequest: true },
     });
     if (!quotation?.quoteRequest.conversationId || quotation.status !== "SUBMITTED") return null;
-    // Each newly submitted quotation may change the customer's numbered list.
-    // Keying the job to the quotation refreshes that list once per supplier quote,
-    // while retries of the same submission remain idempotent.
-    const idempotencyKey = `quote-summary:${quotation.quoteRequestId}:quotation:${quotation.id}`;
+    // A revision needs a fresh update too. Preserve the original key for the
+    // first version so already-delivered submissions are not resent on deploy.
+    const baseKey = `quote-summary:${quotation.quoteRequestId}:quotation:${quotation.id}`;
+    const idempotencyKey = quotation.currentVersionNumber > 1
+      ? `${baseKey}:version:${quotation.currentVersionNumber}`
+      : baseKey;
     const created = await tx.whatsAppJob.createMany({
       data: [{
         type: "SEND_QUOTE_SUMMARY",

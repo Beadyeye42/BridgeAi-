@@ -29,7 +29,7 @@ describe("affiliate invoice accounting", () => {
   });
 
   it("has one immutable invoice row and separate refund/dispute keys", () => {
-    const migration = read("supabase/migrations/20260809131748_affiliate_invoice_ledger.sql");
+    const migration = read("supabase/migrations/20260809135318_affiliate_invoice_ledger.sql");
     expect(migration).toContain("affiliate_one_invoice_ledger_row");
     expect(migration).toContain("affiliate commission accounting fields are immutable");
     expect(migration).toContain("affiliate_one_refund_adjustment");
@@ -62,7 +62,7 @@ describe("affiliate invoice accounting", () => {
 
   it("notifies affiliates and administrators when a referred subscription is cancelled", () => {
     const ledger = read("lib/affiliates/stripe-ledger.ts");
-    const migration = read("supabase/migrations/20260809193000_affiliate_cancellation_admin_alerts.sql");
+    const migration = read("supabase/migrations/20260809143906_affiliate_cancellation_admin_alerts.sql");
     expect(ledger).toContain('source: "AFFILIATE_LIFECYCLE"');
     expect(ledger).toContain("affiliate-cancellation-scheduled:");
     expect(ledger).toContain("affiliate-cancellation-completed:");
@@ -119,7 +119,7 @@ describe("affiliate invoice accounting", () => {
   });
 
   it("forces RLS and prevents cross-affiliate reads", () => {
-    const migration = read("supabase/migrations/20260809131748_affiliate_invoice_ledger.sql");
+    const migration = read("supabase/migrations/20260809135318_affiliate_invoice_ledger.sql");
     for (const table of ["affiliates", "affiliate_referrals", "affiliate_commissions", "affiliate_payouts", "affiliate_notifications", "affiliate_audit_logs"]) {
       expect(migration).toContain(`ALTER TABLE bridge_ai.${table} FORCE ROW LEVEL SECURITY`);
     }
@@ -129,20 +129,20 @@ describe("affiliate invoice accounting", () => {
   });
 
   it("keeps supplier commercial entitlements administrator controlled", () => {
-    const migration = read("supabase/migrations/20260809145500_protect_supplier_commercial_identity.sql");
+    const migration = read("supabase/migrations/20260809135448_protect_supplier_commercial_identity.sql");
     expect(migration).toContain('NEW."foundingMemberNumber" IS DISTINCT FROM OLD."foundingMemberNumber"');
     expect(migration).toContain("bridge_private.is_platform_admin()");
   });
 
   it("keeps affiliate Data API access read-only except notification read state", () => {
-    const migration = read("supabase/migrations/20260809150500_affiliate_portal_data_api_grants.sql");
+    const migration = read("supabase/migrations/20260809135803_affiliate_portal_data_api_grants.sql");
     expect(migration).toContain("GRANT SELECT ON TABLE");
     expect(migration).toContain('GRANT UPDATE ("readAt")');
     expect(migration).toContain("REVOKE INSERT, DELETE");
   });
 
   it("uses a narrow identity-derived supplier summary instead of bypassing company isolation", () => {
-    const migration = read("supabase/migrations/20260810202500_affiliate_supplier_summary.sql");
+    const migration = read("supabase/migrations/20260810191917_affiliate_supplier_summary.sql");
     const dashboard = read("app/affiliate/page.tsx");
     const referrals = read("app/affiliate/referrals/page.tsx");
     const earnings = read("app/affiliate/earnings/page.tsx");
@@ -162,7 +162,7 @@ describe("affiliate invoice accounting", () => {
   });
 
   it("indexes ledger relationships used by high-volume accounting queries", () => {
-    const migration = read("supabase/migrations/20260809151500_affiliate_ledger_foreign_key_indexes.sql");
+    const migration = read("supabase/migrations/20260809140019_affiliate_ledger_foreign_key_indexes.sql");
     for (const field of ['"subscriptionId"', '"membershipPlanId"', '"sourceCommissionId"']) expect(migration).toContain(field);
   });
 });

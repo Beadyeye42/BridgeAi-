@@ -1,6 +1,7 @@
 import "server-only";
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { safeAuthNextPath } from "@/lib/auth/recovery-hash";
 import { applicationOrigin, metaBuyerLoginTemplate } from "@/lib/config";
 import { runAsDatabaseWorker } from "@/lib/db";
 import { blindIndex } from "@/lib/security/encryption";
@@ -35,8 +36,8 @@ function digest(value: string) {
 }
 
 function safeBuyerPath(value: string | null | undefined) {
-  if (!value?.startsWith("/buyer") || value.startsWith("//")) return "/buyer";
-  return value.slice(0, 512);
+  const path = safeAuthNextPath(value?.slice(0, 512) ?? null, "/buyer");
+  return /^\/buyer(?:\/|\?|#|$)/.test(path) ? path : "/buyer";
 }
 
 function buyerIdentityEmail(phoneHash: string) {
@@ -119,19 +120,11 @@ export async function createBuyerLoginLink(input: {
   let challengeId: string | undefined;
   try {
     authUserId = await ensureBuyerAuthUser(customer);
-    const admin = getSupabaseAdmin();
-    const generated = await admin.auth.admin.generateLink({
-      type: "magiclink",
-      email: buyerIdentityEmail(phoneHash),
-    });
-    const tokenHash = generated.data?.properties?.hashed_token;
-    if (generated.error || !tokenHash) throw new Error("BUYER_AUTH_LINK_CREATE_FAILED");
-
     const challenge = await runAsDatabaseWorker("buyer_auth", (tx) => tx.buyerLoginChallenge.create({
       data: {
         customerContactId: customer.id,
         authUserId: authUserId!,
-        tokenDigest: digest(tokenHash),
+        tokenDigest: digest(randomUUID()),
         requestedPath: safeBuyerPath(input.requestedPath),
         requestIpHash,
         userAgentHash,
@@ -140,6 +133,18 @@ export async function createBuyerLoginLink(input: {
       select: { id: true },
     }));
     challengeId = challenge.id;
+
+    const admin = getSupabaseAdmin();
+    const generated = await admin.auth.admin.generateLink({
+      type: "magiclink",
+      email: buyerIdentityEmail(phoneHash),
+    });
+    const tokenHash = generated.data?.properties?.hashed_token;
+    if (generated.error || !tokenHash) throw new Error("BUYER_AUTH_LINK_CREATE_FAILED");
+
+    await runAsDatabaseWorker("buyer_auth", (tx) => tx.buyerLoginChallenge.update({
+      where: { id: challenge.id }, data: { tokenDigest: digest(tokenHash) },
+    }));
 
     const origin = applicationOrigin(input.requestUrl);
     const url = new URL("/buyer/auth/verify", origin);
@@ -158,6 +163,10 @@ export async function createBuyerLoginLink(input: {
       authUserId,
     };
   } catch (error) {
+    if (error instanceof Error && error.message.includes("BUYER_LOGIN_RATE_LIMITED")) {
+      await recordEvent({ customerContactId: customer.id, authUserId, eventType: "BUYER_LOGIN_RATE_LIMITED" });
+      return null;
+    }
     if (challengeId) {
       await runAsDatabaseWorker("buyer_auth", (tx) => tx.buyerLoginChallenge.updateMany({
         where: { id: challengeId, consumedAt: null },

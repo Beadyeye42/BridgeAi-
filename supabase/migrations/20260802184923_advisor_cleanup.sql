@@ -25,7 +25,16 @@ CREATE INDEX IF NOT EXISTS "SystemEvent_resolvedById_idx"
   ON bridge_ai."SystemEvent" ("resolvedById");
 CREATE INDEX IF NOT EXISTS "administrator_permissions_permissionId_idx"
   ON bridge_ai.administrator_permissions ("permissionId");
-CREATE INDEX IF NOT EXISTS subscriptions_supplier_id_idx
-  ON public.subscriptions (supplier_id);
-CREATE INDEX IF NOT EXISTS whatsapp_messages_request_id_idx
-  ON public.whatsapp_messages (request_id);
+-- Reconciled legacy migrations deliberately do not create these tables on a
+-- fresh installation. Retain the indexes only where legacy data exists.
+DO $$
+BEGIN
+  IF to_regclass('public.subscriptions') IS NOT NULL THEN
+    CREATE INDEX IF NOT EXISTS subscriptions_supplier_id_idx
+      ON public.subscriptions (supplier_id);
+  END IF;
+  IF to_regclass('public.whatsapp_messages') IS NOT NULL THEN
+    CREATE INDEX IF NOT EXISTS whatsapp_messages_request_id_idx
+      ON public.whatsapp_messages (request_id);
+  END IF;
+END $$;

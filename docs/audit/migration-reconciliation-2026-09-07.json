@@ -1,0 +1,1033 @@
+{
+  "project": "dhsdjckobidmsfxmblea",
+  "productionHistoryChanged": false,
+  "method": "Compared stored statements, reviewed historical differences and their later correction migrations, aligned local filenames only. Legacy no-op bootstrap files retained.",
+  "migrations": [
+    {
+      "productionVersion": "20260730171455",
+      "name": "supplier_portal_schema",
+      "localFile": "supabase/migrations/20260730171455_supplier_portal_schema.sql",
+      "comparison": "reviewed_difference",
+      "reason": "Intentional no-op for retired public schema; production retains quarantined legacy objects. Do not replay.",
+      "localSha256": "31933fd279037d95e42dea54c9eabd2777cae217e8f511e89db7884054f792b7",
+      "productionStatementsSha256": "ad6ed0b9a2c0c712dcc352a769233459e8e2a825926e5ee79d9847981393537e"
+    },
+    {
+      "productionVersion": "20260730171528",
+      "name": "supplier_portal_trigger_and_seed",
+      "localFile": "supabase/migrations/20260730171528_supplier_portal_trigger_and_seed.sql",
+      "comparison": "reviewed_difference",
+      "reason": "Intentional no-op for retired public schema; production retains quarantined legacy objects. Do not replay.",
+      "localSha256": "c4bbe6d3a18920b1a38fdd62428e4297efa5d522215d0f47ad6784bec53125c6",
+      "productionStatementsSha256": "e28be09a5ef27e1d0164866e67e71c43eddf0e8a4f85a4b4e24b3518388fbdbe"
+    },
+    {
+      "productionVersion": "20260730173317",
+      "name": "add_request_attachments",
+      "localFile": "supabase/migrations/20260730173317_add_request_attachments.sql",
+      "comparison": "reviewed_difference",
+      "reason": "Intentional no-op for retired public schema; production retains quarantined legacy objects. Do not replay.",
+      "localSha256": "2be1d717bee49ad46818443bba7b7b01da20e78dbe7470104de173aad4db238b",
+      "productionStatementsSha256": "fbc3456646094e41be164ce9ec2e620cd57bcc20047285178f7a9321bf8be4de"
+    },
+    {
+      "productionVersion": "20260730175157",
+      "name": "whatsapp_webhook_intake",
+      "localFile": "supabase/migrations/20260730175157_whatsapp_webhook_intake.sql",
+      "comparison": "reviewed_difference",
+      "reason": "Intentional no-op for retired public schema; production retains quarantined legacy objects. Do not replay.",
+      "localSha256": "cf7657ff66ff4bfcc71faace1aebb5fd8e2530e76954001ed0d96adf8d27ca03",
+      "productionStatementsSha256": "997756f6e3f0e48dd13f83e05bb0a83a3f5299779676036547bea46c3d959705"
+    },
+    {
+      "productionVersion": "20260730180527",
+      "name": "bids_limit_and_service_regions",
+      "localFile": "supabase/migrations/20260730180527_bids_limit_and_service_regions.sql",
+      "comparison": "reviewed_difference",
+      "reason": "Intentional no-op for retired public schema; production retains quarantined legacy objects. Do not replay.",
+      "localSha256": "bfe8f8293fb994461f37c08515a669086f80f3af2d520426873aa4db68de9aec",
+      "productionStatementsSha256": "f6b7933d528da1cd4ffec71a0c236ebc2f6ef888a740390561b3cc6bb2fd7a02"
+    },
+    {
+      "productionVersion": "20260730220437",
+      "name": "whatsapp_messages_memory",
+      "localFile": "supabase/migrations/20260730220437_whatsapp_messages_memory.sql",
+      "comparison": "reviewed_difference",
+      "reason": "Intentional no-op for retired public schema; production retains quarantined legacy objects. Do not replay.",
+      "localSha256": "cbdf6bb9225e9f3f542e93fe15c863c278d3435ac31211e5d4d7580a0a81d5db",
+      "productionStatementsSha256": "1514bbc1eb760bdfebfe6504fde1667b910a190b1fdc8d21b5292a9bbac4a195"
+    },
+    {
+      "productionVersion": "20260802171811",
+      "name": "initial_bridge_ai",
+      "localFile": "supabase/migrations/20260802171811_initial_bridge_ai.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "93c83aafe5bb54eeb380080ee7bd47cd360a6a5d1f1ca7ba8c99824fa50b0349",
+      "productionStatementsSha256": "c0f0ad4e1753b2bb87b69b68296d85adfd3d404287c9abb48a4edf56cf27cbf1"
+    },
+    {
+      "productionVersion": "20260802171924",
+      "name": "add_foreign_key_indexes",
+      "localFile": "supabase/migrations/20260802171924_add_foreign_key_indexes.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "c5138dd11a3d725b741b4b840243d304d54ea7ee95db1c6834bfa0b1652461d5",
+      "productionStatementsSha256": "24e8c093de9156a6b7ce42cd1edb18855d5ecb6a1e9519a01ad509ca61fc5f42"
+    },
+    {
+      "productionVersion": "20260802183212",
+      "name": "security_foundation",
+      "localFile": "supabase/migrations/20260802183212_security_foundation.sql",
+      "comparison": "reviewed_difference",
+      "reason": "Fresh-install guards for absent quarantined legacy tables; production quarantine remains in place.",
+      "localSha256": "f92eeae122a866d7e133236de0c0329234d88921333cff7c3d17a43614a24122",
+      "productionStatementsSha256": "57547fb9f3fda15e4883a28ffc277af5720e6baac0f75448d6053bf6e22616b7"
+    },
+    {
+      "productionVersion": "20260802183428",
+      "name": "application_rls_context",
+      "localFile": "supabase/migrations/20260802183428_application_rls_context.sql",
+      "comparison": "reviewed_difference",
+      "reason": "Fresh-install guards for absent legacy tables; application role grants otherwise match.",
+      "localSha256": "992d97f2709a85fafb19f2770b18509c351829f2d7387386c948bb00ade41e74",
+      "productionStatementsSha256": "b1df64536ac9263d849e0c1d400b186dc9fb92d0d5d5b5058000251c3e1208ed"
+    },
+    {
+      "productionVersion": "20260802183653",
+      "name": "secure_invitation_acceptance",
+      "localFile": "supabase/migrations/20260802183653_secure_invitation_acceptance.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "e2af04db89731267a6dd8a7c9f643960a80a9e9307cc45107dcedaec40eea218",
+      "productionStatementsSha256": "00db1656a2458fc2b1ec20b5386b231ff3bc214801f2a66c5c814c97dfa34002"
+    },
+    {
+      "productionVersion": "20260802184405",
+      "name": "authorization_invariants",
+      "localFile": "supabase/migrations/20260802184405_authorization_invariants.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "1886cf4220945c9b07adfb5615ee9b56378c2b8ad8f4b36d7ff0c5a1474ce7ff",
+      "productionStatementsSha256": "159dd4acfa8b0f5c750fd14016c6fa90af739adfe6a81a87df8b2d3776b7e4da"
+    },
+    {
+      "productionVersion": "20260802184923",
+      "name": "advisor_cleanup",
+      "localFile": "supabase/migrations/20260802184923_advisor_cleanup.sql",
+      "comparison": "reviewed_difference",
+      "reason": "Fresh-install guards for absent legacy table indexes.",
+      "localSha256": "629ba01c25a33d35a32ce3c06eab85ffebf0cfad3acb9be4630b80f471eb2750",
+      "productionStatementsSha256": "80f125bb8c2b52974d782721baade4f90ab5991254e78490597d89fb0b45ce3a"
+    },
+    {
+      "productionVersion": "20260802193121",
+      "name": "secure_logo_attachment_lifecycle",
+      "localFile": "supabase/migrations/20260802193121_secure_logo_attachment_lifecycle.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "56858277f19f9de4d00b5b948f553e5599c635949d70af4a8e3d3be7c1198126",
+      "productionStatementsSha256": "00029b249c6cb6bebd3e3f3a6b20b9268276e035d9c73dac0f4aae60666939a6"
+    },
+    {
+      "productionVersion": "20260802193700",
+      "name": "allow_suspended_company_access_revocation",
+      "localFile": "supabase/migrations/20260802193700_allow_suspended_company_access_revocation.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "1d115e26c48c983d98e690f61cb81043d536425c2c193638f2665daa21b09685",
+      "productionStatementsSha256": "995995f7548ab7b89912bdab1ef6f064cf804965d7f07673869e39908495af05"
+    },
+    {
+      "productionVersion": "20260803181038",
+      "name": "encrypt_customer_display_names",
+      "localFile": "supabase/migrations/20260803181038_encrypt_customer_display_names.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "2fe12a76288122000e749d3dee0c88cdfef77eeef55214e5e9a40b7f0db74c4b",
+      "productionStatementsSha256": "a8dc56dc8d9d599827b35c74cf53f6be676d0b6550188dda5904cbe231d92249"
+    },
+    {
+      "productionVersion": "20260803182630",
+      "name": "enforce_supplier_response_rules",
+      "localFile": "supabase/migrations/20260803182630_enforce_supplier_response_rules.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "28913ff879542813caa79a999ede0e8637769914da9ed6e7355c5bc8d004eca7",
+      "productionStatementsSha256": "b089b8fdac346637a08970849c85748ce114c80113b5ee5a2747076d00fb97e4"
+    },
+    {
+      "productionVersion": "20260803195513",
+      "name": "payment_gated_contact_unlock_enums",
+      "localFile": "supabase/migrations/20260803195513_payment_gated_contact_unlock_enums.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "56e3576e3f858f6bdf04703c08c13c53735e3cf83c9a2190c06ccb59c6e26f37",
+      "productionStatementsSha256": "6b18983ee1ff5fa971694619b97763ac1fd61e297735b08db226d881f23db7c1"
+    },
+    {
+      "productionVersion": "20260803195826",
+      "name": "payment_gated_contact_unlock_schema",
+      "localFile": "supabase/migrations/20260803195826_payment_gated_contact_unlock_schema.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "52b7eac01a4be10639a61812c9225f3457e23ff9bb44e82562eae5ed11485344",
+      "productionStatementsSha256": "2432dab444dac2453dec37a117ec08f1a312e481831a65f4526f78c549a8e7a9"
+    },
+    {
+      "productionVersion": "20260803205949",
+      "name": "nationwide_coverage_enum",
+      "localFile": "supabase/migrations/20260803205949_nationwide_coverage_enum.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "caa374f4741f9dc071afe4736a4fa01be19d4d3402dbb634b9615140b5d35ced",
+      "productionStatementsSha256": "0203f0a7000c44d209b2d61cd7a07f64044503c86507c2e8c622ed3ecb23d84c"
+    },
+    {
+      "productionVersion": "20260803210001",
+      "name": "coverage_matching_invariants",
+      "localFile": "supabase/migrations/20260803210001_coverage_matching_invariants.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "229c3d50a1412f2dd88086e4300c183660a346cbe413aa7481d67f1685924c44",
+      "productionStatementsSha256": "1155a445ec966f836658b8ce774dbeea8cb6d10e830f028ed1269b10d19f76aa"
+    },
+    {
+      "productionVersion": "20260803220810",
+      "name": "supplier_accreditation_documents",
+      "localFile": "supabase/migrations/20260803220810_supplier_accreditation_documents.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "fbd6bfcbabf5c15fbb47fca771eb7703e47527a2e40b3ee2f2ed33aad5de90dd",
+      "productionStatementsSha256": "578f966e31fc262a3906051ef8c8128b255eb0d96379322edd61e9d22ecb6553"
+    },
+    {
+      "productionVersion": "20260803222248",
+      "name": "allow_accreditation_attachment_delete",
+      "localFile": "supabase/migrations/20260803222248_allow_accreditation_attachment_delete.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "89e5ce132429b7b3be0c070f4c069c3f2cc8cb9b18512461e04e6b6454ecbb14",
+      "productionStatementsSha256": "b06145204833219435b985cb4151f74473406d633423d0c0f34ad63917e9f7f8"
+    },
+    {
+      "productionVersion": "20260804170036",
+      "name": "whatsapp_webhook_worker_context",
+      "localFile": "supabase/migrations/20260804170036_whatsapp_webhook_worker_context.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "75c0f747bbc30fa15d90c8f5d81dacec459d70c95c22ce10940ad8567de67b11",
+      "productionStatementsSha256": "01952c1b78974e8bd1dc381af41114c44aacce1117e1c78acfd82a3f2a79f121"
+    },
+    {
+      "productionVersion": "20260804171036",
+      "name": "whatsapp_audit_writer",
+      "localFile": "supabase/migrations/20260804171036_whatsapp_audit_writer.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "a82b4d5c65181bb8b64fa24263985ee6c59b6a97e0b5abf1e9a5f208cc10ce25",
+      "productionStatementsSha256": "508d50e01ef8ee0ef343fd3d6b73a1a71440a3a0d4e1a9a22eaba01cabb44892"
+    },
+    {
+      "productionVersion": "20260804195726",
+      "name": "whatsapp_ai_concierge",
+      "localFile": "supabase/migrations/20260804195726_whatsapp_ai_concierge.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "3a78ae28337eae9bff9ce5f1925ee4c55576ad0ceaed57fc5ed677109a15cb1d",
+      "productionStatementsSha256": "520eb26fa4b6b979c4b928b2a95e6b631e5d13294a94a2edabb3322814a32a2a"
+    },
+    {
+      "productionVersion": "20260804195834",
+      "name": "whatsapp_job_policy_and_index",
+      "localFile": "supabase/migrations/20260804195834_whatsapp_job_policy_and_index.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "630b24669c43f0071b1fb9756b2e62d88109de829985d453a145714302855117",
+      "productionStatementsSha256": "2a58bbf180f630ea71512206e62520fd63bcedb18174b1d22beb47c9771ec764"
+    },
+    {
+      "productionVersion": "20260804200707",
+      "name": "whatsapp_contact_unlock_enum",
+      "localFile": "supabase/migrations/20260804200707_whatsapp_contact_unlock_enum.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "d167daa471d53a583cd5a5cc0b3880c526d190feb528b112fa88c550b53c5b1d",
+      "productionStatementsSha256": "409941dd3b1a0ba522a23e7521eafc7fbc84e9eacbf21a271fbaff67f43a8950"
+    },
+    {
+      "productionVersion": "20260804200717",
+      "name": "whatsapp_contact_unlock_worker",
+      "localFile": "supabase/migrations/20260804200717_whatsapp_contact_unlock_worker.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "661755ffcf6713ad9d3d5e3e70931dee2a9dd0893a42d7cb829d86f71a5605b0",
+      "productionStatementsSha256": "d3bc7adfdce60ba920046e5644d8a1356f4710796da19a9a80008f2cdeabfa07"
+    },
+    {
+      "productionVersion": "20260804204606",
+      "name": "whatsapp_job_webhook_returning_policy",
+      "localFile": "supabase/migrations/20260804204606_whatsapp_job_webhook_returning_policy.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "c6c4860f1f5f14df8935c32fb7c68627f4717b90b27af1e11a84c82107aeb52f",
+      "productionStatementsSha256": "3d17695854f30b022228d670b7bb5982e2e2854569c8146369af9535199ed59b"
+    },
+    {
+      "productionVersion": "20260804205523",
+      "name": "seed_initial_product_categories",
+      "localFile": "supabase/migrations/20260804205523_seed_initial_product_categories.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "060acf99a8902c25a4540c9161afe0412e9de845730b8f7ec68b289054cf51e7",
+      "productionStatementsSha256": "051ce21e288f7c3a57f37fdb7f334ad4c0db0e7605c915db7a3abc59f52fc95d"
+    },
+    {
+      "productionVersion": "20260805001155",
+      "name": "whatsapp_robust_intake",
+      "localFile": "supabase/migrations/20260805001155_whatsapp_robust_intake.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "470f64c7c3715ee97d0034c1a8683eecc5b5ffe7fc5cc478389b0544d11790c6",
+      "productionStatementsSha256": "b7cd811c4e39f40bde23f2437ebc9d6b1893b1ab2d85020c7363fc0d8ee3d489"
+    },
+    {
+      "productionVersion": "20260805031047",
+      "name": "whatsapp_quote_sessions",
+      "localFile": "supabase/migrations/20260805031047_whatsapp_quote_sessions.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "7c397e43abf0f60266c35b6942b2ff41ef3eb4f82b2beb2560ec17fc3d8d9f9e",
+      "productionStatementsSha256": "9c8d1910e56f24beae96c1fd880f25e21a693658ad77397020d12b744c887112"
+    },
+    {
+      "productionVersion": "20260805075045",
+      "name": "supplier_approval_and_admin_operations",
+      "localFile": "supabase/migrations/20260805075045_supplier_approval_and_admin_operations.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "2e61e5d9ca17ccd0869790e273f6154d5f18dd1f93059ab26cc00bf401bf609c",
+      "productionStatementsSha256": "9e256b1d70a25f930310eecff6f33d6cd6713a60c4ae13177e9dd9fd73b22395"
+    },
+    {
+      "productionVersion": "20260805075152",
+      "name": "fix_supplier_review_trigger_execution",
+      "localFile": "supabase/migrations/20260805075152_fix_supplier_review_trigger_execution.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "5d3660a9b1e2deedece584758c55ad229c3bfd153bd8cd09be5d8f0f6b3ea3a0",
+      "productionStatementsSha256": "789b7371479e26bf8b9f878204075ad8d2c930ae10d03ea17d581bd0d0f85633"
+    },
+    {
+      "productionVersion": "20260805103022",
+      "name": "whatsapp_intake_fallback_job_type",
+      "localFile": "supabase/migrations/20260805103022_whatsapp_intake_fallback_job_type.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "a4887bbad0480417de522de885988cbf2bd364895aec184214ed5b476a114c89",
+      "productionStatementsSha256": "e9a3cda07c1d8631020c4f1f436b2fa6e4082581743623b90c67001cf3d08d66"
+    },
+    {
+      "productionVersion": "20260805103044",
+      "name": "whatsapp_conversation_reliability_constraints",
+      "localFile": "supabase/migrations/20260805103044_whatsapp_conversation_reliability_constraints.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "cc83cbdf11eda08ccb4a9edda8386abec07a755019c019f56085b50a75f069c3",
+      "productionStatementsSha256": "135819b4e650065718850336f5ddf7cf5c490dc76f6113f067a494aca62634d7"
+    },
+    {
+      "productionVersion": "20260805103745",
+      "name": "whatsapp_system_event_writer",
+      "localFile": "supabase/migrations/20260805103745_whatsapp_system_event_writer.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "ac11cf6ffd2815199c22fcea66f3e7cf84fc9b07efc1fd1f8c13442581de6428",
+      "productionStatementsSha256": "fc12cb2e5bffeeea751066e1ae38bcf30c7de10f64848d4277aa365922931e45"
+    },
+    {
+      "productionVersion": "20260805131828",
+      "name": "whatsapp_auto_distribution",
+      "localFile": "supabase/migrations/20260805131828_whatsapp_auto_distribution.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "4fa1f78b87a72cca23a62cca3df0d0fdcfa6771ebec252ab8c2a1cb24bb29e06",
+      "productionStatementsSha256": "3f6a3db9ec9b6105d29c112e16d4bb745cab1317f5f8f68ffe666e51811d6fcf"
+    },
+    {
+      "productionVersion": "20260805140432",
+      "name": "supplier_opportunity_marketplace",
+      "localFile": "supabase/migrations/20260805140432_supplier_opportunity_marketplace.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "a490020de63aa1799f4d1eb226a7aa19ae29c5ed30837c1bc6aebb53168d5ff4",
+      "productionStatementsSha256": "fc3b4559aaddb74a79cef72c971bc6ac5ba34889f12de3b460bf26a4210aa135"
+    },
+    {
+      "productionVersion": "20260805140703",
+      "name": "optimize_supplier_opportunity_policy",
+      "localFile": "supabase/migrations/20260805140703_optimize_supplier_opportunity_policy.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "ada00ff70b56f9f2809669317605b15b130a86434bc253a59bc9f31248e12409",
+      "productionStatementsSha256": "d86d81ec2ca36fb0a3db0fca1d242e4119e89892a0b8b51a2d5cc5309515aa2a"
+    },
+    {
+      "productionVersion": "20260805152503",
+      "name": "expand_trade_product_categories",
+      "localFile": "supabase/migrations/20260805152503_expand_trade_product_categories.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "9b802a0e8d371c4d06ac3769f6a4632d48e2e066580cfa85d30a127f7ca90efd",
+      "productionStatementsSha256": "684618f6f3e821efb06c086a00386a301b478581c9d3419208c49b1f8f4f4141"
+    },
+    {
+      "productionVersion": "20260805172853",
+      "name": "simplify_supplier_company_approval",
+      "localFile": "supabase/migrations/20260805172853_simplify_supplier_company_approval.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "134ce861c5397110a85d40eeee6451148e3bbbad4d73c6e4e25c6beb9bf68fb0",
+      "productionStatementsSha256": "976fe748376b9183ae4a930fd8bd1917fe8ac1a7e0558a47dc8e548e0498e84f"
+    },
+    {
+      "productionVersion": "20260805175829",
+      "name": "allow_pending_supplier_opportunity_browsing",
+      "localFile": "supabase/migrations/20260805175829_allow_pending_supplier_opportunity_browsing.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "6a9bf812e799cf8820b1e4a31235d89dd3976114dec1a74feaec44d93fb50ea2",
+      "productionStatementsSha256": "10bdeccab2745b848b4d0140029b0bfbaf862b4b65b0d6673b7714ab0da84c9c"
+    },
+    {
+      "productionVersion": "20260805180054",
+      "name": "restore_supplier_review_trigger_security_definer",
+      "localFile": "supabase/migrations/20260805180054_restore_supplier_review_trigger_security_definer.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "1f1cb29fb8b25328d025b0980f8e3534ccb778cf04eced1db42c7f0142f57313",
+      "productionStatementsSha256": "af562a07f585a34466c151b223d10c261115abc6d976fb65524c152ffae7e207"
+    },
+    {
+      "productionVersion": "20260805203042",
+      "name": "production_monitoring_alerts",
+      "localFile": "supabase/migrations/20260805203042_production_monitoring_alerts.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "fc1299f718be6aa0329e4c5d211c54db9459d50d4b7a0dd543a3c3d70193bb0c",
+      "productionStatementsSha256": "31535bd0066b2459729c565e8ac7e4f222521ea362a7eb808c9263dfabac8b04"
+    },
+    {
+      "productionVersion": "20260805215057",
+      "name": "founding_supplier_pricing",
+      "localFile": "supabase/migrations/20260805215057_founding_supplier_pricing.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "680c2fe39177a6b94348955bd84d5f79b6c75864c3e629287fe5c6a29400c701",
+      "productionStatementsSha256": "e5120ef5e56e584265a089c997b80393195951effe7b4e8f82640f7daec1fde8"
+    },
+    {
+      "productionVersion": "20260806125242",
+      "name": "admin_complimentary_supplier_memberships",
+      "localFile": "supabase/migrations/20260806125242_admin_complimentary_supplier_memberships.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "27871b280f11d25720c32fa6dbce6a93efe43ea0b5b4fb4d0108b0c0f0e29a85",
+      "productionStatementsSha256": "6819c6e4c4fc148cb1e9aa68d2ccb4367d55487fe2bc3055bc616b0c5dfc3538"
+    },
+    {
+      "productionVersion": "20260806151104",
+      "name": "whatsapp_preferred_first_names",
+      "localFile": "supabase/migrations/20260806151104_whatsapp_preferred_first_names.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "ea51218f03b6559748b5f09dc2b9e2582c87df12f5ba071f0be2ec76e1db7bf4",
+      "productionStatementsSha256": "a7521fbeea4c9237e019f2bb4e13cc765b21c61fd8450cc52aa3194321f4f95e"
+    },
+    {
+      "productionVersion": "20260806152420",
+      "name": "whatsapp_customer_quote_selection",
+      "localFile": "supabase/migrations/20260806152420_whatsapp_customer_quote_selection.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "9399599449025d13369780b010bb8e65e4de48b66d770a09483c20f15efd9ff5",
+      "productionStatementsSha256": "665a954781495039ffc1008f26fe3505af79b979ed20e5bba1faf353b269b9c8"
+    },
+    {
+      "productionVersion": "20260806160415",
+      "name": "launch_windows_doors_glazing_catalogue",
+      "localFile": "supabase/migrations/20260806160415_launch_windows_doors_glazing_catalogue.sql",
+      "comparison": "reviewed_difference",
+      "reason": "Grant difference superseded by restore_opportunity_claim_function_grants.",
+      "localSha256": "4391fa3b68308d8bf6335b99f39147521a240eb543fc114dac43a1e0941f0f7c",
+      "productionStatementsSha256": "ba8361afe4ce61a1b0ffc1b55d4e1a26149ab04cb1945684f66fd62e5d07f2e3"
+    },
+    {
+      "productionVersion": "20260806160642",
+      "name": "restore_opportunity_claim_function_grants",
+      "localFile": "supabase/migrations/20260806160642_restore_opportunity_claim_function_grants.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "688519239e57bf9eabff7516d59c6029e9d773cd3a9632aa3dceb4bf5c6b5bf1",
+      "productionStatementsSha256": "3caae1df48b2ed86056170f5e0673984f1bf7d927b1ae01f0c6c429f481eb70b"
+    },
+    {
+      "productionVersion": "20260806163139",
+      "name": "stage_future_product_catalogues",
+      "localFile": "supabase/migrations/20260806163139_stage_future_product_catalogues.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "44538c6d30982c21cc0cd85042a06e5e6f9d5f13ceb081e09173354e26faf820",
+      "productionStatementsSha256": "50fb2c8b2c512ce421a50d953c3ba3bc7d68e819349a058323c97ea004f31d41"
+    },
+    {
+      "productionVersion": "20260806180233",
+      "name": "supplier_capability_matching_v1",
+      "localFile": "supabase/migrations/20260806180233_supplier_capability_matching_v1.sql",
+      "comparison": "reviewed_difference",
+      "reason": "Correlated policy reference corrected by scope_supplier_opportunity_to_assignment.",
+      "localSha256": "ca0c1e2b4fb2ca408379a2ef4abee2aef7dc623e952544caf14dda34ede72842",
+      "productionStatementsSha256": "9a983c5f44ee91577517b1a3dd8dad901727bd4d74437f7e877e588eac7c1e38"
+    },
+    {
+      "productionVersion": "20260806180455",
+      "name": "scope_supplier_opportunity_to_assignment",
+      "localFile": "supabase/migrations/20260806180455_scope_supplier_opportunity_to_assignment.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "2296e2a5fed924d182e23a8baeebbe045a598e94a3d144a727325c39448d9fde",
+      "productionStatementsSha256": "b95d08938d80c7f95c7a93d76cf2b9ec7666b2049ecc525aebd0a74250edc231"
+    },
+    {
+      "productionVersion": "20260806185317",
+      "name": "stripe_billing_worker_rls",
+      "localFile": "supabase/migrations/20260806185317_stripe_billing_worker_rls.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "5f0e26eefbdea34d4604f20bfc2a1574b28aad948f6db7918c66ba916122fdd5",
+      "productionStatementsSha256": "cf15d126dce7713932893b3e1a0904b09dfdccacbf91133d8bff8be72ff52a43"
+    },
+    {
+      "productionVersion": "20260806185620",
+      "name": "stripe_checkout_failure_alerts",
+      "localFile": "supabase/migrations/20260806185620_stripe_checkout_failure_alerts.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "0535f743e7b31bf865b2ee31fdbfb69dfd5011f64f0002422921a9427f641be2",
+      "productionStatementsSha256": "c2ed59e67da8ba354f6de11d9fc79ec2200c1c396054065c004f4d35aa146c63"
+    },
+    {
+      "productionVersion": "20260806191329",
+      "name": "stripe_worker_returning_policies",
+      "localFile": "supabase/migrations/20260806191329_stripe_worker_returning_policies.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "a094c53fc0828a784b15ed28ab4651e164d6dd97d83f92d41a68a1995da565be",
+      "productionStatementsSha256": "3d5fb91427deb13b1a022a3a624b2edc4b9b2a0b6c6efa56d993fc8858ba200c"
+    },
+    {
+      "productionVersion": "20260806210352",
+      "name": "secure_supplier_contact_unlock",
+      "localFile": "supabase/migrations/20260806210352_secure_supplier_contact_unlock.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "319092416fc1c86feff3ee60e4530faae8e6d9e6f221951b19ae2ea6c4e29175",
+      "productionStatementsSha256": "810e06be2425cfcb2481314a382fd80d7d5e7dc4985049b51220434ffd5c0470"
+    },
+    {
+      "productionVersion": "20260806220514",
+      "name": "supplier_winner_email_notifications",
+      "localFile": "supabase/migrations/20260806220514_supplier_winner_email_notifications.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "d7a97322fa32b65bf01f7f8f5253738c16acf166993af3e1cbbb7d584b44e434",
+      "productionStatementsSha256": "d386cb78f2f9aed595b20812ee89251942e3f29d9acd028e5ed6fdf5fc81b686"
+    },
+    {
+      "productionVersion": "20260807141210",
+      "name": "launch_plumbing_heating_mechanical_vertical",
+      "localFile": "supabase/migrations/20260807141210_launch_plumbing_heating_mechanical_vertical.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "e7b5ad416c22f471ffae49432c5afe41b3ddc1e53d23e4ab375379e1db1e1140",
+      "productionStatementsSha256": "aab0eea016ebc762ea99b00ce3971d4a067cf481f1849119d1f284cd5992fa97"
+    },
+    {
+      "productionVersion": "20260807142410",
+      "name": "enforce_routable_product_requests",
+      "localFile": "supabase/migrations/20260807142410_enforce_routable_product_requests.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "edf834b8664d8a73512661e8159522e895c3935647dde4867b3054fe0cf3f5f9",
+      "productionStatementsSha256": "ff4d9efa80d1e325a045df9f1e797ece4b20854f001f34ab6e021d972161d1f4"
+    },
+    {
+      "productionVersion": "20260807144722",
+      "name": "simplify_industry_admin_catalogue",
+      "localFile": "supabase/migrations/20260807144722_simplify_industry_admin_catalogue.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "1184d1e0a2146ad5713b605b382ed11497a5dd0e86bdc23e8dce1bfbdadec9a7",
+      "productionStatementsSha256": "be9dca5e9fd5a72b7e5cc8e1f0f8d726584d1bdbf2b1b4e6b2ca3403bffdbceb"
+    },
+    {
+      "productionVersion": "20260807152258",
+      "name": "restore_authenticated_policy_helper_usage",
+      "localFile": "supabase/migrations/20260807152258_restore_authenticated_policy_helper_usage.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "5f325a2591177ac531058a1eb39ff46647d4844f3f642f8c2205b89048540b87",
+      "productionStatementsSha256": "d9d9d6b3d49a2bf582ad533c2d401e656bbf04530598b0e94405548cfcb4d6d2"
+    },
+    {
+      "productionVersion": "20260807173146",
+      "name": "geographic_membership_intelligent_matching",
+      "localFile": "supabase/migrations/20260807173146_geographic_membership_intelligent_matching.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "56126d09cb348285fdfc25b98ebfc7b3f17c8db4436d169fdafa3199bb10415c",
+      "productionStatementsSha256": "1fa7f0e3713f7f7a88ad0cf559f598c1f2366f6c919753e6e135ca588db9b93c"
+    },
+    {
+      "productionVersion": "20260807173936",
+      "name": "geographic_membership_stripe_promotion_read",
+      "localFile": "supabase/migrations/20260807173936_geographic_membership_stripe_promotion_read.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "c506e2ac309ea8c961939ab7395189f4be8ba4fb9db002fc397b76f8d70e057d",
+      "productionStatementsSha256": "d5eb43545b2aaa0da9711e58e098be5c9ea573e1056f96bb122af88bd26b79b6"
+    },
+    {
+      "productionVersion": "20260807180624",
+      "name": "supplier_opportunity_email_notifications",
+      "localFile": "supabase/migrations/20260807180624_supplier_opportunity_email_notifications.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "611c6ffa2a41498356bf04eaf40bea895220c71f7cd980c8f812970435057564",
+      "productionStatementsSha256": "2a33df029be03ea6900f80014fd4568cf81a6343441113e9e23223f916625f72"
+    },
+    {
+      "productionVersion": "20260807181510",
+      "name": "supplier_email_worker_returning_policies",
+      "localFile": "supabase/migrations/20260807181510_supplier_email_worker_returning_policies.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "bca9ccc7b17b29c8c4230b3c5caa32ae82181fade5faebd5c376bb21dcc7dc5e",
+      "productionStatementsSha256": "b3e31ce26c957882dd2db3df139cfcb24a6a68ce41ad1bcc4bf228f5dcee662e"
+    },
+    {
+      "productionVersion": "20260808081223",
+      "name": "whatsapp_industry_quote_offer",
+      "localFile": "supabase/migrations/20260808081223_whatsapp_industry_quote_offer.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "daabe647bd16bb2756192c05ddb182c8501ef0888896eb9f0b6dd8ce44790e45",
+      "productionStatementsSha256": "2ccf1230e9621cb99f726c5308dc67f64b297565f4c4b5f350ab6747d809abad"
+    },
+    {
+      "productionVersion": "20260809135318",
+      "name": "affiliate_invoice_ledger",
+      "localFile": "supabase/migrations/20260809135318_affiliate_invoice_ledger.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "8fd3a57eaa3df46b2577494a95eed1c94bddb2a6a418dbc36ce8ee0fbe4bddee",
+      "productionStatementsSha256": "252be92b092499c572657913e4135a7e8311d01e9e34117231f7b670ccd4d7b6"
+    },
+    {
+      "productionVersion": "20260809135448",
+      "name": "protect_supplier_commercial_identity",
+      "localFile": "supabase/migrations/20260809135448_protect_supplier_commercial_identity.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "0f8a810874409b1877da305dc16e2c87e7106e505e7b51b720067e2aa3a0be2b",
+      "productionStatementsSha256": "28e01860e22c3cb86c9fafde95aa32c3c89e21ee0a3a5e1514c24db292c97aa3"
+    },
+    {
+      "productionVersion": "20260809135803",
+      "name": "affiliate_portal_data_api_grants",
+      "localFile": "supabase/migrations/20260809135803_affiliate_portal_data_api_grants.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "1903fd3c2554547175b43395120f59ae590e8798865453a87cdb5770303f797e",
+      "productionStatementsSha256": "c6635f3a07d32304ab92b9e36f0e5fd229ceee8b1e7f8a8e2d0ae89b70c3c726"
+    },
+    {
+      "productionVersion": "20260809140019",
+      "name": "affiliate_ledger_foreign_key_indexes",
+      "localFile": "supabase/migrations/20260809140019_affiliate_ledger_foreign_key_indexes.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "5a3de08724c92d4b77bdea4e80cc5c28ad1ebc7338d3cfd2cc6a30b0253f7698",
+      "productionStatementsSha256": "67e2e88c4ba56e22ee6312493125b14c2063abba5e4c26237773f5f389eec12f"
+    },
+    {
+      "productionVersion": "20260809143906",
+      "name": "affiliate_cancellation_admin_alerts",
+      "localFile": "supabase/migrations/20260809143906_affiliate_cancellation_admin_alerts.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "8d73d7b0b4f4e916a30b525dd967c2e4a250073e30cb0385e72ddb426f545035",
+      "productionStatementsSha256": "a1d99bbcffc0a0aa8884bd575c701ea2da4fe7845d8ab56b979760a78623e1ad"
+    },
+    {
+      "productionVersion": "20260809150941",
+      "name": "production_monitoring_worker_rls",
+      "localFile": "supabase/migrations/20260809150941_production_monitoring_worker_rls.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "131b1d2849f61716b18d9c57a5671851b7e94bd0ab01b8339ee4ada2daee6694",
+      "productionStatementsSha256": "c870ab889cb18c11585ee11904aaa381c38bc0d04cfc57b7c2cdc8e686d4a383"
+    },
+    {
+      "productionVersion": "20260809152638",
+      "name": "production_alert_database_audit_trigger",
+      "localFile": "supabase/migrations/20260809152638_production_alert_database_audit_trigger.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "bb1c97201c529880da37bb700661caf3d3dd79135f4d4103ffa26099220409b9",
+      "productionStatementsSha256": "b62192448776096bd0a95cfec04482677c40f025db8b7d0e76bca3fc5b0c02fd"
+    },
+    {
+      "productionVersion": "20260810134416",
+      "name": "supplier_registration_preflight",
+      "localFile": "supabase/migrations/20260810134416_supplier_registration_preflight.sql",
+      "comparison": "reviewed_difference",
+      "reason": "Conditional role-existence wrapper; role is present in production.",
+      "localSha256": "aba4b3dc260e8b74bc4a2557c126cb7afaa4f547f5147275517397b99c6e3e51",
+      "productionStatementsSha256": "26aa16ede73517d0635a7276e9c686766646302a50743bf86d77bc43f933dc0c"
+    },
+    {
+      "productionVersion": "20260810191917",
+      "name": "affiliate_supplier_summary",
+      "localFile": "supabase/migrations/20260810191917_affiliate_supplier_summary.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "90e8b3923551eb552d45324f0322d51b6b1ac45498cd1a82169bb022e18f7a31",
+      "productionStatementsSha256": "b25a4cca1891794322950ebcaa9a50e5bfa390cd9fddf72bc04bfb46c877eaa8"
+    },
+    {
+      "productionVersion": "20260810193926",
+      "name": "allow_preplan_onboarding_coverage",
+      "localFile": "supabase/migrations/20260810193926_allow_preplan_onboarding_coverage.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "1bb783cb72b147facfeb7ba7213764c6cf7f9ed9185e87a7cd712986cdbee1e6",
+      "productionStatementsSha256": "f5f5310e0193498d906baf89a6ca86eb056df914dc8a1f3d016d798620884283"
+    },
+    {
+      "productionVersion": "20260810200612",
+      "name": "enforce_live_geographic_membership_boundaries",
+      "localFile": "supabase/migrations/20260810200612_enforce_live_geographic_membership_boundaries.sql",
+      "comparison": "reviewed_difference",
+      "reason": "Coverage and trigger differences superseded by enforce_restricted_nationwide_coverage and fix_geographic_reconciliation_trigger.",
+      "localSha256": "9868241788eea4aab397ee3fa45bcec5d63659158417a1cabd55be536736e908",
+      "productionStatementsSha256": "6116c93214eec7c2cf4ec378876134704cbdaa40c0103a37835a6caca311c326"
+    },
+    {
+      "productionVersion": "20260810200911",
+      "name": "fix_geographic_reconciliation_trigger",
+      "localFile": "supabase/migrations/20260810200911_fix_geographic_reconciliation_trigger.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "5c7ea185fe4df431bda2aaf4e64d409be331cbe141aab00764101b8dcf379c94",
+      "productionStatementsSha256": "4aed34f1f7878a0e2333e8e309a6f90bcca3a4580072b84ba0d9dab1ebb24dcc"
+    },
+    {
+      "productionVersion": "20260810201804",
+      "name": "enforce_restricted_nationwide_coverage",
+      "localFile": "supabase/migrations/20260810201804_enforce_restricted_nationwide_coverage.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "65dfb8c1d8d18b9493b55ee9b9eb32a388801c2d2951b0defd16957a13bff7ab",
+      "productionStatementsSha256": "5ae22a3485d9fe7c402ed1d323b3b41b3cdc937b678f1d0d1f3a23f9216799da"
+    },
+    {
+      "productionVersion": "20260810203219",
+      "name": "fix_supplier_quotation_submission_rls_guard",
+      "localFile": "supabase/migrations/20260810203219_fix_supplier_quotation_submission_rls_guard.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "48e765a35b6a757c495beb5d87a6571a3cc2b4f82014a43f27b1bf1bf996230a",
+      "productionStatementsSha256": "1b67cd60f0c3cf1912b15dfd67e5033c6b303aa67af397f3a03ae16021f8e673"
+    },
+    {
+      "productionVersion": "20260810210120",
+      "name": "enforce_subscription_quotation_access",
+      "localFile": "supabase/migrations/20260810210120_enforce_subscription_quotation_access.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "4bd7a69f3e38e4307a764550ce46e9fcef2dfb0e10789d40a837290c3d7804a0",
+      "productionStatementsSha256": "ca85cea5a976b4ccba292a10f1f17ae5b86546751b71855cfc76523c8e6031db"
+    },
+    {
+      "productionVersion": "20260810213238",
+      "name": "enforce_two_day_response_and_seven_day_quote_validity",
+      "localFile": "supabase/migrations/20260810213238_enforce_two_day_response_and_seven_day_quote_validity.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "5009d8b0f8db8d8614e6cfa7a8e962f8a33dad4e3a61125d09ae3a8a413da914",
+      "productionStatementsSha256": "e7a2a0bbe873afb490b52e7669aaf2ed56b024c963eff64d4b08d49d06ac28dc"
+    },
+    {
+      "productionVersion": "20260811190418",
+      "name": "launch_transport_delivery_removals",
+      "localFile": "supabase/migrations/20260811190418_launch_transport_delivery_removals.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "245f87da66844503b87ae89ffa8fb38c2fc725aa8a7ef4f67a836d88903c1fdd",
+      "productionStatementsSha256": "3fdefc2eb1904914437fa7396034cac81e2cbb2d54ab34d4b786895bddd06145"
+    },
+    {
+      "productionVersion": "20260811194951",
+      "name": "buyer_audience_matching",
+      "localFile": "supabase/migrations/20260811194951_buyer_audience_matching.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "a370736a5c9a7bd7dd98b2792e8475324fc6eabe4c690cc1e567b5a7c391f467",
+      "productionStatementsSha256": "bab3c3d7a29285cbb6b3dc2885892fdd27bbe1087e7b773093dff7221ed8c07a"
+    },
+    {
+      "productionVersion": "20260811201159",
+      "name": "allow_buyer_type_question_key",
+      "localFile": "supabase/migrations/20260811201159_allow_buyer_type_question_key.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "ed816fb8f86dc119e84e79f465de6bc3b89b2570df9a62794e64fe0fb3fc5579",
+      "productionStatementsSha256": "7b2709d858e498e7480e461447b6a1587e8690283470fc4c2e3bf9d8c53a52c6"
+    },
+    {
+      "productionVersion": "20260811201445",
+      "name": "sync_whatsapp_question_keys",
+      "localFile": "supabase/migrations/20260811201445_sync_whatsapp_question_keys.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "18192d6abf9a4bd5baf846cf33b26e5c285b427c109ce5d5d55a435feb31cc5d",
+      "productionStatementsSha256": "2c390f6e194c4ada491828e45d871edb364103308a415889ecb376c0ceb22dca"
+    },
+    {
+      "productionVersion": "20260811213431",
+      "name": "hyperlocal_membership_tier",
+      "localFile": "supabase/migrations/20260811213431_hyperlocal_membership_tier.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "cda143bf3a2b231e9fb91c0a6b2b6ed4472ea4d8a5a774ae309428097639db3d",
+      "productionStatementsSha256": "59299b88880764df026d56aab9fa8a077aa84907f543d75078b8b47cf37b63f4"
+    },
+    {
+      "productionVersion": "20260811221745",
+      "name": "adaptive_opportunity_distribution",
+      "localFile": "supabase/migrations/20260811221745_adaptive_opportunity_distribution.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "3244b1c7c2daf8ea8637c39129ac18e96395dd9c80dd5a51c315145275c5d39f",
+      "productionStatementsSha256": "c432fb23d32565ff1033291f1ff1f07b623c01396db54050f5bdac32e39ec701"
+    },
+    {
+      "productionVersion": "20260811223112",
+      "name": "industry_response_deadlines",
+      "localFile": "supabase/migrations/20260811223112_industry_response_deadlines.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "52da8a1d340ae69a59ee0009f9ff8177f6693b5b13cf6feca9f0a3ed1c95fd3b",
+      "productionStatementsSha256": "63504f0651569a15f11c0752df772b127447323ccf340a1fb72b3e4851117fdb"
+    },
+    {
+      "productionVersion": "20260811231744",
+      "name": "affiliate_programme_controls",
+      "localFile": "supabase/migrations/20260811231744_affiliate_programme_controls.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "0e9d4c95bec9452169494afeace6b384f1752dbb90c92ea4a870ba3f7a1c6a43",
+      "productionStatementsSha256": "3887a3eddcbd0263086dc203c43ac38880f92864c56dded37b2f48a4f957cbf9"
+    },
+    {
+      "productionVersion": "20260811234506",
+      "name": "add_quote_request_lifecycle_statuses",
+      "localFile": "supabase/migrations/20260811234506_add_quote_request_lifecycle_statuses.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "ea6215bc6100e236e3b4ab677876ea134f0e49503570cbd7f79c8e8b5272897e",
+      "productionStatementsSha256": "61a2bc9867add62d6a6b176d7e997edbe5e943ac0119277a6f53c31534528536"
+    },
+    {
+      "productionVersion": "20260811234539",
+      "name": "apply_quote_request_lifecycle",
+      "localFile": "supabase/migrations/20260811234539_apply_quote_request_lifecycle.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "8ca5609c437a7510d9241df62e7dcaf23df9bb04a5726b4752efa4ce9b686e18",
+      "productionStatementsSha256": "7cac5288611d684acc0c5304ef5169a802b000c8f7b0af78bc32d30bfdec8585"
+    },
+    {
+      "productionVersion": "20260812005739",
+      "name": "enforce_geographic_opportunity_read_access",
+      "localFile": "supabase/migrations/20260812005739_enforce_geographic_opportunity_read_access.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "3cc1df928225246ddb9d6c2e930e9ffbe3009c0b902ff7b01ae0a8e7db41fc5a",
+      "productionStatementsSha256": "0c11f5b6d68aa3ec2a611b18c0ec8bf9460a4315b5674b3125c4659395b80606"
+    },
+    {
+      "productionVersion": "20260812190300",
+      "name": "multi_supplier_quote_enum_values",
+      "localFile": "supabase/migrations/20260812190300_multi_supplier_quote_enum_values.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "af7edd1152eb30b1a3d5cff6186b1ffb04cc3d0f4db5f40c8f7ce567df26ae2b",
+      "productionStatementsSha256": "59d7cd1ad05daa32ff415065447181291d35d0106d45959e7a5514a7c0a2802b"
+    },
+    {
+      "productionVersion": "20260812190328",
+      "name": "multi_supplier_quote_conversations",
+      "localFile": "supabase/migrations/20260812190328_multi_supplier_quote_conversations.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "7b5c20a2fa0744cfd79c805603291515608d24ccdb8bd529b793dea47eaca81c",
+      "productionStatementsSha256": "1b4be1177abf5605964f88e3717708a68cf3fac5715a80437f2261f509211c77"
+    },
+    {
+      "productionVersion": "20260812211506",
+      "name": "hyperlocal_industries_expansion",
+      "localFile": "supabase/migrations/20260812211506_hyperlocal_industries_expansion.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "7da91009142f54cfac2dceacd2bee771d05e007454bb28bb91c222fa34c6d4e0",
+      "productionStatementsSha256": "be60e539407c426c5188a1f97cc3ae8bcdaa248023b28f72a45f6cb76a8e05e5"
+    },
+    {
+      "productionVersion": "20260812211519",
+      "name": "clarify_hyperlocal_clearance_routing",
+      "localFile": "supabase/migrations/20260812211519_clarify_hyperlocal_clearance_routing.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "55ab0320fff7d4c9e69669f9035b0392eba3d0e244b5a5c26e65308ce2cc576e",
+      "productionStatementsSha256": "78350962b3135d6f7ae5a0d5bf299ec6f5370634f521eb637d0bf85736501591"
+    },
+    {
+      "productionVersion": "20260812235734",
+      "name": "transport_collection_geographic_matching",
+      "localFile": "supabase/migrations/20260812235734_transport_collection_geographic_matching.sql",
+      "comparison": "reviewed_difference",
+      "reason": "Collection regex backfill corrected by correct_transport_collection_backfill.",
+      "localSha256": "38674b1f173dcac84054bcdff5604a5cee1c57173d59622e231e4fc61a3a0bd9",
+      "productionStatementsSha256": "b6c867ef66393a2070b1cbdc262251e22f9eea30ad071e33dd0aa761057d3128"
+    },
+    {
+      "productionVersion": "20260812235953",
+      "name": "correct_transport_collection_backfill",
+      "localFile": "supabase/migrations/20260812235953_correct_transport_collection_backfill.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "d6790c62babd805cfc393bcf5815ad58b0e01ffb7f0eff480fa069a5b4dcbcfd",
+      "productionStatementsSha256": "d961dd33495683eee789098dd1696c431485f2fe95b3d9c401b02e29aa7301af"
+    },
+    {
+      "productionVersion": "20260813001104",
+      "name": "normalize_transport_capability_defaults",
+      "localFile": "supabase/migrations/20260813001104_normalize_transport_capability_defaults.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "4e8addbf3c0735ff22b9d163e94c01827739ebd31366b767bf66ec709a26d251",
+      "productionStatementsSha256": "beaedafa0a3988a32f5eb16badef67e22d625e3a11b1c9e818732e4c0cbdd4cf"
+    },
+    {
+      "productionVersion": "20260813080021",
+      "name": "fix_quote_message_rls_recursion",
+      "localFile": "supabase/migrations/20260813080021_fix_quote_message_rls_recursion.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "0f0320b57063377acb9a1daa2d7b887fa6d9ad69d1f07c64aed24142f73d4d7c",
+      "productionStatementsSha256": "c12fcea4765be8cc47853d8a15ff076fe8920f8babd0c0f02c150222e05bb7cc"
+    },
+    {
+      "productionVersion": "20260813084533",
+      "name": "fix_supplier_answer_delivery",
+      "localFile": "supabase/migrations/20260813084533_fix_supplier_answer_delivery.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "905ec2eca53226f613965fde15832dc523a8d9b48f7329fe23626a34167d87a3",
+      "productionStatementsSha256": "3e9079f4258beae2bb448b9d23245843c8d9606ecdf24527551aa70c425f3bcc"
+    },
+    {
+      "productionVersion": "20260824162950",
+      "name": "production_radius_geography_hardening",
+      "localFile": "supabase/migrations/20260824162950_production_radius_geography_hardening.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "40668d240d0c83fa75063a6abd6b5503b6e62d68230aefff632e17db015d77f9",
+      "productionStatementsSha256": "67767f9cb5a498a662aaf1baac29bf8dfcbb469bbb3b7cacbe1c677e691cd006"
+    },
+    {
+      "productionVersion": "20260824182717",
+      "name": "buyer_hub_passwordless_orders_rewards",
+      "localFile": "supabase/migrations/20260824182717_buyer_hub_passwordless_orders_rewards.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "381e9f18212bd569884625d021ee0d61e487929569f10c3a61f44a97ce7bdea6",
+      "productionStatementsSha256": "7c9019318b98a99a158324969165d917ea876c141f0755155f0f792b9c244bde"
+    },
+    {
+      "productionVersion": "20260824183820",
+      "name": "buyer_hub_foreign_key_indexes",
+      "localFile": "supabase/migrations/20260824183820_buyer_hub_foreign_key_indexes.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "3deccefb22fbdd38cfc896d11dc9fe09756b5199df0763813aba4e6f3efd466c",
+      "productionStatementsSha256": "ff17aa20671e7d9a37ab49d80ab881e24f6bab194593c34091b046637cc4066c"
+    },
+    {
+      "productionVersion": "20260824190755",
+      "name": "buyer_industry_agnostic_hub",
+      "localFile": "supabase/migrations/20260824190755_buyer_industry_agnostic_hub.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "a802ba70fef6cb130d28d4a4d6442dd1568d89ef8c76d6f2c81a757a1ec4da4f",
+      "productionStatementsSha256": "b7fdc2a7a0de4d28c1e14d23d0e9c3ab5e785b33dfee10af3f268ae696ac2ece"
+    },
+    {
+      "productionVersion": "20260824195455",
+      "name": "quote_conversation_fk_indexes",
+      "localFile": "supabase/migrations/20260824195455_quote_conversation_fk_indexes.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "a65a6d6f8aa4c4cadaa6c35dd9997670ce0f88e0c7497326060cedd0295684a2",
+      "productionStatementsSha256": "fabeb97510bd4491ed1ae02b35b23b0ca3f88a1e74f7ea1b07697fd8eaa65099"
+    },
+    {
+      "productionVersion": "20260825072729",
+      "name": "allow_whatsapp_buyer_order_returning",
+      "localFile": "supabase/migrations/20260825072729_allow_whatsapp_buyer_order_returning.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "54381369ab686d02558aa87bbc9484160dfc66f96109fc5d465c42cdb20ad382",
+      "productionStatementsSha256": "408ed71023d2703f12fd76c889464979e3a62c81df5824ad3412887a2b1fbff0"
+    },
+    {
+      "productionVersion": "20260825220558",
+      "name": "ai_usage_telemetry",
+      "localFile": "supabase/migrations/20260825220558_ai_usage_telemetry.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "59e4ed615b0cdcf74651b095bb7dda9ffdfe46b79046c6cd1d392f276a3d0e5b",
+      "productionStatementsSha256": "14a7e49c016d325fcf3d2ed1a9c357aa35d097f06dd8b4d7e4f73c26f97e9c60"
+    },
+    {
+      "productionVersion": "20260826072133",
+      "name": "buyer_hub_action_returning",
+      "localFile": "supabase/migrations/20260826072133_buyer_hub_action_returning.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "85d278b9ec16e7066f0fda23790ba24df61251f760d0620cb9f31e0c92ae6fa9",
+      "productionStatementsSha256": "ad7dd64696e4559fc74c7eed3dcb19f6e5c52a5be20b153c6a83b677e6124849"
+    },
+    {
+      "productionVersion": "20260831111855",
+      "name": "capacity_reminder_notification_permissions",
+      "localFile": "supabase/migrations/20260831111855_capacity_reminder_notification_permissions.sql",
+      "comparison": "normalized_match",
+      "reason": "SQL matches after removing comments and whitespace.",
+      "localSha256": "6bfa5c0d5262dde27cc20dda1dccc682ab75a4799a20c397969bc10b1e937e25",
+      "productionStatementsSha256": "52ee0c2c7460c6e09891a663c5b46038da0eaa8d8a90978bec099c789d254296"
+    }
+  ]
+}

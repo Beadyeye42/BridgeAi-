@@ -23,7 +23,7 @@ describe("supplier quotation membership access", () => {
   it("enforces access in the API, database trigger, RLS and expiry worker", () => {
     const route = readFileSync("app/api/quotations/route.ts", "utf8");
     const decision = readFileSync("app/api/assignments/[id]/decision/route.ts", "utf8");
-    const migration = readFileSync("supabase/migrations/20260810205306_enforce_subscription_quotation_access.sql", "utf8");
+    const migration = readFileSync("supabase/migrations/20260810210120_enforce_subscription_quotation_access.sql", "utf8");
     const cron = readFileSync("app/api/cron/monitor-production/route.ts", "utf8");
 
     expect(route).toContain("MEMBERSHIP_REQUIRED");

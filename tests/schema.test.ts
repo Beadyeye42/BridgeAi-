@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 const schema = readFileSync(new URL("../prisma/schema.prisma", import.meta.url), "utf8");
 const categorySeed = readFileSync(
-  new URL("../supabase/migrations/20260804205358_seed_initial_product_categories.sql", import.meta.url),
+  new URL("../supabase/migrations/20260804205523_seed_initial_product_categories.sql", import.meta.url),
   "utf8",
 );
 const tradeCategoryExpansion = readFileSync(
