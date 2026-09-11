@@ -65,6 +65,25 @@ export function runWithDatabaseIdentity<T>(userId: string, work: () => T): T {
 
 export const trustedPrisma = raw;
 
+// Active membership plans already have a public-data SELECT policy for the
+// application role. This narrow read exposes no account or payment identifiers
+// and does not grant a public route an authenticated or worker identity.
+export async function getPublicMembershipPlans() {
+  return raw.$transaction(async (tx) => {
+    await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+    return tx.membershipPlan.findMany({
+      where: { active: true },
+      orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
+      select: {
+        id: true, name: true, description: true, tier: true,
+        monthlyPricePence: true, currency: true, taxEnabled: true,
+        maximumRadiusMiles: true, nationwideAllowed: true,
+        maximumActiveOpportunities: true,
+      },
+    });
+  }, { maxWait: 3_000, timeout: 5_000 });
+}
+
 export type DatabaseWorker = "whatsapp_webhook" | "whatsapp_ai" | "stripe_billing" | "supplier_email" | "affiliate_attribution" | "affiliate_accounting" | "production_monitoring" | "buyer_auth";
 
 export async function runAsDatabaseWorker<T>(

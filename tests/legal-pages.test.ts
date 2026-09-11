@@ -20,7 +20,7 @@ describe("public legal documents", () => {
     expect(privacy).toContain("Information Commissioner’s Office");
 
     expect(read("app/legal/terms/page.tsx")).toContain("After that point the Supplier cannot access or submit new quotations");
-    expect(read("app/legal/customer-terms/page.tsx")).toContain("Customers do not create or use portal accounts");
+    expect(read("app/legal/customer-terms/page.tsx")).toContain("Customers can use the Buyer Hub through a secure WhatsApp sign-in link");
     expect(read("app/legal/cancellation/page.tsx")).toContain("Manage billing or cancel");
     expect(read("app/legal/cookies/page.tsx")).toContain("bridge_affiliate_ref");
   });
@@ -32,8 +32,10 @@ describe("public legal documents", () => {
     expect(registration).toContain('href="/legal/cancellation"');
 
     const home = read("app/page.tsx");
-    expect(home).toContain('href="/legal/customer-terms"');
-    expect(home).toContain('href="/legal/cookies"');
+    const publicChrome = read("components/marketing/site-chrome.tsx");
+    expect(home).toContain("<PublicFooter />");
+    expect(publicChrome).toContain('href="/legal/customer-terms"');
+    expect(publicChrome).toContain('href="/legal/cookies"');
 
     const billing = read("app/dashboard/subscription/page.tsx");
     expect(billing).toContain("Cancellation is scheduled");

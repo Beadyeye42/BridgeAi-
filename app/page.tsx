@@ -1,58 +1,66 @@
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight, Check, ChevronRight, Leaf, MapPin, MessageCircleMore, ShieldCheck, Sparkles, Wrench, CalendarDays, MoveRight, LockKeyhole } from "lucide-react";
-import { BrandMark } from "@/components/brand-mark";
-
-const whatsapp = "https://wa.me/447593103459?text=Hi%20Bridge-iT%2C%20I%20need%20help%20finding%20a%20quote.";
+import { ArrowRight, ArrowUpRight, Check, FileText, LockKeyhole, MessageCircleMore, Package, ShieldCheck, Wrench } from "lucide-react";
+import { PublicFooter, PublicHeader, WHATSAPP_REQUEST_URL } from "@/components/marketing/site-chrome";
 
 export default function Home() {
-  return <main className="home-v2">
-    <a className="v2-skip" href="#main-content">Skip to content</a>
-    <header className="v2-nav">
-      <Link href="/" aria-label="Bridge-iT home"><BrandMark /></Link>
-      <nav aria-label="Public navigation"><a href="#how-it-works">How it works</a><a href="#for-suppliers">For businesses</a><a href="#membership">Pricing</a></nav>
-      <div className="v2-nav-actions"><Link href="/login">Sign in</Link><Link className="v2-button v2-dark" href="/register">Find local work <ArrowUpRight size={16}/></Link></div>
-    </header>
-
-    <section className="v2-hero v2-container" id="main-content">
-      <div className="v2-hero-copy">
-        <p className="v2-kicker"><span/> GOOD WORK. CLOSER TO HOME.</p>
-        <h1>Your next job.<br/>A little <span>closer.</span></h1>
-        <p className="v2-intro">A gap in your diary. A job around the corner. Bridge-iT connects local service businesses with people who need their skills.</p>
-        <div className="v2-actions"><Link className="v2-button v2-dark" href="/register">Find work near you <ArrowUpRight size={18}/></Link><a className="v2-button v2-outline" href={whatsapp} target="_blank" rel="noreferrer">I need a local service <MessageCircleMore size={18}/></a></div>
-        <p className="v2-small-note"><Check size={15}/> Free within 2 miles for eligible service businesses.</p>
-        <div className="v2-hero-assurances"><span><ShieldCheck size={16}/> Approved suppliers</span><span><MapPin size={16}/> Relevant local requests</span><span><Check size={16}/> No winning fees</span></div>
-      </div>
-      <div className="v2-neighbourhood" aria-label="Illustration of local job matching. Examples, not live requests.">
-        <div className="v2-map-grid" aria-hidden="true"/><div className="v2-radius v2-radius-outer" aria-hidden="true"/><div className="v2-radius v2-radius-inner" aria-hidden="true"/>
-        <span className="v2-map-caption"><MapPin size={14}/> Your local area</span>
-        <div className="v2-base"><span><Wrench size={25}/></span><b>Your business</b><small>Good work starts nearby</small></div>
-        <div className="v2-job v2-job-garden"><span className="v2-job-icon"><Leaf size={20}/></span><div><small>GARDEN & OUTDOOR</small><b>A garden ready for a fresh start</b><p><MapPin size={12}/> 1.2 miles away <i/> This week</p></div><ArrowUpRight size={17}/></div>
-        <div className="v2-job v2-job-repair"><span className="v2-job-icon coral"><Wrench size={20}/></span><div><small>PLUMBING & REPAIRS</small><b>A dripping tap. Your next small job.</b><p><MapPin size={12}/> 0.8 miles away <i/> Flexible</p></div></div>
-        <div className="v2-availability"><CalendarDays size={18}/><span>Your skills.<br/><b>Your availability.</b></span><Check size={16}/></div>
-        <span className="v2-example-label">ILLUSTRATION · NOT LIVE REQUESTS</span>
-      </div>
-    </section>
-
-    <section className="v2-principles v2-container" aria-label="A better way to find local work"><div><span>01</span><b>Less chasing.</b><p>Clearer requests, in one place.</p></div><div><span>02</span><b>A better fit.</b><p>Matched to your services and area.</p></div><div><span>03</span><b>You stay in control.</b><p>Choose which jobs to quote.</p></div></section>
-
-    <section className="v2-container v2-section" id="for-suppliers">
-      <div className="v2-section-head"><div><p className="v2-kicker">BUILT FOR THE BUSINESS BEHIND THE JOB</p><h2>More of the work you want.<br/>Less of the runaround.</h2></div><p>You know your trade. Let Bridge-iT help you find the requests worth your time.</p></div>
-      <div className="v2-benefits">
-        <article className="v2-benefit featured"><span className="v2-feature-icon"><CalendarDays size={24}/></span><h3>Make room for<br/>the right work.</h3><p>Keep your availability and capacity up to date. Receive requests that match what you do and where you work.</p><Link href="/register">Set up your business <ArrowUpRight size={16}/></Link><div className="v2-week" aria-hidden="true"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><i/><i/><i className="open">Your next job?</i><i/></div></article>
-        <article className="v2-benefit"><span className="v2-feature-icon"><MessageCircleMore size={24}/></span><h3>Understand the job.<br/>Then decide.</h3><p>Review the buyer’s requirements, location, timing and available photos before choosing whether to quote.</p><span className="v2-feature-foot"><Check size={15}/> Relevant details, together</span></article>
-        <article className="v2-benefit"><span className="v2-feature-icon"><LockKeyhole size={24}/></span><h3>Your quote.<br/>Your business.</h3><p>Quote privately through your workspace. A shortlist of up to five eligible suppliers keeps each request focused.</p><span className="v2-feature-foot"><ShieldCheck size={15}/> No public bidding board</span></article>
-      </div>
-    </section>
-
-    <section className="v2-how" id="how-it-works"><div className="v2-container"><div className="v2-section-head"><div><p className="v2-kicker">SIMPLE FROM THE FIRST MESSAGE</p><h2>From “can you help?”<br/>to “let’s get it done.”</h2></div><a className="v2-text-link" href={whatsapp} target="_blank" rel="noreferrer">Start a request <ArrowUpRight size={18}/></a></div>
-      <div className="v2-steps"><article><span>01 <MessageCircleMore size={21}/></span><h3>Tell us what’s needed.</h3><p>The buyer starts on WhatsApp with the job, location and timing. Bridge-iT asks for the details needed to match it.</p></article><article><span>02 <Sparkles size={21}/></span><h3>Connect with a good fit.</h3><p>Suitable businesses receive a structured request. Each supplier decides whether to respond with a quote.</p></article><article><span>03 <Check size={21}/></span><h3>Choose. Agree. Get started.</h3><p>The buyer selects a quote. Contact details are released so both sides can agree the final scope and arrangements.</p></article></div>
-    </div></section>
-
-    <section className="v2-container v2-section v2-membership" id="membership"><div><p className="v2-kicker">START SMALL. STAY LOCAL.</p><h2>Find your feet.<br/>Then find your reach.</h2><p>Start with free access close to your business. Choose a wider paid area when it makes sense for you.</p><ul><li><Check size={17}/> No introduction fees</li><li><Check size={17}/> No winning fees</li><li><Check size={17}/> You choose which requests to quote</li></ul><p className="v2-price-disclaimer">Approval and industry eligibility apply. Matching depends on demand, your services and availability. Membership does not guarantee work.</p></div>
-      <div className="v2-price-panel"><div className="v2-plan-label"><span>FREE HYPERLOCAL</span><MapPin size={20}/></div><div className="v2-price">£0<small>/ month</small></div><h3>Your neighbourhood. Within 2 miles.</h3><p>No card required. Available to approved businesses in eligible service industries.</p><Link className="v2-button v2-dark" href="/register">Apply for free local access <ArrowRight size={17}/></Link><div className="v2-paid"><div><b>Need a wider area?</b><small>Paid plans start at £14.99/month for up to 10 miles.</small></div><Link href="/dashboard/subscription" aria-label="Compare membership plans"><ChevronRight size={22}/></Link></div></div>
-    </section>
-
-    <section className="v2-container v2-buyer-banner"><div className="v2-buyer-symbol"><MessageCircleMore size={35}/></div><div><p className="v2-kicker">SOMETHING NEEDS DOING?</p><h2>A good local business.<br/>One message away.</h2><p>Tell us what you need on WhatsApp. Requesting quotes is free.</p></div><a className="v2-button v2-dark" href={whatsapp} target="_blank" rel="noreferrer">Start on WhatsApp <MoveRight size={19}/></a></section>
-    <footer className="v2-footer v2-container"><div><Link href="/" aria-label="Bridge-iT home"><BrandMark/></Link><p>Good work. Closer to home.</p></div><nav aria-label="Footer navigation"><Link href="/demo">Explore the supplier workspace</Link><Link href="/help">Help & support</Link><Link href="/legal/terms">Supplier terms</Link><Link href="/legal/customer-terms">Customer terms</Link><Link href="/legal/privacy">Privacy</Link><Link href="/legal/cookies">Cookies</Link><Link href="/legal/cancellation">Cancellation</Link></nav><small>Bridge-iT · Ironbridge Group Ltd</small></footer>
-  </main>;
+  return <div className="home-v2 customer-site">
+    <PublicHeader />
+    <main id="main-content">
+      <section className="v2-hero v2-container customer-hero">
+        <div className="v2-hero-copy">
+          <p className="v2-kicker">ONE REQUEST. A CLEARER CHOICE.</p>
+          <h1>The right business.<br />One message <span>away.</span></h1>
+          <p className="v2-intro">Tell us what you need on WhatsApp. We’ll help turn your message, photos or drawings into a clear request for suitable businesses to quote.</p>
+          <div className="v2-actions">
+            <a className="v2-button v2-dark" href={WHATSAPP_REQUEST_URL} target="_blank" rel="noreferrer">Get quotes on WhatsApp <MessageCircleMore size={19} /></a>
+            <Link className="v2-button v2-outline" href="/buyer/login">View my requests <ArrowUpRight size={18} /></Link>
+          </div>
+          <p className="v2-small-note"><Check size={16} /> Free to request quotes. No new app to download.</p>
+          <div className="v2-hero-assurances"><span><LockKeyhole size={17} /> Contact details protected while quoting</span><span><Check size={17} /> You decide whether to go ahead</span></div>
+        </div>
+        <div className="request-example" aria-label="Illustrative request and quote comparison, not live offers">
+          <div className="request-example-heading"><span><MessageCircleMore size={20} /> Your request</span><small>EXAMPLE</small></div>
+          <p className="request-example-message">“I need five white uPVC windows, supply only, delivered to Cheltenham.”</p>
+          <div className="request-example-summary"><FileText size={18} /><div><b>Get the details right first.</b><p>Add your sizes and drawings. Check the summary before it goes to suppliers.</p></div></div>
+          <div className="request-example-compare"><span>When quotes arrive</span><h2>Compare more than the price.</h2>
+            <dl><div><dt>Specification</dt><dd>What is included?</dd></div><div><dt>Total price</dt><dd>Tax and delivery clear?</dd></div><div><dt>Lead time</dt><dd>Does it fit your project?</dd></div></dl>
+            <div className="request-example-question"><MessageCircleMore size={18} /><span>Ask a question before you choose.</span></div>
+          </div>
+          <p className="request-example-note">Illustration only. Responses depend on suitable suppliers and their availability.</p>
+        </div>
+      </section>
+      <section className="v2-principles v2-container" aria-label="Why use Bridge-iT?">
+        <div><span>01</span><b>Explain it once.</b><p>Your requirements stay with your request.</p></div>
+        <div><span>02</span><b>Keep the choice relevant.</b><p>Up to five suitable suppliers can quote.</p></div>
+        <div><span>03</span><b>Choose with clarity.</b><p>Compare offers and ask about the details.</p></div>
+      </section>
+      <section className="v2-container v2-section" id="what-you-need">
+        <div className="v2-section-head"><div><p className="v2-kicker">START WITH WHAT YOU NEED</p><h2>A product to source.<br />A job to get done.</h2></div><p>Tell us what, where and when. Matching depends on the businesses serving your category and area.</p></div>
+        <div className="customer-needs">
+          <article><Package size={27} /><h3>Products & materials</h3><p>Send the specification, quantity and delivery requirements. Photos and drawings help suppliers understand what to price.</p><span>For example: windows for a building project.</span></article>
+          <article><Wrench size={27} /><h3>Services & project work</h3><p>Describe the work, location and timing. Tell us whether a visit or a final survey may be needed before a firm quote.</p><span>For example: a repair or a garden project.</span></article>
+        </div>
+        <p className="public-note">We don’t guarantee five quotes or availability everywhere. A request is matched against supplier capability, coverage and current availability.</p>
+      </section>
+      <section className="v2-how" id="how-it-works"><div className="v2-container">
+        <div className="v2-section-head"><div><p className="v2-kicker">FROM FIRST MESSAGE TO NEXT STEP</p><h2>Less chasing.<br />More understanding.</h2></div><a className="v2-text-link" href={WHATSAPP_REQUEST_URL} target="_blank" rel="noreferrer">Start your request <ArrowUpRight size={18} /></a></div>
+        <div className="v2-steps">
+          <article><span>01 <MessageCircleMore size={22} /></span><h3>Tell us. Then check it.</h3><p>Start on WhatsApp and answer any follow-up questions. Review and correct the request summary before confirming it.</p></article>
+          <article><span>02 <FileText size={22} /></span><h3>Compare the responses.</h3><p>Suitable suppliers are invited to quote. Return to the Buyer Hub to view your requests, compare offers and ask suppliers questions.</p></article>
+          <article><span>03 <Check size={22} /></span><h3>Choose your next step.</h3><p>Select a proposal to exchange contact details. Agree the final specification, price and any survey or booking directly with the supplier.</p></article>
+        </div>
+        <p className="public-note">Selecting a proposal expresses your preference. It does not necessarily confirm an order or booking. <Link href="/legal/customer-terms">Read the customer terms.</Link></p>
+      </div></section>
+      <section className="v2-container v2-section" id="your-confidence">
+        <div className="v2-section-head"><div><p className="v2-kicker">KNOW WHERE YOU STAND</p><h2>Your request.<br />Your decision.</h2></div><p>Understand what Bridge-iT does, what a supplier offers and where to get help.</p></div>
+        <div className="v2-benefits customer-trust">
+          <article className="v2-benefit"><ShieldCheck size={27} /><h3>What approval means</h3><p>Suppliers need administrator approval to participate. This is not a guarantee of their work. Check the business, relevant credentials and quotation before agreeing.</p><Link href="/help#supplier-approval">Understand supplier approval <ArrowRight size={16} /></Link></article>
+          <article className="v2-benefit"><LockKeyhole size={27} /><h3>Control over your details</h3><p>Your contact details are withheld while suppliers quote. Selecting a proposal allows the chosen supplier and you to exchange the details needed to proceed.</p><Link href="/legal/privacy">How your information is used <ArrowRight size={16} /></Link></article>
+          <article className="v2-benefit"><MessageCircleMore size={27} /><h3>A clear route to help</h3><p>Need help with a request, access or a complaint? Find our support contact and tell us your request reference so we can look into it.</p><Link href="/help">Get help with Bridge-iT <ArrowRight size={16} /></Link></article>
+        </div>
+      </section>
+      <section className="v2-container v2-buyer-banner"><div><p className="v2-kicker">DO YOU SUPPLY PRODUCTS OR SERVICES?</p><h2>Bring your business<br />to the right requests.</h2><p>See how matching, quoting and membership work before you join.</p></div><Link className="v2-button v2-dark" href="/suppliers">Explore Bridge-iT for suppliers <ArrowUpRight size={18} /></Link></section>
+    </main>
+    <PublicFooter />
+  </div>;
 }

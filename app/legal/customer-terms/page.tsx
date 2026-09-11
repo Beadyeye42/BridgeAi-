@@ -5,7 +5,7 @@ import { BRIDGE_AI_COMPANY } from "@/lib/legal/company";
 export const metadata: Metadata = { title: "Customer terms | Bridge-iT", description: "Terms for customers requesting supplier quotations through Bridge-iT on WhatsApp." };
 
 export default function CustomerTermsPage() {
-  return <LegalDocument title="Customer WhatsApp terms" summary="These terms apply when a customer asks Bridge-iT to source quotations by WhatsApp. Customers do not create or use portal accounts.">
+  return <LegalDocument title="Customer WhatsApp terms" summary="These terms apply when a customer asks Bridge-iT to source quotations by WhatsApp. Customers can use the Buyer Hub through a secure WhatsApp sign-in link to manage their requests; a supplier account is not required.">
     <LegalSection id="service" title="1. The service">
       <p>{BRIDGE_AI_COMPANY.name} operates Bridge-iT as a sourcing and quotation-matching service. You can describe what you need and send photos, drawings or documents. Bridge-iT may use AI to interpret the request, ask questions, prepare a summary and find suitable approved suppliers.</p>
       <p>Bridge-iT does not currently charge customers a fee to request quotations. Normal WhatsApp or mobile data charges from your provider may apply.</p>

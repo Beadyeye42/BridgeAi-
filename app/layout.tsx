@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { AuthHashBridge } from "@/components/auth/auth-hash-bridge";
 import "./globals.css";
 import "./modern.css";
+import "./customer-site.css";
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
@@ -11,8 +12,8 @@ export async function generateMetadata(): Promise<Metadata> {
   const origin = `${protocol}://${host}`;
   return {
     metadataBase: new URL(origin),
-    title: { default: "Bridge-iT — Good work. Closer to home.", template: "%s · Bridge-iT" },
-    description: "Find nearby work that fits your business, or request a local service on WhatsApp. Bridge-iT connects clear requests with approved suppliers.",
+    title: { default: "Bridge-iT — Find the right business for what you need", template: "%s · Bridge-iT" },
+    description: "Request quotes for products and services on WhatsApp. Clarify your requirements, compare supplier offers and ask questions before choosing your next step.",
     applicationName: "Bridge-iT",
     authors: [{ name: "Ironbridge Group Ltd" }],
     icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },

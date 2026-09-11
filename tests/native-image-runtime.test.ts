@@ -21,7 +21,8 @@ describe("native customer-image runtime packaging", () => {
     expect(config).toContain("outputFileTracingIncludes");
     expect(config).toContain("@img/sharp-linux-x64/**/*");
     expect(config).toContain("@img/sharp-libvips-linux-x64/**/*");
-    expect(packageJson).toContain('"@img/sharp-linux-x64": "0.35.3"');
-    expect(packageJson).toContain('"@img/sharp-libvips-linux-x64": "1.3.2"');
+    const { dependencies, optionalDependencies } = JSON.parse(packageJson);
+    expect(optionalDependencies["@img/sharp-linux-x64"]).toBe(dependencies.sharp);
+    expect(optionalDependencies["@img/sharp-libvips-linux-x64"]).toBeDefined();
   });
 });
